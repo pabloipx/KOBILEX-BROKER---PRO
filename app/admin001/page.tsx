@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
 
-const ADMIN_EMAIL = "admin@admin.com"
-const ADMIN_PASSWORD = "Admin123!"
+const ADMIN_EMAIL = "samucarmo2024@gmail.com"
+const ADMIN_PASSWORD = "Sasa159753123@"
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("")

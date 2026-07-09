@@ -35,7 +35,7 @@ export function AdminSidebar({ activeSection, onSectionChange }: AdminSidebarPro
 
   const handleLogout = () => {
     sessionStorage.removeItem("admin_authenticated")
-    router.push("/admin")
+    router.push("/admin001")
   }
 
   const menuItems = [

@@ -169,7 +169,7 @@ export default function AdminDashboardClient() {
   useEffect(() => {
     const auth = sessionStorage.getItem("admin_authenticated")
     if (auth !== "true") {
-      router.replace("/admin")
+      router.replace("/admin001")
     } else {
       setIsAuthenticated(true)
     }
@@ -236,7 +236,7 @@ export default function AdminDashboardClient() {
 
   const handleLogout = () => {
     sessionStorage.removeItem("admin_authenticated")
-    router.replace("/admin")
+    router.replace("/admin001")
   }
 
   // Fetch functions

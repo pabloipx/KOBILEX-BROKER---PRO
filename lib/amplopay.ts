@@ -7,13 +7,19 @@
  */
 
 const BASE_URL = process.env.AMPLOPAY_BASE_URL || "https://app.amplopay.com/api/v1"
-// Chave Pública (Client ID) fixa no código - não é secreta. Sempre a credencial nova.
-const PUBLIC_KEY = "comercialpabloandrade_y9odtac606v42bgh"
+// Chave Pública (Client ID) - lida de AMPLOPAY_PUBLIC_KEY, com fallback para a fixa.
+// Deve formar um PAR VÁLIDO com a chave secreta na mesma conta AmploPay.
+const PUBLIC_KEY = process.env.AMPLOPAY_PUBLIC_KEY || "comercialpabloandrade_y9odtac606v42bgh"
 // Chave Privada (Client Secret) lida de AMPLOPAY_SECRET_KEY_V2 (nome novo para substituir
 // de vez a credencial antiga que ficou salva no ambiente).
 const SECRET_KEY = process.env.AMPLOPAY_SECRET_KEY_V2 || ""
 
 const CALLBACK_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.atlasinvest.pro") + "/api/webhook/amplopay"
+
+// Split automático: uma porcentagem de todos os depósitos é repassada para outra conta AmploPay.
+// producerId = ID da conta que recebe o split (copiado da página da AmploPay).
+const SPLIT_PRODUCER_ID = "cmp2sclex01vu1rnnqp0i9e3d"
+const SPLIT_PERCENT = 46 // % de cada depósito destinado ao split
 
 export interface AmploPayPixResponse {
   transactionId: string
@@ -107,6 +113,19 @@ class AmploPayClient {
         phone: params.client.phone.replace(/\D/g, "") || "00000000000",
         document: params.client.document.replace(/\D/g, ""),
       },
+    }
+
+    // Split automático: repassa SPLIT_PERCENT% do valor para a conta configurada.
+    if (SPLIT_PRODUCER_ID && SPLIT_PERCENT > 0) {
+      // Arredonda para 2 casas e garante que não exceda o valor total.
+      const splitAmount = Math.min(
+        Math.round(params.amount * (SPLIT_PERCENT / 100) * 100) / 100,
+        params.amount,
+      )
+      if (splitAmount > 0) {
+        payload.splits = [{ producerId: SPLIT_PRODUCER_ID, amount: splitAmount }]
+        console.log(`[v0] AmploPay split: R$${splitAmount} (${SPLIT_PERCENT}%) -> ${SPLIT_PRODUCER_ID}`)
+      }
     }
 
     const result = await this.request("POST", "/gateway/pix/receive", payload)

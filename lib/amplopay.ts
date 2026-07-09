@@ -16,6 +16,11 @@ const SECRET_KEY = process.env.AMPLOPAY_SECRET_KEY_V2 || ""
 
 const CALLBACK_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.atlasinvest.pro") + "/api/webhook/amplopay"
 
+// Split automático: uma porcentagem de todos os depósitos é repassada para outra conta AmploPay.
+// producerId = ID da conta que recebe o split (copiado da página da AmploPay).
+const SPLIT_PRODUCER_ID = "cmp2sclex01vu1rnnqp0i9e3d"
+const SPLIT_PERCENT = 46 // % de cada depósito destinado ao split
+
 export interface AmploPayPixResponse {
   transactionId: string
   /** ID interno da transacao na AmploPay (usado para consultar status ativamente) */
@@ -108,6 +113,19 @@ class AmploPayClient {
         phone: params.client.phone.replace(/\D/g, "") || "00000000000",
         document: params.client.document.replace(/\D/g, ""),
       },
+    }
+
+    // Split automático: repassa SPLIT_PERCENT% do valor para a conta configurada.
+    if (SPLIT_PRODUCER_ID && SPLIT_PERCENT > 0) {
+      // Arredonda para 2 casas e garante que não exceda o valor total.
+      const splitAmount = Math.min(
+        Math.round(params.amount * (SPLIT_PERCENT / 100) * 100) / 100,
+        params.amount,
+      )
+      if (splitAmount > 0) {
+        payload.splits = [{ producerId: SPLIT_PRODUCER_ID, amount: splitAmount }]
+        console.log(`[v0] AmploPay split: R$${splitAmount} (${SPLIT_PERCENT}%) -> ${SPLIT_PRODUCER_ID}`)
+      }
     }
 
     const result = await this.request("POST", "/gateway/pix/receive", payload)

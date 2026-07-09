@@ -95,6 +95,56 @@ export default function KYCPage() {
     }
   }
 
+  // Comprime/redimensiona a imagem no navegador para evitar arquivos gigantes
+  // (fotos de celular podem ter 5-10MB, o que estoura o limite de upload do servidor).
+  async function compressImage(file: File): Promise<Blob> {
+    // Se não for imagem, retorna o arquivo original
+    if (!file.type.startsWith("image/")) return file
+
+    return new Promise((resolve) => {
+      const img = document.createElement("img")
+      const objectUrl = URL.createObjectURL(file)
+
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl)
+        const maxDimension = 1600
+        let { width, height } = img
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width)
+            width = maxDimension
+          } else {
+            width = Math.round((width * maxDimension) / height)
+            height = maxDimension
+          }
+        }
+
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+        if (!ctx) {
+          resolve(file)
+          return
+        }
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => resolve(blob || file),
+          "image/jpeg",
+          0.8,
+        )
+      }
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        resolve(file)
+      }
+
+      img.src = objectUrl
+    })
+  }
+
   async function uploadFile(type: "front" | "back" | "selfie", file: File) {
     if (!userId) return
 
@@ -112,25 +162,30 @@ export default function KYCPage() {
       }
       reader.readAsDataURL(file)
 
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("userId", userId)
-      formData.append("type", type === "front" ? "document_front" : type === "back" ? "document_back" : "selfie")
+      // Comprime a imagem antes de enviar
+      const compressed = await compressImage(file)
 
-      const response = await fetch("/api/kyc/upload", {
-        method: "POST",
-        body: formData,
-      })
+      const typeKey = type === "front" ? "document_front" : type === "back" ? "document_back" : "selfie"
+      const fileName = `${userId}/${typeKey}_${Date.now()}.jpg`
 
-      const data = await response.json()
+      // Upload direto do navegador para o Supabase Storage (contorna o limite
+      // de tamanho de corpo das rotas de API do servidor).
+      const { data, error: uploadError } = await supabase.storage
+        .from("kyc-documents")
+        .upload(fileName, compressed, {
+          contentType: "image/jpeg",
+          upsert: false,
+        })
 
-      if (!response.ok) {
-        throw new Error(data.error || "Erro ao fazer upload")
+      if (uploadError) {
+        throw new Error(uploadError.message || "Erro ao fazer upload")
       }
 
-      if (type === "front") setDocumentFrontPath(data.path)
-      else if (type === "back") setDocumentBackPath(data.path)
-      else setSelfiePath(data.path)
+      const path = data.path
+
+      if (type === "front") setDocumentFrontPath(path)
+      else if (type === "back") setDocumentBackPath(path)
+      else setSelfiePath(path)
 
       setError(null)
     } catch (err: any) {

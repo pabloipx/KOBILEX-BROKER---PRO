@@ -308,7 +308,7 @@ export default function TradePage() {
       const now = Date.now()
       const expiredTrades = pendingTrades.filter((t) => {
         const entryMs = new Date(t.entry_time).getTime()
-        const expiryMs = (t.expiry_seconds || 60) * 1000
+        const expiryMs = (t.timeframe || 60) * 1000
         return now >= entryMs + expiryMs
       })
 
@@ -322,7 +322,7 @@ export default function TradePage() {
         const isWin =
           trade.direction === "CALL" ? exitPrice > trade.entry_price : exitPrice < trade.entry_price
         const result = isWin ? "win" : "loss"
-        const profitAmount = isWin ? trade.amount * (trade.payout_percent || 0.96) : -trade.amount
+        const profitAmount = isWin ? trade.amount * (trade.payout_percentage || 0.96) : -trade.amount
 
         await supabase
           .from("trades")
@@ -337,7 +337,7 @@ export default function TradePage() {
         // Se ganhou, creditar o saldo
         if (isWin) {
           const balanceField = trade.is_demo ? "balance_demo" : "balance_real"
-          const returnAmount = trade.amount + trade.amount * (trade.payout_percent || 0.96)
+          const returnAmount = trade.amount + trade.amount * (trade.payout_percentage || 0.96)
 
           const { data: balanceData } = await supabase
             .from("user_balances")
@@ -559,8 +559,9 @@ export default function TradePage() {
           amount: Math.round(amount * 100) / 100,
           entry_price: entryPrice,
           entry_time: entryTime.toISOString(),
-          expiry_seconds: expiryTime,
-          payout_percent: payout / 100,
+          timeframe: expiryTime,
+          expiry_time: expiryTimeDate.toISOString(),
+          payout_percentage: payout / 100,
           is_demo: isDemo,
           result: "pending",
         }

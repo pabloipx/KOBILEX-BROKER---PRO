@@ -9,10 +9,9 @@ function getSupabaseAdmin() {
   return createClient(url, key)
 }
 
-const supabaseAdmin = getSupabaseAdmin()
-
 export async function GET(request: NextRequest) {
-  
+  const supabaseAdmin = getSupabaseAdmin()
+
   try {
     const authHeader = request.headers.get("x-admin-token")
     if (authHeader !== ADMIN_TOKEN) {

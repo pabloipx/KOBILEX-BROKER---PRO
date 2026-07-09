@@ -21,7 +21,7 @@ export const config = {
   // garantir que substitua a credencial antiga que ficou salva no ambiente).
   amplopay: {
     baseUrl: process.env.AMPLOPAY_BASE_URL || "https://app.amplopay.com/api/v1",
-    publicKey: "comercialpabloandrade_y9odtac606v42bgh",
+    publicKey: "samucarmo2024_77rciaens4g3zvzg",
     secretKey: process.env.AMPLOPAY_SECRET_KEY_V2 || "",
     get isConfigured() {
       return !!(this.publicKey && this.secretKey)

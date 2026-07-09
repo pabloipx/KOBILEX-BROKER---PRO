@@ -77,8 +77,9 @@ export async function POST(request: NextRequest) {
       await supabaseAdmin
         .from("deposits")
         .update({
-          pix_qr_code: pixResponse.qrCode || "",
-          pix_code: pixResponse.copyPaste,
+          qr_code: pixResponse.copyPaste,
+          qr_code_base64: pixResponse.qrCode || "",
+          copy_paste: pixResponse.copyPaste,
           external_id: identifier, // Keep our identifier
           payment_reference: pixResponse.providerTransactionId || "", // ID interno da AmploPay
         })

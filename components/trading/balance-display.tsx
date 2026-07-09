@@ -52,7 +52,7 @@ export function BalanceDisplay({ balance }: { balance: number }) {
       {/* Admin link if admin */}
       {isAdmin && (
         <Button asChild size="sm" variant="ghost" className="text-white/60 hover:text-white hover:bg-white/10 h-8 px-2">
-          <Link href="/admin">Admin</Link>
+          <Link href="/admin001">Admin</Link>
         </Button>
       )}
     </div>

@@ -7,8 +7,9 @@
  */
 
 const BASE_URL = process.env.AMPLOPAY_BASE_URL || "https://app.amplopay.com/api/v1"
-// Chave Pública (Client ID) fixa no código - não é secreta. Sempre a credencial nova.
-const PUBLIC_KEY = "comercialpabloandrade_y9odtac606v42bgh"
+// Chave Pública (Client ID) - lida de AMPLOPAY_PUBLIC_KEY, com fallback para a fixa.
+// Deve formar um PAR VÁLIDO com a chave secreta na mesma conta AmploPay.
+const PUBLIC_KEY = process.env.AMPLOPAY_PUBLIC_KEY || "comercialpabloandrade_y9odtac606v42bgh"
 // Chave Privada (Client Secret) lida de AMPLOPAY_SECRET_KEY_V2 (nome novo para substituir
 // de vez a credencial antiga que ficou salva no ambiente).
 const SECRET_KEY = process.env.AMPLOPAY_SECRET_KEY_V2 || ""

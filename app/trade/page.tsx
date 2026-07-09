@@ -290,7 +290,7 @@ export default function TradePage() {
     }
   }, [router])
 
-  const finalizeExpiredTrades = async (userId: string) => {
+  const finalizeExpiredTrades = useCallback(async (userId: string) => {
     try {
       const supabase = supabaseRef.current
 
@@ -360,7 +360,18 @@ export default function TradePage() {
     } catch (err) {
       console.error("[v0] Erro ao finalizar trades expirados:", err)
     }
-  }
+  }, [])
+
+  // Rede de seguranca: finaliza no banco qualquer operacao expirada, mesmo que o
+  // preco ao vivo esteja 0 ou a operacao nao esteja mais na lista em memoria.
+  // Isso resolve o caso do cronometro travar em "0s" sem mostrar o resultado.
+  useEffect(() => {
+    if (!user) return
+    const interval = setInterval(() => {
+      if (mountedRef.current) finalizeExpiredTrades(user.id)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [user, finalizeExpiredTrades])
 
   // Track processed trade IDs to prevent double-processing
   const processedTradesRef = useRef<Set<string>>(new Set())

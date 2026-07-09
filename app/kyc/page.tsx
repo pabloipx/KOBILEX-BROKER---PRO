@@ -174,7 +174,7 @@ export default function KYCPage() {
         .from("kyc-documents")
         .upload(fileName, compressed, {
           contentType: "image/jpeg",
-          upsert: true,
+          upsert: false,
         })
 
       if (uploadError) {

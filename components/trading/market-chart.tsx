@@ -229,6 +229,10 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
+  // Incrementa toda vez que uma NOVA serie do grafico e criada (ex.: ao trocar de moeda).
+  // Serve para forcar o redesenho das linhas de operacao/overlays, que dependem de seriesRef
+  // (uma ref que nao dispara re-render por si so).
+  const [seriesReady, setSeriesReady] = useState(0)
   const [flash, setFlash] = useState<{ id: string; dir: "call" | "put" } | null>(null)
   const [pnlOverlays, setPnlOverlays] = useState<PnlOverlay[]>([])
   const [resultBurst, setResultBurst] = useState<{ type: "win" | "loss"; amount: number; key: number } | null>(null)
@@ -721,6 +725,9 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       chartRef.current = chart
       seriesRef.current = cs
       lwcRef.current = lwc
+      // Sinaliza que a serie esta pronta para que as linhas de operacao/overlays
+      // sejam (re)desenhadas — essencial ao voltar para uma moeda com operacao ativa.
+      if (!dead) setSeriesReady((n) => n + 1)
 
       // Markers API (v5 uses createSeriesMarkers)
       try {
@@ -984,7 +991,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         series.setMarkers(markers)
       }
     } catch {}
-  }, [activeTrades, cds])
+  }, [activeTrades, cds, seriesReady])
 
   // ===== Live floating P&L overlays (IQ Option style) =====
   useEffect(() => {
@@ -1029,7 +1036,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     update()
     const iv = setInterval(update, 60)
     return () => clearInterval(iv)
-  }, [activeTrades, payout])
+  }, [activeTrades, payout, seriesReady])
 
   // ===== WIN/LOSS result burst animation =====
   useEffect(() => {

@@ -880,10 +880,6 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         const target = latest.current.currentPrice
         const sym = latest.current.symbol
         const tf = latest.current.timeframe
-        // Guard: so aplica preco quando os dados carregados na serie correspondem ao ativo
-        // ao vivo atual. Durante a troca (loadedSymbolRef=null) ou antes do feed alinhar,
-        // nao aplica — evita "vela gigante" ao alternar ativos de escalas diferentes
-        // (ex.: EUR/USD ~1.08 vs SHIB ~0.0000245).
         // Guard anti "vela gigante": so aplica o preco ao vivo se ele estiver na MESMA escala
         // da vela carregada. Ao trocar entre ativos de escalas muito diferentes (ex.: EUR/USD
         // ~1.08 vs SHIB ~0.0000245), o feed pode entregar por um instante o preco do ativo

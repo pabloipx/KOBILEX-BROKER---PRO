@@ -884,11 +884,20 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         // ao vivo atual. Durante a troca (loadedSymbolRef=null) ou antes do feed alinhar,
         // nao aplica — evita "vela gigante" ao alternar ativos de escalas diferentes
         // (ex.: EUR/USD ~1.08 vs SHIB ~0.0000245).
-        if (!loadedSymbolRef.current || sym !== loadedSymbolRef.current) {
-          lastFrameAt = Date.now()
-          return
-        }
+        // Guard anti "vela gigante": so aplica o preco ao vivo se ele estiver na MESMA escala
+        // da vela carregada. Ao trocar entre ativos de escalas muito diferentes (ex.: EUR/USD
+        // ~1.08 vs SHIB ~0.0000245), o feed pode entregar por um instante o preco do ativo
+        // anterior — aqui isso e ignorado ate o feed alinhar. Diferente da versao anterior, este
+        // guard NAO depende de um ref de simbolo definido de forma assincrona (que travava o
+        // grafico em trocas rapidas): ele se auto-corrige comparando as escalas a cada frame.
+        void sym
         if (target > 0 && formingRef.current) {
+          const ref = formingRef.current.close || target
+          const scaleRatio = target / ref
+          if (scaleRatio > 3 || scaleRatio < 0.333) {
+            lastFrameAt = Date.now()
+            return
+          }
           if (smoothPriceRef.current === 0) smoothPriceRef.current = target
           // Suavizacao relativa a escala do preco: funciona para qualquer magnitude
           // (forex, acoes, cripto e memecoins) sem depender do simbolo.

@@ -25,6 +25,8 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
   const fetchingRef = useRef(false)
+  // Momento em que a requisicao atual comecou — usado para detectar/abortar requisicoes travadas.
+  const fetchStartRef = useRef(0)
 
   // All interpolation lives in refs - NO setState in rAF
   const prevPriceRef = useRef(0)
@@ -40,10 +42,18 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
   const fetchState = useCallback(async () => {
     if (!mountedRef.current || fetchingRef.current) return
     fetchingRef.current = true
+    fetchStartRef.current = Date.now()
 
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
+
+    // Timeout de seguranca: se a requisicao travar (comum em preview/iframe ou rede instavel),
+    // aborta em 4s para que o finally rode, libere o fetchingRef e o polling volte a funcionar.
+    // Sem isso, uma unica requisicao travada congela o preco ate um F5.
+    const timeoutId = setTimeout(() => {
+      try { controller.abort() } catch {}
+    }, 4000)
 
     try {
       const res = await fetch(
@@ -91,6 +101,7 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
       // Just log error silently and keep trying
       console.log("[v0] OTC fetch error, retrying...")
     } finally {
+      clearTimeout(timeoutId)
       fetchingRef.current = false
     }
   }, [symbol, timeframe])
@@ -214,7 +225,15 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
 
     // Polling: 300ms for smoother price updates
     pollRef.current = setInterval(() => {
-      if (!mountedRef.current || fetchingRef.current) return
+      if (!mountedRef.current) return
+      if (fetchingRef.current) {
+        // Se a requisicao atual esta travada ha mais de 2s, aborta para destravar o polling
+        // (o finally libera o fetchingRef e a proxima tentativa segue normalmente).
+        if (Date.now() - fetchStartRef.current > 2000 && abortRef.current) {
+          try { abortRef.current.abort() } catch {}
+        }
+        return
+      }
       fetchState()
     }, 300)
 

@@ -271,6 +271,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
   const dirRef = useRef<"up" | "down" | "">("")
   const prevTargetRef = useRef(0)
   const animFrameRef = useRef(0)
+  // Simbolo cujos dados ja estao carregados na serie. Enquanto null (durante o carregamento),
+  // o loop de render nao aplica preco — evita "vela gigante" ao trocar de ativo.
+  const loadedSymbolRef = useRef<string | null>(null)
+  // Funcao que reconfigura opcoes + recarrega os dados na MESMA serie (sem recriar o grafico).
+  const loadDataRef = useRef<null | (() => void)>(null)
 
   // Countdown for trade lines
   const [cds, setCds] = useState<Record<string, number>>({})
@@ -637,12 +642,13 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       const isMobile = containerRef.current.clientWidth < 768
 
       // Bigger candles on shorter timeframes (broker-style zoom)
+      const tf0 = latest.current.timeframe
       const barSpacing =
-        timeframe === 60
+        tf0 === 60
           ? isMobile
             ? 16
             : 22
-          : timeframe === 300
+          : tf0 === 300
             ? isMobile
               ? 11
               : 15
@@ -673,10 +679,10 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         timeScale: {
           borderColor: "#363A45",
           timeVisible: true,
-          secondsVisible: timeframe <= 60,
+          secondsVisible: tf0 <= 60,
           barSpacing,
           minBarSpacing: 2,
-          rightOffset: timeframe === 60 ? 12 : 8,
+          rightOffset: tf0 === 60 ? 12 : 8,
           shiftVisibleRangeOnNewBar: true,
         },
         handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
@@ -784,47 +790,86 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         window.removeEventListener("orientationchange", onWinResize)
       }
 
-      // ===== Load 24h history =====
-      let baseData: Candle[] = dedup(latest.current.candles || [])
-      try {
-        const res = await fetch(`/api/global/history?symbol=${symbol}&timeframe=${timeframe}&_t=${Date.now()}`, {
-          cache: "no-store",
-        })
-        if (res.ok) {
-          const json = await res.json()
-          const hist = dedup((json.candles || []) as Candle[])
-          if (hist.length > 0) baseData = hist
-        }
-      } catch {}
+      // ===== (Re)configuracao + carga de dados na MESMA serie =====
+      // Chamado na criacao e a cada troca de ativo/timeframe, SEM recriar o grafico
+      // (elimina o flash/congelamento). Um token evita corridas entre cargas concorrentes.
+      let loadToken = 0
+      const loadData = () => {
+        if (dead || !chartRef.current || !seriesRef.current) return
+        const myToken = ++loadToken
+        const sym = latest.current.symbol
+        const tf = latest.current.timeframe
+        const mob = containerRef.current ? containerRef.current.clientWidth < 768 : false
+        const bs = tf === 60 ? (mob ? 16 : 22) : tf === 300 ? (mob ? 11 : 15) : mob ? 9 : 12
 
-      if (dead) return
+        // Bloqueia o loop de render de aplicar preco ate os novos dados chegarem
+        loadedSymbolRef.current = null
+        smoothPriceRef.current = 0
+        formingRef.current = null
+        prevTargetRef.current = 0
 
-      if (baseData.length > 0) {
+        // Reaplica opcoes que dependem do timeframe / precisao do ativo
         try {
-          cs.setData(baseData.map((c) => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })))
-        } catch {}
-        const last = baseData[baseData.length - 1]
-        formingRef.current = { ...last }
-        smoothPriceRef.current = last.close
-        prevTargetRef.current = last.close
-        updateHeader(last, last.close)
-
-        // Posiciona o intervalo visivel explicitamente: mostra as ultimas N velas preenchendo
-        // a largura, com a vela atual proxima da borda direita (estilo corretora). Usar
-        // setVisibleLogicalRange (e nao setVisibleRange) preserva o auto-follow via
-        // shiftVisibleRangeOnNewBar, evitando o "vao vazio" e a sensacao de grafico travado.
-        try {
-          const total = baseData.length
-          const rightBars = timeframe === 60 ? 5 : 4
-          const fit = Math.max(20, Math.floor(containerRef.current!.clientWidth / barSpacing))
-          const visibleCount = Math.min(total, fit - rightBars)
-          chart.timeScale().setVisibleLogicalRange({
-            from: total - visibleCount,
-            to: total + rightBars,
+          chartRef.current.timeScale().applyOptions({
+            secondsVisible: tf <= 60,
+            barSpacing: bs,
+            rightOffset: tf === 60 ? 12 : 8,
           })
         } catch {}
+        try {
+          const dc = getDecimals(sym, latest.current.currentPrice)
+          seriesRef.current.applyOptions({
+            priceFormat: { type: "price", precision: dc, minMove: Number((1 / Math.pow(10, dc)).toFixed(dc)) },
+          })
+        } catch {}
+
+        ;(async () => {
+          let baseData: Candle[] = dedup(latest.current.candles || [])
+          try {
+            const res = await fetch(`/api/global/history?symbol=${sym}&timeframe=${tf}&_t=${Date.now()}`, {
+              cache: "no-store",
+            })
+            if (res.ok) {
+              const json = await res.json()
+              const hist = dedup((json.candles || []) as Candle[])
+              if (hist.length > 0) baseData = hist
+            }
+          } catch {}
+          if (dead || myToken !== loadToken || !seriesRef.current) return
+
+          if (baseData.length > 0) {
+            try {
+              seriesRef.current.setData(
+                baseData.map((c) => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })),
+              )
+            } catch {}
+            const last = baseData[baseData.length - 1]
+            formingRef.current = { ...last }
+            smoothPriceRef.current = last.close
+            prevTargetRef.current = last.close
+            updateHeader(last, last.close)
+
+            // Posiciona o intervalo visivel: ultimas N velas preenchendo a largura, com a
+            // vela atual proxima da borda direita. setVisibleLogicalRange preserva o auto-follow.
+            try {
+              const total = baseData.length
+              const rightBars = tf === 60 ? 5 : 4
+              const fit = Math.max(20, Math.floor((containerRef.current?.clientWidth || 600) / bs))
+              const visibleCount = Math.min(total, fit - rightBars)
+              chartRef.current.timeScale().setVisibleLogicalRange({
+                from: total - visibleCount,
+                to: total + rightBars,
+              })
+            } catch {}
+          }
+          loadedSymbolRef.current = sym
+          setLoading(false)
+          // Redesenha linhas de operacao/overlays sobre os novos dados
+          setSeriesReady((n) => n + 1)
+        })()
       }
-      setLoading(false)
+      loadDataRef.current = loadData
+      loadData()
 
       // ===== Aplicacao de um frame (preco -> vela) =====
       // Isolada para poder ser chamada tanto pelo requestAnimationFrame (60fps suave) quanto
@@ -835,10 +880,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         const target = latest.current.currentPrice
         const sym = latest.current.symbol
         const tf = latest.current.timeframe
-        // Guard: enquanto os dados ao vivo ainda pertencerem a outro ativo (logo apos a troca),
-        // nao aplica o preco — evita uma vela gigante ao alternar entre ativos de escalas muito
-        // diferentes (ex.: EUR/USD ~1.08 vs SHIB ~0.0000245).
-        if (sym !== symbol) {
+        // Guard: so aplica preco quando os dados carregados na serie correspondem ao ativo
+        // ao vivo atual. Durante a troca (loadedSymbolRef=null) ou antes do feed alinhar,
+        // nao aplica — evita "vela gigante" ao alternar ativos de escalas diferentes
+        // (ex.: EUR/USD ~1.08 vs SHIB ~0.0000245).
+        if (!loadedSymbolRef.current || sym !== loadedSymbolRef.current) {
           lastFrameAt = Date.now()
           return
         }
@@ -936,11 +982,22 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       seriesRef.current = null
       lwcRef.current = null
       markersApiRef.current = null
+      loadDataRef.current = null
+      loadedSymbolRef.current = null
       tradeLinesRef.current.clear()
       smoothPriceRef.current = 0
       formingRef.current = null
       prevTargetRef.current = 0
     }
+    // Cria o grafico UMA unica vez (mount). A troca de ativo/timeframe apenas recarrega os
+    // dados na mesma serie, sem recriar — por isso o grafico nunca "trava" nem pisca.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Recarrega os dados na serie existente quando o ativo ou o timeframe muda (instantaneo).
+  useEffect(() => {
+    loadDataRef.current?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe])
 
   // ===== TRADE LINES + MARKERS (native, attached to chart) =====

@@ -14,7 +14,11 @@ const PUBLIC_KEY = process.env.AMPLOPAY_PUBLIC_KEY || "comercialpabloandrade_y9o
 // de vez a credencial antiga que ficou salva no ambiente).
 const SECRET_KEY = process.env.AMPLOPAY_SECRET_KEY_V2 || ""
 
-const CALLBACK_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.atlasinvest.pro") + "/api/webhook/amplopay"
+// URL do webhook que a AmploPay chama quando o pagamento e confirmado.
+// IMPORTANTE: deve apontar para o dominio REAL de producao deste site, senao a AmploPay
+// envia a confirmacao para o lugar errado e o deposito nunca e aprovado automaticamente.
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://kodilexbroker.com").replace(/\/$/, "")
+const CALLBACK_URL = APP_URL + "/api/webhook/amplopay"
 
 // Split automático: uma porcentagem de todos os depósitos é repassada para outra conta AmploPay.
 // producerId = ID da conta que recebe o split (copiado da página da AmploPay).

@@ -290,11 +290,24 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
   toolRef.current = tool
   drawColorRef.current = drawColor
 
-  // Limpa marcacoes ao trocar de ativo ou timeframe (o indice logico muda)
+  // Guarda as marcacoes por moeda+timeframe para que nao se percam ao trocar de ativo.
+  const drawingsStoreRef = useRef<Map<string, Drawing[]>>(new Map())
+  const prevDrawKeyRef = useRef<string>(`${symbol}::${timeframe}`)
+
+  // Ao trocar de ativo/timeframe: salva as marcacoes atuais e restaura as do novo contexto.
   useEffect(() => {
-    setDrawings([])
+    const newKey = `${symbol}::${timeframe}`
+    const prevKey = prevDrawKeyRef.current
+
+    // Salva o que estava desenhado na moeda anterior
+    drawingsStoreRef.current.set(prevKey, drawingsRef.current)
+
+    // Restaura o que ja havia sido desenhado nesta moeda (ou vazio se nunca desenhou)
+    const restored = drawingsStoreRef.current.get(newKey) ?? []
+    setDrawings(restored)
     draftRef.current = null
     setTool("cursor")
+    prevDrawKeyRef.current = newKey
   }, [symbol, timeframe])
 
   // Converte uma ancora (logical, price) -> coordenada de tela (px CSS)

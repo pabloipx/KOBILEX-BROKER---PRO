@@ -98,8 +98,11 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
   // 60fps animation loop - updates refs only, throttles React re-renders
   useEffect(() => {
     mountedRef.current = true
+    let lastFrameAt = 0
 
-    const animate = () => {
+    // Um unico "passo" de interpolacao. Isolado para poder ser chamado tanto pelo
+    // requestAnimationFrame (suave, 60fps) quanto por um setInterval de seguranca.
+    const stepFrame = () => {
       if (!mountedRef.current) return
 
       const prev = prevPriceRef.current
@@ -139,14 +142,44 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
           setTick(t => t + 1)
         }
       }
+      lastFrameAt = Date.now()
+    }
 
+    const animate = () => {
+      if (!mountedRef.current) return
+      stepFrame()
       rafRef.current = requestAnimationFrame(animate)
     }
 
+    lastFrameAt = Date.now()
     rafRef.current = requestAnimationFrame(animate)
+
+    // Rede de seguranca: em ambientes que estrangulam o requestAnimationFrame
+    // (preview em iframe, abas em segundo plano, alguns navegadores mobile), o preco
+    // ao vivo — e portanto o grafico inteiro — congela. Este intervalo garante que a
+    // interpolacao SEMPRE avance, mesmo sem rAF, entao o grafico nunca fica travado.
+    const watchdog = setInterval(() => {
+      if (!mountedRef.current) return
+      if (Date.now() - lastFrameAt > 200) stepFrame()
+    }, 200)
+
+    // Retoma imediatamente ao voltar o foco / aba visivel.
+    const onVisible = () => {
+      if (typeof document !== "undefined" && !document.hidden && mountedRef.current) {
+        stepFrame()
+        if (rafRef.current) cancelAnimationFrame(rafRef.current)
+        rafRef.current = requestAnimationFrame(animate)
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("focus", onVisible)
+
     return () => {
       mountedRef.current = false
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      clearInterval(watchdog)
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("focus", onVisible)
     }
   }, [])
 

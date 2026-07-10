@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
-import { OTC_ASSETS } from "@/lib/price-engine/multi-asset-engine"
+import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 
 // Mapa central de casas decimais por simbolo (fonte unica: engine de precos)
 const SYMBOL_DECIMALS: Record<string, number> = Object.fromEntries(
@@ -823,50 +823,47 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           })
         } catch {}
 
-        ;(async () => {
-          let baseData: Candle[] = dedup(latest.current.candles || [])
+        // ===== Historico CLIENT-SIDE (instantaneo, sem rede) =====
+        // O motor de precos e puro/deterministico, entao construimos as ~24h de velas
+        // localmente. Isso remove a dependencia do endpoint serverless (/api/global/history),
+        // cujo cold start em producao segurava o grafico vazio/travado. Resultado: o grafico
+        // aparece ja carregado na entrada e a troca de ativo e imediata.
+        let baseData: Candle[] = []
+        try {
+          baseData = dedup(multiAssetEngine.getHistory(sym as any, tf) as Candle[])
+        } catch {}
+        if (baseData.length === 0) baseData = dedup(latest.current.candles || [])
+        if (dead || myToken !== loadToken || !seriesRef.current) return
+
+        if (baseData.length > 0) {
           try {
-            const res = await fetch(`/api/global/history?symbol=${sym}&timeframe=${tf}&_t=${Date.now()}`, {
-              cache: "no-store",
-            })
-            if (res.ok) {
-              const json = await res.json()
-              const hist = dedup((json.candles || []) as Candle[])
-              if (hist.length > 0) baseData = hist
-            }
+            seriesRef.current.setData(
+              baseData.map((c) => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })),
+            )
           } catch {}
-          if (dead || myToken !== loadToken || !seriesRef.current) return
+          const last = baseData[baseData.length - 1]
+          formingRef.current = { ...last }
+          smoothPriceRef.current = last.close
+          prevTargetRef.current = last.close
+          updateHeader(last, last.close)
 
-          if (baseData.length > 0) {
-            try {
-              seriesRef.current.setData(
-                baseData.map((c) => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })),
-              )
-            } catch {}
-            const last = baseData[baseData.length - 1]
-            formingRef.current = { ...last }
-            smoothPriceRef.current = last.close
-            prevTargetRef.current = last.close
-            updateHeader(last, last.close)
-
-            // Posiciona o intervalo visivel: ultimas N velas preenchendo a largura, com a
-            // vela atual proxima da borda direita. setVisibleLogicalRange preserva o auto-follow.
-            try {
-              const total = baseData.length
-              const rightBars = tf === 60 ? 5 : 4
-              const fit = Math.max(20, Math.floor((containerRef.current?.clientWidth || 600) / bs))
-              const visibleCount = Math.min(total, fit - rightBars)
-              chartRef.current.timeScale().setVisibleLogicalRange({
-                from: total - visibleCount,
-                to: total + rightBars,
-              })
-            } catch {}
-          }
-          loadedSymbolRef.current = sym
-          setLoading(false)
-          // Redesenha linhas de operacao/overlays sobre os novos dados
-          setSeriesReady((n) => n + 1)
-        })()
+          // Posiciona o intervalo visivel: ultimas N velas preenchendo a largura, com a
+          // vela atual proxima da borda direita. setVisibleLogicalRange preserva o auto-follow.
+          try {
+            const total = baseData.length
+            const rightBars = tf === 60 ? 5 : 4
+            const fit = Math.max(20, Math.floor((containerRef.current?.clientWidth || 600) / bs))
+            const visibleCount = Math.min(total, fit - rightBars)
+            chartRef.current.timeScale().setVisibleLogicalRange({
+              from: total - visibleCount,
+              to: total + rightBars,
+            })
+          } catch {}
+        }
+        loadedSymbolRef.current = sym
+        setLoading(false)
+        // Redesenha linhas de operacao/overlays sobre os novos dados
+        setSeriesReady((n) => n + 1)
       }
       loadDataRef.current = loadData
       loadData()
@@ -877,16 +874,19 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       // ex.: dentro de iframes/preview ou abas em segundo plano).
       const renderFrame = () => {
         if (dead || !seriesRef.current) return
-        const target = latest.current.currentPrice
         const sym = latest.current.symbol
         const tf = latest.current.timeframe
-        // Guard: so aplica preco quando os dados carregados na serie correspondem ao ativo
-        // ao vivo atual. Durante a troca (loadedSymbolRef=null) ou antes do feed alinhar,
-        // nao aplica — evita "vela gigante" ao alternar ativos de escalas diferentes
-        // (ex.: EUR/USD ~1.08 vs SHIB ~0.0000245).
-        if (!loadedSymbolRef.current || sym !== loadedSymbolRef.current) {
-          lastFrameAt = Date.now()
-          return
+        // Le o preco vivo DIRETO do motor deterministico a cada frame, usando o simbolo atual.
+        // Antes o preco vinha por props (hook -> pagina -> props -> latest.current), e essa
+        // propagacao por re-render as vezes atrasava/congelava apos varias trocas rapidas de
+        // ativo (o preco "parava" ate um foco/minimizar reiniciar o ciclo). Lendo direto do
+        // motor — a mesma fonte pura e determinstica usada em loadData — o preco nunca fica preso
+        // e sempre corresponde a escala da vela carregada (nao ha contaminacao entre ativos).
+        let target = 0
+        try {
+          target = multiAssetEngine.getCurrentPrice(sym as any)
+        } catch {
+          target = latest.current.currentPrice
         }
         if (target > 0 && formingRef.current) {
           if (smoothPriceRef.current === 0) smoothPriceRef.current = target

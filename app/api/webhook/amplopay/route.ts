@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { approveDeposit } from "@/lib/deposits"
+import { approveDeposit, isPaidStatus } from "@/lib/deposits"
+import { amplopay } from "@/lib/amplopay"
 
 // Função para obter cliente admin do Supabase
 function getSupabaseAdmin() {
@@ -121,9 +122,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: "Already processed" })
     }
 
-    const isPaid = status === "PAID" || status === "OK" || status === "COMPLETED" || status === "APPROVED" || event === "TRANSACTION_PAID" || event === "PAYMENT_CONFIRMED"
-    const isFailed = status === "FAILED" || status === "CANCELED" || event === "TRANSACTION_CANCELED"
-    const isRefunded = status === "REFUNDED" || event === "TRANSACTION_REFUNDED"
+    const su = status.toUpperCase()
+    let isPaid = su === "PAID" || su === "OK" || su === "COMPLETED" || su === "APPROVED" || event === "TRANSACTION_PAID" || event === "PAYMENT_CONFIRMED"
+    const isFailed = su === "FAILED" || su === "CANCELED" || su === "CANCELLED" || event === "TRANSACTION_CANCELED"
+    const isRefunded = su === "REFUNDED" || event === "TRANSACTION_REFUNDED"
+
+    // Se o status do payload nao indicou claramente pago/falho/estornado, confirma ativamente
+    // na AmploPay usando o ID interno. Isso torna a aprovacao imune a variacoes no formato do
+    // webhook — se estiver pago de verdade, credita mesmo assim.
+    if (!isPaid && !isFailed && !isRefunded) {
+      const providerRef = transactionId || deposit.payment_reference
+      if (providerRef) {
+        try {
+          const tx = await amplopay.getTransactionStatus(providerRef)
+          if (tx && isPaidStatus(tx.status)) isPaid = true
+        } catch (verifyErr) {
+          console.error("[WEBHOOK] Erro na confirmacao ativa:", verifyErr)
+        }
+      }
+    }
 
     if (isPaid) {
       try {

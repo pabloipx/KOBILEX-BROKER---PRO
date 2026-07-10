@@ -625,10 +625,19 @@ export default function TradePage() {
       const newIndex = Math.max(0, Math.min(TIMEFRAMES.length - 1, currentIndex + delta))
       const newExpiry = TIMEFRAMES[newIndex]
       setExpiryTime(newExpiry)
-      // O gráfico acompanha o tempo selecionado na corretora
-      setTimeframe(newExpiry)
     },
     [expiryTime],
+  )
+
+  // Controla o tempo de expiração (intervalo dos candles) do gráfico, de forma
+  // independente do tempo de entrada da operação.
+  const handleTimeframeChange = useCallback(
+    (delta: number) => {
+      const currentIndex = TIMEFRAMES.indexOf(timeframe)
+      const newIndex = Math.max(0, Math.min(TIMEFRAMES.length - 1, currentIndex + delta))
+      setTimeframe(TIMEFRAMES[newIndex])
+    },
+    [timeframe],
   )
 
   const handleAmountChange = useCallback(
@@ -819,6 +828,30 @@ export default function TradePage() {
             </div>
           </div>
 
+          {/* Tempo de expiração do gráfico */}
+          <div>
+            <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">
+              Tempo do grafico
+            </label>
+            <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
+              <button
+                onClick={() => handleTimeframeChange(-1)}
+                disabled={TIMEFRAMES.indexOf(timeframe) === 0}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5 text-white/60" />
+              </button>
+              <span className="text-white text-lg font-bold">{TIMEFRAME_LABELS[timeframe]}</span>
+              <button
+                onClick={() => handleTimeframeChange(1)}
+                disabled={TIMEFRAMES.indexOf(timeframe) === TIMEFRAMES.length - 1}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-5 h-5 text-white/60" />
+              </button>
+            </div>
+          </div>
+
           {/* Amount */}
           <div>
             <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">Valor (R$)</label>
@@ -923,6 +956,26 @@ export default function TradePage() {
                 <button
                   onClick={() => handleExpiryChange(1)}
                   disabled={TIMEFRAMES.indexOf(expiryTime) === TIMEFRAMES.length - 1}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4 text-white/60" />
+                </button>
+              </div>
+              <label className="text-white/50 text-[10px] mt-2 mb-1 block font-medium uppercase tracking-wider">
+                Tempo do grafico
+              </label>
+              <div className="flex items-center justify-between p-2 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
+                <button
+                  onClick={() => handleTimeframeChange(-1)}
+                  disabled={TIMEFRAMES.indexOf(timeframe) === 0}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4 text-white/60" />
+                </button>
+                <span className="text-white text-sm font-bold">{TIMEFRAME_LABELS[timeframe]}</span>
+                <button
+                  onClick={() => handleTimeframeChange(1)}
+                  disabled={TIMEFRAMES.indexOf(timeframe) === TIMEFRAMES.length - 1}
                   className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-4 h-4 text-white/60" />

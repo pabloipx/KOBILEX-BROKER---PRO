@@ -77,14 +77,17 @@ function valueNoise(x: number, seed: number): number {
 }
 
 // Octaves: longer periods set the trend, shorter periods add live wiggle every tick.
+// As oitavas curtas (2-20s) tem amplitude reforcada para garantir movimento VISIVEL a cada
+// segundo em todos os ativos — inclusive os de preco minusculo (PEPE/SHIB), que antes ficavam
+// abaixo da resolucao decimal e pareciam congelados.
 const PRICE_OCTAVES = [
   { period: 1800, amp: 1.0 }, // ~30 min trend
   { period: 600, amp: 0.6 }, // ~10 min swing
-  { period: 180, amp: 0.35 }, // ~3 min move
-  { period: 60, amp: 0.2 }, // ~1 min
-  { period: 20, amp: 0.12 }, // ~20 s
-  { period: 6, amp: 0.07 }, // ~6 s
-  { period: 2, amp: 0.04 }, // ~2 s micro
+  { period: 180, amp: 0.4 }, // ~3 min move
+  { period: 60, amp: 0.3 }, // ~1 min
+  { period: 20, amp: 0.28 }, // ~20 s
+  { period: 6, amp: 0.22 }, // ~6 s
+  { period: 2, amp: 0.16 }, // ~2 s micro
 ]
 const PRICE_OCTAVE_TOTAL = PRICE_OCTAVES.reduce((s, o) => s + o.amp, 0)
 
@@ -99,12 +102,16 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
   // Normalize to roughly [-1, 1]
   dev = dev / PRICE_OCTAVE_TOTAL
 
-  // Map deviation onto a realistic band (max ~0.6% from base)
-  const maxDev = asset.basePrice * 0.006
+  // A largura da banda ESCALA com a volatilidade do ativo (vol ~28..160 -> ~0.5%..2.4%).
+  // Antes era fixa em 0.6% para todos, o que deixava o movimento de ativos muito volateis
+  // (cripto) pequeno demais para ser visivel tick a tick. Agora cada ativo se move de forma
+  // condizente com seu perfil.
+  const bandPct = 0.004 + (asset.volatility / 100) * 0.012
+  const maxDev = asset.basePrice * bandPct
   let price = asset.basePrice + dev * maxDev
 
-  // Hard cap at 0.8% just in case
-  const hardCap = asset.basePrice * 0.008
+  // Hard cap proporcional a propria banda, para nunca "estourar" a escala do grafico.
+  const hardCap = asset.basePrice * bandPct * 1.3
   price = Math.max(asset.basePrice - hardCap, Math.min(asset.basePrice + hardCap, price))
 
   const prec = asset.decimals

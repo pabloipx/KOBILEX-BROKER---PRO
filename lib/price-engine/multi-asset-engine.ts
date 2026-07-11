@@ -92,23 +92,6 @@ const PRICE_OCTAVES = [
 ]
 const PRICE_OCTAVE_TOTAL = PRICE_OCTAVES.reduce((s, o) => s + o.amp, 0)
 
-// SURTOS OCASIONAIS (estilo IQ Option): de tempos em tempos o preco ganha um empurrao
-// direcional forte — uma subida ou descida acentuada — que sobe e desce de forma suave
-// (envelope gaussiano). Isso quebra a monotonia do movimento calmo e deixa o grafico mais
-// realista. E deterministico (depende so de tempo + ativo), entao cliente e servidor sempre
-// concordam. Retorna um desvio extra em "unidades de banda".
-function getSurge(symSeed: number, ts: number): number {
-  const W = 100 // janela de ~100s: em cada janela pode (ou nao) nascer um surto
-  const w = Math.floor(ts / W)
-  if (srand(w * 2.17 + symSeed) > 0.28) return 0 // ~28% das janelas tem surto
-  const dir = srand(w * 3.71 + symSeed) > 0.5 ? 1 : -1 // sobe ou desce
-  const mag = 0.45 + srand(w * 5.13 + symSeed) * 0.5 // forca 0.45..0.95 (moderada)
-  const dur = 22 + srand(w * 7.29 + symSeed) * 18 // duracao 22..40s (rampa longa e suave)
-  const center = w * W + dur + srand(w * 9.4 + symSeed) * (W - 2 * dur) // pico dentro da janela
-  const dt = (ts - center) / (dur / 2)
-  return dir * mag * Math.exp(-dt * dt)
-}
-
 function getLivePrice(asset: OTCAsset, timestamp: number): number {
   const symSeed = asset.basePrice * 13.37
 
@@ -120,20 +103,16 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
   // Normalize to roughly [-1, 1]
   dev = dev / PRICE_OCTAVE_TOTAL
 
-  // Soma o surto ocasional ao movimento normal calmo.
-  const surge = getSurge(symSeed, timestamp)
-
   // A largura da banda ESCALA com a volatilidade do ativo (vol ~28..160 -> ~0.5%..2.4%).
   // Antes era fixa em 0.6% para todos, o que deixava o movimento de ativos muito volateis
   // (cripto) pequeno demais para ser visivel tick a tick. Agora cada ativo se move de forma
   // condizente com seu perfil.
   const bandPct = 0.004 + (asset.volatility / 100) * 0.012
   const maxDev = asset.basePrice * bandPct
-  let price = asset.basePrice + (dev + surge) * maxDev
+  let price = asset.basePrice + dev * maxDev
 
-  // Hard cap proporcional a propria banda. Ampliado para 2.2x para acomodar os surtos sem
-  // "estourar" a escala do grafico.
-  const hardCap = asset.basePrice * bandPct * 2.2
+  // Hard cap proporcional a propria banda, para nunca "estourar" a escala do grafico.
+  const hardCap = asset.basePrice * bandPct * 1.3
   price = Math.max(asset.basePrice - hardCap, Math.min(asset.basePrice + hardCap, price))
 
   const prec = asset.decimals

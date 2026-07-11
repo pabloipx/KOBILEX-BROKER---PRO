@@ -77,17 +77,18 @@ function valueNoise(x: number, seed: number): number {
 }
 
 // Octaves: longer periods set the trend, shorter periods add live wiggle every tick.
-// As oitavas curtas (2-20s) tem amplitude reforcada para garantir movimento VISIVEL a cada
-// segundo em todos os ativos — inclusive os de preco minusculo (PEPE/SHIB), que antes ficavam
-// abaixo da resolucao decimal e pareciam congelados.
+// Perfil estilo IQ Option: o movimento e dominado pelas oitavas LENTAS (tendencia suave e
+// direcional), com as oitavas rapidas (2-20s) em amplitude moderada — o bastante para a vela
+// "respirar" a cada segundo sem tremer/chacoalhar. Um meio-termo entre suavidade e um preco
+// que nunca fica parado (inclusive nos ativos de preco minusculo como PEPE/SHIB).
 const PRICE_OCTAVES = [
   { period: 1800, amp: 1.0 }, // ~30 min trend
-  { period: 600, amp: 0.6 }, // ~10 min swing
-  { period: 180, amp: 0.4 }, // ~3 min move
-  { period: 60, amp: 0.3 }, // ~1 min
-  { period: 20, amp: 0.28 }, // ~20 s
-  { period: 6, amp: 0.22 }, // ~6 s
-  { period: 2, amp: 0.16 }, // ~2 s micro
+  { period: 600, amp: 0.65 }, // ~10 min swing
+  { period: 180, amp: 0.42 }, // ~3 min move
+  { period: 60, amp: 0.26 }, // ~1 min
+  { period: 20, amp: 0.18 }, // ~20 s
+  { period: 6, amp: 0.11 }, // ~6 s
+  { period: 2, amp: 0.06 }, // ~2 s micro
 ]
 const PRICE_OCTAVE_TOTAL = PRICE_OCTAVES.reduce((s, o) => s + o.amp, 0)
 

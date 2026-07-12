@@ -228,6 +228,7 @@ if (typeof window !== "undefined") {
 function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol, payout = 0.96, result }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
+  const countdownRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   // Incrementa toda vez que uma NOVA serie do grafico e criada (ex.: ao trocar de moeda).
   // Serve para forcar o redesenho das linhas de operacao/overlays, que dependem de seriesRef
@@ -617,6 +618,35 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       `<span style="color:${clr};font-size:11px;font-weight:700;margin-left:8px;padding:1px 5px;border-radius:4px;background:${clr}1a">${pct >= 0 ? "+" : ""}${pct.toFixed(3)}%</span>`
   }
 
+  // ===== Contador regressivo do fechamento da vela (estilo IQ Option) =====
+  // Mostra MM:SS que faltam para a vela atual fechar, alinhado verticalmente a linha do preco
+  // atual (borda direita). Fica vermelho nos ultimos 10s para chamar a atencao.
+  function updateCountdown(price: number) {
+    const el = countdownRef.current
+    if (!el) return
+    const tf = latest.current.timeframe
+    const nowMs = Date.now()
+    const remaining = Math.max(0, Math.ceil((Math.ceil(nowMs / 1000 / tf) * tf - nowMs / 1000)))
+    const mm = Math.floor(remaining / 60)
+    const ss = remaining % 60
+    el.textContent = `${mm}:${ss.toString().padStart(2, "0")}`
+
+    // Posiciona verticalmente na altura do preco atual, se possivel.
+    let y: number | null = null
+    try {
+      const c = seriesRef.current?.priceToCoordinate(price)
+      if (typeof c === "number" && Number.isFinite(c)) y = c
+    } catch {}
+    if (y != null) {
+      el.style.top = `${y}px`
+      el.style.transform = "translateY(-50%)"
+    }
+    const urgent = remaining <= 10
+    el.style.backgroundColor = urgent ? "#FF5252" : "#1E222D"
+    el.style.color = urgent ? "#fff" : "#E2E8F0"
+    el.style.opacity = "1"
+  }
+
   // ===== MAIN CHART EFFECT (recreate on symbol/timeframe change) =====
   useEffect(() => {
     let dead = false
@@ -926,6 +956,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           } catch {}
           // O auto-follow ao criar nova vela e tratado por shiftVisibleRangeOnNewBar.
           updateHeader(formingRef.current, price)
+          updateCountdown(price)
         }
         lastFrameAt = Date.now()
       }
@@ -1141,6 +1172,18 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         ref={headerRef}
         className="absolute top-2 left-3 z-20 flex items-center pointer-events-none"
         style={{ fontFamily: "'SF Mono',Consolas,monospace" }}
+      />
+
+      {/* Contador regressivo do fechamento da vela (estilo IQ Option) */}
+      <div
+        ref={countdownRef}
+        className="absolute right-[62px] z-20 rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums pointer-events-none"
+        style={{
+          top: "50%",
+          transform: "translateY(-50%)",
+          fontFamily: "'SF Mono',Consolas,monospace",
+          opacity: 0,
+        }}
       />
 
       {/* Chart container - touchAction none lets the chart capture drag instead of the page scrolling */}

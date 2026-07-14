@@ -44,6 +44,7 @@ interface Asset {
   category: string
   payout: number
   logo: string
+  market?: "otc" | "open"
 }
 
 // Fallback exibido enquanto a lista dinâmica (controlada pelo admin) carrega
@@ -139,6 +140,8 @@ export default function TradePage() {
   const [amount, setAmount] = useState(10)
   const [showAssetModal, setShowAssetModal] = useState(false)
   const [assetSearch, setAssetSearch] = useState("")
+  // Aba do modal de ativos: "otc" (sempre aberto) ou "open" (mercado aberto)
+  const [assetMarketTab, setAssetMarketTab] = useState<"otc" | "open">("otc")
   const [availableAssets, setAvailableAssets] = useState<Asset[]>(FALLBACK_ASSETS)
 
   // Carrega os ativos habilitados pelo admin
@@ -218,12 +221,14 @@ export default function TradePage() {
   const expectedReturn = useMemo(() => Math.round(amount * (payout / 100) * 100) / 100, [amount, payout])
 
   const filteredAssets = useMemo(() => {
-    if (!assetSearch) return availableAssets
+    // Primeiro filtra pela aba de mercado (OTC x Mercado aberto)
+    const byMarket = availableAssets.filter((a) => (a.market || "otc") === assetMarketTab)
+    if (!assetSearch) return byMarket
     const search = assetSearch.toLowerCase()
-    return availableAssets.filter(
+    return byMarket.filter(
       (a) => a.name.toLowerCase().includes(search) || a.symbol.toLowerCase().includes(search),
     )
-  }, [assetSearch, availableAssets])
+  }, [assetSearch, availableAssets, assetMarketTab])
 
   const activeTradesForChart = useMemo(() => {
     return activeTrades.map((t) => ({
@@ -1181,7 +1186,30 @@ export default function TradePage() {
                 />
               </div>
 
+              {/* Abas de mercado: OTC x Mercado aberto */}
+              <div className="flex gap-2 mb-4 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
+                {(
+                  [
+                    { id: "otc", label: "OTC" },
+                    { id: "open", label: "Mercado aberto" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setAssetMarketTab(tab.id)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      assetMarketTab === tab.id ? "bg-[#ff8a00] text-black" : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex-1 overflow-y-auto space-y-2 max-h-80">
+                {filteredAssets.length === 0 && (
+                  <p className="text-gray-500 text-sm text-center py-8">Nenhum ativo nesta categoria.</p>
+                )}
                 {filteredAssets.map((asset) => (
                   <button
                     key={asset.symbol}

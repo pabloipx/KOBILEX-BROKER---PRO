@@ -19,6 +19,7 @@ export async function GET() {
       category: a.category,
       payout: a.payout,
       logo: a.logo,
+      market: a.market,
       sortOrder: settings.get(a.symbol)?.sort_order ?? index,
     }))
       .filter((a) => {
@@ -38,6 +39,7 @@ export async function GET() {
         category: a.category,
         payout: a.payout,
         logo: a.logo,
+        market: a.market,
       })),
     })
   }

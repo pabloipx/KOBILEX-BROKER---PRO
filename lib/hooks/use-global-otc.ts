@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from "react"
 import { multiAssetEngine, OTC_ASSETS, type OTCCandle } from "@/lib/price-engine/multi-asset-engine"
+import { ensureRealFeed } from "@/lib/price-engine/real-price-feed"
+import { hasRealPrice, getRealRevision, isRealSymbol } from "@/lib/price-engine/real-price-store"
 
 /**
  * useGlobalOTC — feed de preco 100% CLIENT-SIDE.
@@ -32,6 +34,7 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
   const lastUiRef = useRef(0)
   const mountedRef = useRef(true)
   const keyRef = useRef("")
+  const realRevRef = useRef(-1)
 
   // Inicializacao SINCRONA durante o render sempre que o ativo/timeframe muda. Como as funcoes
   // do motor sao puras e deterministicas, calcular aqui e seguro e garante que os dados
@@ -45,11 +48,20 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
     candleStartRef.current = Math.floor(Date.now() / 1000 / timeframe) * timeframe
   }
 
+  // Inicia (e mantem) o feed de preco REAL para simbolos de mercado aberto (ex.: BTC/USD).
+  // Para os demais ativos e um no-op. O feed escreve no store, que o motor le sincronamente.
+  useEffect(() => {
+    if (!isRealSymbol(validSymbol)) return
+    const stop = ensureRealFeed(validSymbol, timeframe)
+    return stop
+  }, [validSymbol, timeframe])
+
   // Loop de animacao: recalcula o preco vivo deterministicamente a cada frame.
   useEffect(() => {
     mountedRef.current = true
     let raf = 0
     let lastFrame = 0
+    realRevRef.current = -1
 
     const step = () => {
       if (!mountedRef.current) return
@@ -60,6 +72,13 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
       // Cruzou o limite de uma nova vela: reconstroi o historico recente (barato, ~30 velas).
       if (cs !== candleStartRef.current) {
         candleStartRef.current = cs
+        candlesRef.current = multiAssetEngine.getCandles(validSymbol, timeframe)
+      }
+
+      // Dados reais chegaram/atualizaram: reconstroi o historico com as velas reais.
+      const rev = getRealRevision(validSymbol)
+      if (rev !== realRevRef.current) {
+        realRevRef.current = rev
         candlesRef.current = multiAssetEngine.getCandles(validSymbol, timeframe)
       }
 
@@ -133,6 +152,9 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
     currentCandle: live,
     timestamp: Math.floor(Date.now() / 1000),
     isConnected: true,
+    // true quando o simbolo usa feed real E o preco real ja chegou (usado para recarregar o
+    // grafico com o historico real assim que ele fica disponivel).
+    realReady: isRealSymbol(validSymbol) && hasRealPrice(validSymbol),
     error: null as string | null,
   }
 }

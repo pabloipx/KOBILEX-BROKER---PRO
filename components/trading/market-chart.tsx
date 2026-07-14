@@ -71,6 +71,9 @@ interface Props {
   symbol: string
   payout?: number
   result?: TradeResult | null
+  // Muda quando dados externos (ex.: feed real de BTC) ficam prontos, forcando recarga do
+  // historico na serie existente sem recriar o grafico.
+  reloadKey?: number
 }
 interface PnlOverlay {
   id: string
@@ -225,7 +228,7 @@ if (typeof window !== "undefined") {
 }
 
 // ========== CHART CORE ==========
-function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol, payout = 0.96, result }: Props) {
+function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol, payout = 0.96, result, reloadKey = 0 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const countdownRef = useRef<HTMLDivElement>(null)
@@ -1025,11 +1028,13 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Recarrega os dados na serie existente quando o ativo ou o timeframe muda (instantaneo).
+  // Recarrega os dados na serie existente quando o ativo, o timeframe ou o reloadKey muda
+  // (instantaneo). O reloadKey muda quando o feed real fica pronto, trocando o historico
+  // sintetico pelo real sem recriar o grafico.
   useEffect(() => {
     loadDataRef.current?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, timeframe])
+  }, [symbol, timeframe, reloadKey])
 
   // ===== TRADE LINES + MARKERS (native, attached to chart) =====
   useEffect(() => {

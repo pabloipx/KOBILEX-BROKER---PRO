@@ -24,6 +24,7 @@ import {
   X,
   Search,
   Clock,
+  LayoutGrid,
 } from "lucide-react"
 
 interface ActiveTrade {
@@ -43,6 +44,7 @@ interface Asset {
   category: string
   payout: number
   logo: string
+  market?: "otc" | "open"
 }
 
 // Fallback exibido enquanto a lista dinâmica (controlada pelo admin) carrega
@@ -123,6 +125,8 @@ export default function TradePage() {
   const [balanceDemo, setBalanceDemo] = useState(10000)
   const [loading, setLoading] = useState(true)
   const [selectedSymbol, setSelectedSymbol] = useState("EURUSD_OTC")
+  // Abas de ativos abertas (estilo IQ Option). O ativo selecionado e sempre uma delas.
+  const [openTabs, setOpenTabs] = useState<string[]>(["EURUSD_OTC"])
   const [expiryTime, setExpiryTime] = useState<number>(60)
   const [timeframe, setTimeframe] = useState<number>(60) // Acompanha o tempo selecionado na corretora
   const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>([])
@@ -136,6 +140,8 @@ export default function TradePage() {
   const [amount, setAmount] = useState(10)
   const [showAssetModal, setShowAssetModal] = useState(false)
   const [assetSearch, setAssetSearch] = useState("")
+  // Aba do modal de ativos: "otc" (sempre aberto) ou "open" (mercado aberto)
+  const [assetMarketTab, setAssetMarketTab] = useState<"otc" | "open">("otc")
   const [availableAssets, setAvailableAssets] = useState<Asset[]>(FALLBACK_ASSETS)
 
   // Carrega os ativos habilitados pelo admin
@@ -163,7 +169,7 @@ export default function TradePage() {
 
   // Trader sentiment (simulated)
 
-  const { price, candles, isConnected } = useGlobalOTC(selectedSymbol, timeframe as 60 | 300 | 600)
+  const { price, candles, isConnected, realReady } = useGlobalOTC(selectedSymbol, timeframe as 60 | 300 | 600)
 
   const currentBalance = useMemo(() => {
     const balance = accountType === "demo" ? balanceDemo : balanceReal
@@ -175,16 +181,54 @@ export default function TradePage() {
     [selectedSymbol, availableAssets],
   )
 
+  const assetBySymbol = useCallback(
+    (sym: string) => availableAssets.find((a) => a.symbol === sym),
+    [availableAssets],
+  )
+
+  // Garante que o ativo selecionado sempre tenha uma aba aberta
+  useEffect(() => {
+    setOpenTabs((tabs) => (tabs.includes(selectedSymbol) ? tabs : [...tabs, selectedSymbol]))
+  }, [selectedSymbol])
+
+  // Remove das abas os ativos que deixaram de existir (ex.: desativados pelo admin)
+  useEffect(() => {
+    if (availableAssets.length === 0) return
+    setOpenTabs((tabs) => {
+      const valid = tabs.filter((s) => availableAssets.some((a) => a.symbol === s))
+      return valid.length ? valid : [availableAssets[0].symbol]
+    })
+  }, [availableAssets])
+
+  // Fecha uma aba; se era a ativa, seleciona a vizinha. Nunca fecha a ultima.
+  const closeTab = useCallback(
+    (sym: string) => {
+      setOpenTabs((tabs) => {
+        if (tabs.length <= 1) return tabs
+        const idx = tabs.indexOf(sym)
+        const next = tabs.filter((s) => s !== sym)
+        if (sym === selectedSymbol) {
+          const fallback = next[Math.max(0, idx - 1)] || next[0]
+          setSelectedSymbol(fallback)
+        }
+        return next
+      })
+    },
+    [selectedSymbol],
+  )
+
   const payout = selectedAsset?.payout ?? 96
   const expectedReturn = useMemo(() => Math.round(amount * (payout / 100) * 100) / 100, [amount, payout])
 
   const filteredAssets = useMemo(() => {
-    if (!assetSearch) return availableAssets
+    // Primeiro filtra pela aba de mercado (OTC x Mercado aberto)
+    const byMarket = availableAssets.filter((a) => (a.market || "otc") === assetMarketTab)
+    if (!assetSearch) return byMarket
     const search = assetSearch.toLowerCase()
-    return availableAssets.filter(
+    return byMarket.filter(
       (a) => a.name.toLowerCase().includes(search) || a.symbol.toLowerCase().includes(search),
     )
-  }, [assetSearch, availableAssets])
+  }, [assetSearch, availableAssets, assetMarketTab])
 
   const activeTradesForChart = useMemo(() => {
     return activeTrades.map((t) => ({
@@ -674,35 +718,81 @@ export default function TradePage() {
             <MoreVertical className="w-4 h-4 lg:w-5 lg:h-5 text-gray-400" />
           </button>
 
-          {/* Center - Asset Selector (flex-1 to fill space, truncated) */}
-          <button
-            onClick={() => setShowAssetModal(true)}
-            className="flex items-center gap-2 px-2.5 py-1.5 lg:px-3 lg:py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] transition-all duration-200 border border-white/[0.06] min-w-0 flex-1 max-w-[200px] lg:max-w-none lg:flex-initial"
-          >
-            <div className="w-7 h-7 lg:w-9 lg:h-9 rounded-full overflow-hidden bg-gray-700 shrink-0 ring-2 ring-white/10">
-              <Image
-                src={selectedAsset?.logo || "/placeholder.svg"}
-                alt={selectedAsset?.name || "Asset"}
-                width={36}
-                height={36}
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="text-left min-w-0">
-              <p className="text-white font-bold text-xs lg:text-sm leading-tight truncate">
-                {selectedAsset?.name || "Selecionar"}
-              </p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[#26a69a] text-[10px] lg:text-xs font-mono font-semibold">
-                  {price > 0 ? formatFixed(price, 5) : "..."}
-                </span>
-                <span className="text-[9px] lg:text-[10px] px-1 py-[1px] bg-[#26a69a]/15 text-[#26a69a] rounded font-bold">
-                  {payout}%
-                </span>
-              </div>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-          </button>
+          {/* Center - Barra de abas de ativos (estilo IQ Option) */}
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto scrollbar-hide">
+            {/* Botao de grade - abre a lista de todos os ativos */}
+            <button
+              onClick={() => setShowAssetModal(true)}
+              aria-label="Todos os ativos"
+              className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] transition-all duration-200 active:scale-95 shrink-0"
+            >
+              <LayoutGrid className="w-4 h-4 lg:w-5 lg:h-5 text-gray-400" />
+            </button>
+
+            {/* Abas abertas */}
+            {openTabs.map((sym) => {
+              const asset = assetBySymbol(sym)
+              if (!asset) return null
+              const isActive = sym === selectedSymbol
+              return (
+                <div
+                  key={sym}
+                  onClick={() => setSelectedSymbol(sym)}
+                  role="button"
+                  tabIndex={0}
+                  className={`group relative flex items-center gap-2 pl-6 pr-3 py-1.5 rounded-lg cursor-pointer shrink-0 border transition-all duration-200 ${
+                    isActive
+                      ? "bg-white/[0.06] border-white/[0.1]"
+                      : "bg-transparent border-transparent hover:bg-white/[0.03]"
+                  }`}
+                >
+                  {/* Botao fechar (X) no canto superior esquerdo */}
+                  {openTabs.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        closeTab(sym)
+                      }}
+                      aria-label={`Fechar ${asset.name}`}
+                      className="absolute top-1 left-1 w-4 h-4 rounded-sm flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+
+                  <div className="w-6 h-6 lg:w-7 lg:h-7 rounded-full overflow-hidden bg-gray-700 shrink-0 ring-1 ring-white/10">
+                    <Image
+                      src={asset.logo || "/placeholder.svg"}
+                      alt={asset.name}
+                      width={28}
+                      height={28}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <p className="text-white font-bold text-xs lg:text-sm leading-tight truncate max-w-[90px] lg:max-w-[110px]">
+                      {asset.name}
+                    </p>
+                    <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
+                  </div>
+
+                  {/* Sublinhado laranja na aba ativa */}
+                  {isActive && (
+                    <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-[#ff8a00] rounded-full" />
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Botao adicionar nova aba */}
+            <button
+              onClick={() => setShowAssetModal(true)}
+              aria-label="Adicionar ativo"
+              className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] transition-all duration-200 active:scale-95 shrink-0 border border-white/[0.06]"
+            >
+              <Plus className="w-4 h-4 lg:w-5 lg:h-5 text-gray-400" />
+            </button>
+          </div>
 
           {/* Right - Balance & Wallet */}
           <div className="flex items-center gap-1.5 lg:gap-2 shrink-0 ml-auto">
@@ -783,6 +873,7 @@ export default function TradePage() {
               symbol={selectedSymbol}
               payout={payout / 100}
               result={tradeResult}
+              reloadKey={realReady ? 1 : 0}
             />
           </div>
         </div>
@@ -1096,7 +1187,30 @@ export default function TradePage() {
                 />
               </div>
 
+              {/* Abas de mercado: OTC x Mercado aberto */}
+              <div className="flex gap-2 mb-4 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
+                {(
+                  [
+                    { id: "otc", label: "OTC" },
+                    { id: "open", label: "Mercado aberto" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setAssetMarketTab(tab.id)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      assetMarketTab === tab.id ? "bg-[#ff8a00] text-black" : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex-1 overflow-y-auto space-y-2 max-h-80">
+                {filteredAssets.length === 0 && (
+                  <p className="text-gray-500 text-sm text-center py-8">Nenhum ativo nesta categoria.</p>
+                )}
                 {filteredAssets.map((asset) => (
                   <button
                     key={asset.symbol}
@@ -1122,7 +1236,7 @@ export default function TradePage() {
                       </div>
                       <div className="text-left">
                         <p className="text-white font-semibold text-sm">{asset.name}</p>
-                        <p className="text-gray-400 text-xs">Opção binária</p>
+                        {assetMarketTab === "otc" && <p className="text-gray-400 text-xs">Opção binária</p>}
                       </div>
                     </div>
                     <span className="text-purple-500 font-semibold text-sm">{asset.payout}%</span>

@@ -10,6 +10,8 @@
  * Deterministic: same timestamp always produces the same price.
  */
 
+import { hasRealPrice, getRealPrice, getRealCandles } from "./real-price-store"
+
 export interface OTCCandle {
   time: number
   open: number
@@ -47,6 +49,18 @@ export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "PEPE_OTC", name: "Pepe OTC", basePrice: 0.0000118, pipSize: 0.0000001, volatility: 160, icon: "PEPE", decimals: 8 },
   { symbol: "META_OTC", name: "Meta OTC", basePrice: 482.3, pipSize: 0.01, volatility: 65, icon: "META", decimals: 2 },
   { symbol: "DOGE_OTC", name: "DogeCoin OTC", basePrice: 0.162, pipSize: 0.00001, volatility: 135, icon: "DOGE", decimals: 5 },
+  // Pares de iene (mercado forex) - preco na casa das centenas com 3 casas decimais
+  { symbol: "GBPJPY_OTC", name: "GBP/JPY OTC", basePrice: 189.5, pipSize: 0.001, volatility: 45, icon: "GJ", decimals: 3 },
+  { symbol: "EURJPY_OTC", name: "EUR/JPY OTC", basePrice: 162.3, pipSize: 0.001, volatility: 42, icon: "EJ", decimals: 3 },
+  { symbol: "AUDJPY_OTC", name: "AUD/JPY OTC", basePrice: 98.05, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
+  // Mercado aberto (nao-OTC) - precos REAIS via feed; basePrice e so o valor inicial ate o
+  // feed carregar, entao mantemos proximo do mercado atual para evitar "salto" na abertura.
+  { symbol: "EURUSD", name: "EUR/USD", basePrice: 1.14, pipSize: 0.00001, volatility: 35, icon: "EU", decimals: 5 },
+  { symbol: "GBPJPY", name: "GBP/JPY", basePrice: 217, pipSize: 0.001, volatility: 45, icon: "GJ", decimals: 3 },
+  { symbol: "EURJPY", name: "EUR/JPY", basePrice: 192, pipSize: 0.001, volatility: 42, icon: "EJ", decimals: 3 },
+  { symbol: "AUDUSD", name: "AUD/USD", basePrice: 0.697, pipSize: 0.00001, volatility: 32, icon: "AU", decimals: 5 },
+  { symbol: "AUDJPY", name: "AUD/JPY", basePrice: 115, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
+  { symbol: "BTCUSD", name: "BTC/USD", basePrice: 43500, pipSize: 0.01, volatility: 150, icon: "BTC", decimals: 2 },
 ]
 
 // =============================================
@@ -170,12 +184,16 @@ class MultiAssetEngine {
   getCurrentPrice(symbol: string): number {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return 0
+    // Preco REAL (ex.: BTC/USD de mercado aberto) quando o feed esta ativo; senao, sintetico.
+    if (hasRealPrice(symbol)) return Number(getRealPrice(symbol).toFixed(asset.decimals))
     return getLivePrice(asset, Date.now() / 1000)
   }
 
   getCandles(symbol: string, timeframe: 60 | 300 | 600): OTCCandle[] {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
+    const real = getRealCandles(symbol, timeframe)
+    if (real && real.length) return real.slice(-this.maxCandles)
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const candles: OTCCandle[] = []
@@ -189,6 +207,8 @@ class MultiAssetEngine {
   getHistory(symbol: string, timeframe: 60 | 300 | 600): OTCCandle[] {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
+    const real = getRealCandles(symbol, timeframe)
+    if (real && real.length) return real
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const count = Math.min(1440, Math.ceil((24 * 60 * 60) / timeframe))
@@ -202,9 +222,29 @@ class MultiAssetEngine {
   getCurrentCandle(symbol: string, timeframe: 60 | 300 | 600): OTCCandle | null {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return null
+    const prec = asset.decimals
+
+    // Vela viva a partir do preco REAL: usa a vela real correspondente (se houver) como base
+    // e atualiza o fechamento/maxima/minima com o ultimo preco recebido.
+    if (hasRealPrice(symbol)) {
+      const price = Number(getRealPrice(symbol).toFixed(prec))
+      const cs = Math.floor(Date.now() / 1000 / timeframe) * timeframe
+      const real = getRealCandles(symbol, timeframe)
+      const match = real?.find(c => c.time === cs)
+      const open = match ? match.open : price
+      const high = Math.max(match ? match.high : price, price)
+      const low = Math.min(match ? match.low : price, price)
+      return {
+        time: cs,
+        open: Number(open.toFixed(prec)),
+        high: Number(high.toFixed(prec)),
+        low: Number(low.toFixed(prec)),
+        close: price,
+      }
+    }
+
     const now = Date.now() / 1000
     const candleStart = Math.floor(now / timeframe) * timeframe
-    const prec = asset.decimals
 
     const openPrice = getLivePrice(asset, candleStart)
     const closePrice = getLivePrice(asset, now)

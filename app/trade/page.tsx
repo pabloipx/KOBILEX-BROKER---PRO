@@ -1235,7 +1235,7 @@ export default function TradePage() {
                       </div>
                       <div className="text-left">
                         <p className="text-white font-semibold text-sm">{asset.name}</p>
-                        <p className="text-gray-400 text-xs">Opção binária</p>
+                        {assetMarketTab === "otc" && <p className="text-gray-400 text-xs">Opção binária</p>}
                       </div>
                     </div>
                     <span className="text-purple-500 font-semibold text-sm">{asset.payout}%</span>

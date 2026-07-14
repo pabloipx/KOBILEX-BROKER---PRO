@@ -47,6 +47,10 @@ export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "PEPE_OTC", name: "Pepe OTC", basePrice: 0.0000118, pipSize: 0.0000001, volatility: 160, icon: "PEPE", decimals: 8 },
   { symbol: "META_OTC", name: "Meta OTC", basePrice: 482.3, pipSize: 0.01, volatility: 65, icon: "META", decimals: 2 },
   { symbol: "DOGE_OTC", name: "DogeCoin OTC", basePrice: 0.162, pipSize: 0.00001, volatility: 135, icon: "DOGE", decimals: 5 },
+  // Pares de iene (mercado forex) - preco na casa das centenas com 3 casas decimais
+  { symbol: "GBPJPY_OTC", name: "GBP/JPY OTC", basePrice: 189.5, pipSize: 0.001, volatility: 45, icon: "GJ", decimals: 3 },
+  { symbol: "EURJPY_OTC", name: "EUR/JPY OTC", basePrice: 162.3, pipSize: 0.001, volatility: 42, icon: "EJ", decimals: 3 },
+  { symbol: "AUDJPY_OTC", name: "AUD/JPY OTC", basePrice: 98.05, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
 ]
 
 // =============================================

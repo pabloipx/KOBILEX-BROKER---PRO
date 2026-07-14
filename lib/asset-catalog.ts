@@ -29,6 +29,9 @@ const ASSET_UI: Record<string, Omit<AssetUIInfo, "symbol">> = {
   PEPE_OTC: { name: "Pepe (OTC)", category: "crypto", payout: 90, logo: "/images/assets/pepe-otc.png" },
   META_OTC: { name: "Meta (OTC)", category: "stocks", payout: 92, logo: "/images/assets/meta-otc.png" },
   DOGE_OTC: { name: "DogeCoin (OTC)", category: "crypto", payout: 90, logo: "/images/assets/doge-otc.png" },
+  GBPJPY_OTC: { name: "GBP/JPY (OTC)", category: "forex", payout: 96, logo: "/images/assets/gbpjpy-otc.png" },
+  EURJPY_OTC: { name: "EUR/JPY (OTC)", category: "forex", payout: 96, logo: "/images/assets/eurjpy-otc.png" },
+  AUDJPY_OTC: { name: "AUD/JPY (OTC)", category: "forex", payout: 96, logo: "/images/assets/audjpy-otc.png" },
 }
 
 const FALLBACK_LOGO = "/placeholder.svg"

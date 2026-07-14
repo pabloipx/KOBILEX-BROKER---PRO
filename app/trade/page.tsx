@@ -169,7 +169,7 @@ export default function TradePage() {
 
   // Trader sentiment (simulated)
 
-  const { price, candles, isConnected } = useGlobalOTC(selectedSymbol, timeframe as 60 | 300 | 600)
+  const { price, candles, isConnected, realReady } = useGlobalOTC(selectedSymbol, timeframe as 60 | 300 | 600)
 
   const currentBalance = useMemo(() => {
     const balance = accountType === "demo" ? balanceDemo : balanceReal
@@ -873,6 +873,7 @@ export default function TradePage() {
               symbol={selectedSymbol}
               payout={payout / 100}
               result={tradeResult}
+              reloadKey={realReady ? 1 : 0}
             />
           </div>
         </div>

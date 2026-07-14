@@ -10,6 +10,8 @@
  * Deterministic: same timestamp always produces the same price.
  */
 
+import { hasRealPrice, getRealPrice, getRealCandles } from "./real-price-store"
+
 export interface OTCCandle {
   time: number
   open: number
@@ -181,12 +183,16 @@ class MultiAssetEngine {
   getCurrentPrice(symbol: string): number {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return 0
+    // Preco REAL (ex.: BTC/USD de mercado aberto) quando o feed esta ativo; senao, sintetico.
+    if (hasRealPrice(symbol)) return Number(getRealPrice(symbol).toFixed(asset.decimals))
     return getLivePrice(asset, Date.now() / 1000)
   }
 
   getCandles(symbol: string, timeframe: 60 | 300 | 600): OTCCandle[] {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
+    const real = getRealCandles(symbol, timeframe)
+    if (real && real.length) return real.slice(-this.maxCandles)
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const candles: OTCCandle[] = []
@@ -200,6 +206,8 @@ class MultiAssetEngine {
   getHistory(symbol: string, timeframe: 60 | 300 | 600): OTCCandle[] {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
+    const real = getRealCandles(symbol, timeframe)
+    if (real && real.length) return real
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const count = Math.min(1440, Math.ceil((24 * 60 * 60) / timeframe))
@@ -213,9 +221,29 @@ class MultiAssetEngine {
   getCurrentCandle(symbol: string, timeframe: 60 | 300 | 600): OTCCandle | null {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return null
+    const prec = asset.decimals
+
+    // Vela viva a partir do preco REAL: usa a vela real correspondente (se houver) como base
+    // e atualiza o fechamento/maxima/minima com o ultimo preco recebido.
+    if (hasRealPrice(symbol)) {
+      const price = Number(getRealPrice(symbol).toFixed(prec))
+      const cs = Math.floor(Date.now() / 1000 / timeframe) * timeframe
+      const real = getRealCandles(symbol, timeframe)
+      const match = real?.find(c => c.time === cs)
+      const open = match ? match.open : price
+      const high = Math.max(match ? match.high : price, price)
+      const low = Math.min(match ? match.low : price, price)
+      return {
+        time: cs,
+        open: Number(open.toFixed(prec)),
+        high: Number(high.toFixed(prec)),
+        low: Number(low.toFixed(prec)),
+        close: price,
+      }
+    }
+
     const now = Date.now() / 1000
     const candleStart = Math.floor(now / timeframe) * timeframe
-    const prec = asset.decimals
 
     const openPrice = getLivePrice(asset, candleStart)
     const closePrice = getLivePrice(asset, now)

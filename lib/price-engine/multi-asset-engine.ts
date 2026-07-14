@@ -53,12 +53,13 @@ export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "GBPJPY_OTC", name: "GBP/JPY OTC", basePrice: 189.5, pipSize: 0.001, volatility: 45, icon: "GJ", decimals: 3 },
   { symbol: "EURJPY_OTC", name: "EUR/JPY OTC", basePrice: 162.3, pipSize: 0.001, volatility: 42, icon: "EJ", decimals: 3 },
   { symbol: "AUDJPY_OTC", name: "AUD/JPY OTC", basePrice: 98.05, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
-  // Mercado aberto (nao-OTC) - mesmos pares reais de forex
-  { symbol: "EURUSD", name: "EUR/USD", basePrice: 1.085, pipSize: 0.00001, volatility: 35, icon: "EU", decimals: 5 },
-  { symbol: "GBPJPY", name: "GBP/JPY", basePrice: 189.5, pipSize: 0.001, volatility: 45, icon: "GJ", decimals: 3 },
-  { symbol: "EURJPY", name: "EUR/JPY", basePrice: 162.3, pipSize: 0.001, volatility: 42, icon: "EJ", decimals: 3 },
-  { symbol: "AUDUSD", name: "AUD/USD", basePrice: 0.655, pipSize: 0.00001, volatility: 32, icon: "AU", decimals: 5 },
-  { symbol: "AUDJPY", name: "AUD/JPY", basePrice: 98.05, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
+  // Mercado aberto (nao-OTC) - precos REAIS via feed; basePrice e so o valor inicial ate o
+  // feed carregar, entao mantemos proximo do mercado atual para evitar "salto" na abertura.
+  { symbol: "EURUSD", name: "EUR/USD", basePrice: 1.14, pipSize: 0.00001, volatility: 35, icon: "EU", decimals: 5 },
+  { symbol: "GBPJPY", name: "GBP/JPY", basePrice: 217, pipSize: 0.001, volatility: 45, icon: "GJ", decimals: 3 },
+  { symbol: "EURJPY", name: "EUR/JPY", basePrice: 192, pipSize: 0.001, volatility: 42, icon: "EJ", decimals: 3 },
+  { symbol: "AUDUSD", name: "AUD/USD", basePrice: 0.697, pipSize: 0.00001, volatility: 32, icon: "AU", decimals: 5 },
+  { symbol: "AUDJPY", name: "AUD/JPY", basePrice: 115, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
   { symbol: "BTCUSD", name: "BTC/USD", basePrice: 43500, pipSize: 0.01, volatility: 150, icon: "BTC", decimals: 2 },
 ]
 

@@ -4,9 +4,14 @@ import { NextResponse } from "next/server"
 // bloqueio geografico que afeta outras exchanges (ex.: Binance) a partir da Vercel.
 export const dynamic = "force-dynamic"
 
-// Mapeia o simbolo interno do motor -> produto da Coinbase
+// Mapeia o simbolo interno do motor -> produto da Coinbase (spot funciona p/ cripto e forex)
 const PRODUCTS: Record<string, string> = {
   BTCUSD: "BTC-USD",
+  EURUSD: "EUR-USD",
+  GBPJPY: "GBP-JPY",
+  EURJPY: "EUR-JPY",
+  AUDUSD: "AUD-USD",
+  AUDJPY: "AUD-JPY",
 }
 
 // Granularidades suportadas pela Coinbase: 60, 300, 900, 3600, 21600, 86400.

@@ -6,7 +6,13 @@
  * le de forma sincrona. Ref-counted por simbolo para nao duplicar timers.
  */
 
-import { REAL_FEED_SYMBOLS, setRealPrice, setRealCandles } from "./real-price-store"
+import {
+  REAL_FEED_SYMBOLS,
+  setRealPrice,
+  setRealCandles,
+  pushRealTick,
+  seedRealHistory,
+} from "./real-price-store"
 
 interface FeedState {
   priceTimer: ReturnType<typeof setInterval> | null
@@ -17,12 +23,19 @@ interface FeedState {
 
 const feeds = new Map<string, FeedState>()
 
-async function pollPrice(symbol: string) {
+async function pollPrice(symbol: string, tf: number) {
   try {
     const r = await fetch(`/api/market/crypto?type=price&symbol=${symbol}`, { cache: "no-store" })
     if (!r.ok) return
     const j = await r.json()
-    if (Number.isFinite(j?.price)) setRealPrice(symbol, j.price)
+    if (!Number.isFinite(j?.price)) return
+    const info = REAL_FEED_SYMBOLS[symbol]
+    setRealPrice(symbol, j.price)
+    // Forex nao tem candles historicos na API: construimos as velas a partir dos ticks reais.
+    if (info?.kind === "forex") {
+      seedRealHistory(symbol, tf, j.price, info.decimals)
+      pushRealTick(symbol, tf, j.price, info.decimals)
+    }
   } catch {}
 }
 
@@ -42,24 +55,32 @@ async function pollCandles(symbol: string, tf: number) {
 export function ensureRealFeed(symbol: string, tf: number): () => void {
   if (!REAL_FEED_SYMBOLS[symbol]) return () => {}
 
+  const isCrypto = REAL_FEED_SYMBOLS[symbol].kind === "crypto"
+
   let s = feeds.get(symbol)
   if (!s) {
     s = { priceTimer: null, candleTimer: null, tf, refs: 0 }
     feeds.set(symbol, s)
-    // Busca imediata + polling continuo
-    pollPrice(symbol)
-    pollCandles(symbol, tf)
-    s.priceTimer = setInterval(() => pollPrice(symbol), 1500)
-    s.candleTimer = setInterval(() => {
+    // Busca imediata + polling continuo do preco (cripto e forex)
+    pollPrice(symbol, tf)
+    s.priceTimer = setInterval(() => {
       const st = feeds.get(symbol)
-      if (st) pollCandles(symbol, st.tf)
-    }, 15000)
+      if (st) pollPrice(symbol, st.tf)
+    }, 1500)
+    // Candles historicos reais so existem para cripto (Coinbase Exchange)
+    if (isCrypto) {
+      pollCandles(symbol, tf)
+      s.candleTimer = setInterval(() => {
+        const st = feeds.get(symbol)
+        if (st) pollCandles(symbol, st.tf)
+      }, 15000)
+    }
   }
 
   // Timeframe mudou: recarrega as velas do novo tf imediatamente
   if (s.tf !== tf) {
     s.tf = tf
-    pollCandles(symbol, tf)
+    if (isCrypto) pollCandles(symbol, tf)
   }
 
   s.refs++

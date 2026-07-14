@@ -718,8 +718,38 @@ export default function TradePage() {
             <MoreVertical className="w-4 h-4 lg:w-5 lg:h-5 text-gray-400" />
           </button>
 
-          {/* Center - Barra de abas de ativos (estilo IQ Option) */}
-          <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto scrollbar-hide">
+          {/* Center (MOBILE) - Seletor simples de ativo, abre o modal */}
+          <button
+            onClick={() => setShowAssetModal(true)}
+            className="flex lg:hidden items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] transition-all duration-200 border border-white/[0.06] min-w-0 flex-1"
+          >
+            <div className="w-7 h-7 rounded-full overflow-hidden bg-gray-700 shrink-0 ring-2 ring-white/10">
+              <Image
+                src={selectedAsset?.logo || "/placeholder.svg"}
+                alt={selectedAsset?.name || "Asset"}
+                width={28}
+                height={28}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="text-left min-w-0">
+              <p className="text-white font-bold text-xs leading-tight truncate">
+                {selectedAsset?.name || "Selecionar"}
+              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[#26a69a] text-[10px] font-mono font-semibold">
+                  {price > 0 ? formatFixed(price, selectedAsset?.symbol?.includes("JPY") ? 3 : 5) : "..."}
+                </span>
+                <span className="text-[9px] px-1 py-[1px] bg-[#26a69a]/15 text-[#26a69a] rounded font-bold">
+                  {payout}%
+                </span>
+              </div>
+            </div>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+          </button>
+
+          {/* Center (DESKTOP) - Barra de abas de ativos (estilo IQ Option) */}
+          <div className="hidden lg:flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto scrollbar-hide">
             {/* Botao de grade - abre a lista de todos os ativos */}
             <button
               onClick={() => setShowAssetModal(true)}

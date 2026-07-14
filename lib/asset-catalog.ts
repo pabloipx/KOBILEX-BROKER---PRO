@@ -40,6 +40,7 @@ const ASSET_UI: Record<string, Omit<AssetUIInfo, "symbol">> = {
   EURJPY: { name: "EUR/JPY", category: "forex", payout: 85, logo: "/images/assets/eurjpy-open.png", market: "open" },
   AUDUSD: { name: "AUD/USD", category: "forex", payout: 85, logo: "/images/assets/audusd-open.png", market: "open" },
   AUDJPY: { name: "AUD/JPY", category: "forex", payout: 85, logo: "/images/assets/audjpy-open.png", market: "open" },
+  BTCUSD: { name: "BTC/USD", category: "crypto", payout: 85, logo: "/images/assets/btcusd-open.png", market: "open" },
 }
 
 const FALLBACK_LOGO = "/placeholder.svg"

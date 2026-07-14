@@ -57,6 +57,7 @@ export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "EURJPY", name: "EUR/JPY", basePrice: 162.3, pipSize: 0.001, volatility: 42, icon: "EJ", decimals: 3 },
   { symbol: "AUDUSD", name: "AUD/USD", basePrice: 0.655, pipSize: 0.00001, volatility: 32, icon: "AU", decimals: 5 },
   { symbol: "AUDJPY", name: "AUD/JPY", basePrice: 98.05, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
+  { symbol: "BTCUSD", name: "BTC/USD", basePrice: 43500, pipSize: 0.01, volatility: 150, icon: "BTC", decimals: 2 },
 ]
 
 // =============================================

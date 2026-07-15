@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, Search, TrendingUp, Layers } from "lucide-react"
+import { RefreshCw, Search, TrendingUp, Layers, Check, Pencil } from "lucide-react"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -29,6 +29,11 @@ export function AdminAssets() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [savingSymbol, setSavingSymbol] = useState<string | null>(null)
+  // Controle da edição de payout por ativo.
+  const [editingSymbol, setEditingSymbol] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState("")
+  const [savingPayout, setSavingPayout] = useState<string | null>(null)
+  const [savedSymbol, setSavedSymbol] = useState<string | null>(null)
 
   const fetchAssets = async () => {
     setLoading(true)
@@ -63,6 +68,44 @@ export function AdminAssets() {
       setAssets((prev) => prev.map((a) => (a.symbol === symbol ? { ...a, enabled: !enabled } : a)))
     } finally {
       setSavingSymbol(null)
+    }
+  }
+
+  const startEditPayout = (symbol: string, current: number) => {
+    setEditingSymbol(symbol)
+    setEditValue(String(current))
+  }
+
+  const cancelEditPayout = () => {
+    setEditingSymbol(null)
+    setEditValue("")
+  }
+
+  const savePayout = async (symbol: string) => {
+    const value = Math.round(Number(editValue))
+    if (!Number.isFinite(value) || value < 1 || value > 100) return
+
+    const previous = assets.find((a) => a.symbol === symbol)?.payout
+    // Atualização otimista
+    setAssets((prev) => prev.map((a) => (a.symbol === symbol ? { ...a, payout: value } : a)))
+    setEditingSymbol(null)
+    setSavingPayout(symbol)
+    try {
+      const res = await fetch("/api/admin/assets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({ symbol, payout: value }),
+      })
+      if (!res.ok) throw new Error("falha")
+      setSavedSymbol(symbol)
+      setTimeout(() => setSavedSymbol((s) => (s === symbol ? null : s)), 1500)
+    } catch (e) {
+      // Reverte em caso de erro
+      if (previous !== undefined) {
+        setAssets((prev) => prev.map((a) => (a.symbol === symbol ? { ...a, payout: previous } : a)))
+      }
+    } finally {
+      setSavingPayout(null)
     }
   }
 
@@ -143,11 +186,58 @@ export function AdminAssets() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-white">{asset.name}</p>
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
-                          <TrendingUp className="h-3 w-3" />
-                          {asset.payout}%
-                        </span>
+                      <div className="mt-1 flex items-center gap-2">
+                        {editingSymbol === asset.symbol ? (
+                          <div className="flex items-center gap-1">
+                            <div className="flex items-center rounded-md border border-emerald-500/40 bg-[#0a0e16] pl-2">
+                              <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                autoFocus
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.nativeEvent.isComposing) savePayout(asset.symbol)
+                                  if (e.key === "Escape") cancelEditPayout()
+                                }}
+                                className="w-12 bg-transparent py-1 text-xs font-semibold text-white outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                              <span className="pr-2 text-xs text-gray-500">%</span>
+                            </div>
+                            <button
+                              onClick={() => savePayout(asset.symbol)}
+                              className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500 text-white hover:bg-emerald-400"
+                              aria-label="Salvar payout"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={cancelEditPayout}
+                              className="px-1 text-xs text-gray-500 hover:text-gray-300"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEditPayout(asset.symbol, asset.payout)}
+                            className="group/payout inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/10"
+                            title="Editar payout"
+                          >
+                            <TrendingUp className="h-3 w-3" />
+                            {savingPayout === asset.symbol ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <span>{asset.payout}%</span>
+                            )}
+                            {savedSymbol === asset.symbol ? (
+                              <Check className="h-3 w-3 text-emerald-400" />
+                            ) : (
+                              <Pencil className="h-2.5 w-2.5 text-gray-500 opacity-0 transition-opacity group-hover/payout:opacity-100" />
+                            )}
+                          </button>
+                        )}
                         <span className="text-xs text-gray-600">{asset.symbol}</span>
                       </div>
                     </div>

@@ -104,6 +104,104 @@ interface Drawing {
 const DRAW_COLORS = ["#a855f7", "#00E676", "#FF5252", "#FFC400", "#38bdf8", "#e2e8f0"]
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
 
+// ========== INDICADORES TECNICOS ==========
+type LinePoint = { time: number; value: number }
+type HistPoint = { time: number; value: number; color: string }
+
+// Media Movel Simples (SMA) sobre os fechamentos.
+function smaLine(candles: Candle[], period: number): LinePoint[] {
+  const out: LinePoint[] = []
+  let sum = 0
+  for (let i = 0; i < candles.length; i++) {
+    sum += candles[i].close
+    if (i >= period) sum -= candles[i - period].close
+    if (i >= period - 1) out.push({ time: candles[i].time, value: sum / period })
+  }
+  return out
+}
+
+// Media Movel Exponencial (EMA) generica sobre um vetor de valores.
+function emaArray(values: number[], period: number): number[] {
+  const k = 2 / (period + 1)
+  const out: number[] = []
+  let prev = 0
+  for (let i = 0; i < values.length; i++) {
+    if (i === 0) {
+      prev = values[0]
+    } else {
+      prev = values[i] * k + prev * (1 - k)
+    }
+    out.push(prev)
+  }
+  return out
+}
+
+// Bandas de Bollinger: media (SMA) +/- (mult * desvio padrao) sobre a janela.
+function bollingerLines(candles: Candle[], period = 20, mult = 2) {
+  const upper: LinePoint[] = []
+  const mid: LinePoint[] = []
+  const lower: LinePoint[] = []
+  for (let i = period - 1; i < candles.length; i++) {
+    let sum = 0
+    for (let j = i - period + 1; j <= i; j++) sum += candles[j].close
+    const mean = sum / period
+    let variance = 0
+    for (let j = i - period + 1; j <= i; j++) {
+      const d = candles[j].close - mean
+      variance += d * d
+    }
+    const sd = Math.sqrt(variance / period)
+    const t = candles[i].time
+    mid.push({ time: t, value: mean })
+    upper.push({ time: t, value: mean + mult * sd })
+    lower.push({ time: t, value: mean - mult * sd })
+  }
+  return { upper, mid, lower }
+}
+
+// MACD: (EMA rapida - EMA lenta), linha de sinal (EMA do MACD) e histograma.
+function macdData(candles: Candle[], fast = 12, slow = 26, signalP = 9) {
+  const empty = { macd: [] as LinePoint[], signal: [] as LinePoint[], hist: [] as HistPoint[] }
+  const closes = candles.map((c) => c.close)
+  if (closes.length < slow) return empty
+  const emaFast = emaArray(closes, fast)
+  const emaSlow = emaArray(closes, slow)
+  const macdVals: number[] = []
+  const macdLine: LinePoint[] = []
+  for (let i = 0; i < closes.length; i++) {
+    const v = emaFast[i] - emaSlow[i]
+    macdVals.push(v)
+    if (i >= slow - 1) macdLine.push({ time: candles[i].time, value: v })
+  }
+  const macdSlice = macdVals.slice(slow - 1)
+  const sigArr = emaArray(macdSlice, signalP)
+  const signal: LinePoint[] = []
+  const hist: HistPoint[] = []
+  for (let i = 0; i < macdSlice.length; i++) {
+    const t = candles[slow - 1 + i].time
+    signal.push({ time: t, value: sigArr[i] })
+    const h = macdSlice[i] - sigArr[i]
+    hist.push({ time: t, value: h, color: h >= 0 ? "rgba(0,230,118,0.55)" : "rgba(255,82,82,0.55)" })
+  }
+  return { macd: macdLine, signal, hist }
+}
+
+// Fractais de Bill Williams (padrao de 5 velas): topo/fundo local.
+function fractalMarkers(candles: Candle[]) {
+  const markers: any[] = []
+  for (let i = 2; i < candles.length - 2; i++) {
+    const h = candles[i].high
+    const l = candles[i].low
+    if (h > candles[i - 1].high && h > candles[i - 2].high && h > candles[i + 1].high && h > candles[i + 2].high) {
+      markers.push({ time: candles[i].time as any, position: "aboveBar", color: "#FFC400", shape: "arrowDown" })
+    }
+    if (l < candles[i - 1].low && l < candles[i - 2].low && l < candles[i + 1].low && l < candles[i + 2].low) {
+      markers.push({ time: candles[i].time as any, position: "belowBar", color: "#38bdf8", shape: "arrowUp" })
+    }
+  }
+  return markers
+}
+
 const svgProps = {
   width: 16,
   height: 16,
@@ -264,6 +362,22 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
   const lwcRef = useRef<any>(null)
   const tradeLinesRef = useRef<Map<string, any>>(new Map())
   const markersApiRef = useRef<any>(null)
+
+  // ===== INDICADORES: estado (UI) + refs (loop) =====
+  const [indicators, setIndicators] = useState({ ma: false, boll: false, fractal: false, macd: false })
+  const [showIndicators, setShowIndicators] = useState(false)
+  const indicatorsRef = useRef(indicators)
+  indicatorsRef.current = indicators
+  // Espelho do array completo de velas (historico + vela em formacao) para calcular indicadores.
+  const candleArrayRef = useRef<Candle[]>([])
+  // Series do lightweight-charts criadas sob demanda para cada indicador.
+  const indSeriesRef = useRef<{
+    ma9?: any; ma21?: any
+    bollU?: any; bollM?: any; bollL?: any
+    macdLine?: any; macdSignal?: any; macdHist?: any
+    fractal?: any
+  }>({})
+  const fractalMarkersApiRef = useRef<any>(null)
 
   // Always-fresh props
   const latest = useRef({ candles, currentPrice, timeframe, symbol })
@@ -879,6 +993,8 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           smoothPriceRef.current = last.close
           prevTargetRef.current = last.close
           updateHeader(last, last.close)
+          // Espelha o historico para os indicadores (recomputados por um loop proprio).
+          candleArrayRef.current = baseData.map((c) => ({ ...c }))
 
           // Posiciona o intervalo visivel: ultimas N velas preenchendo a largura, com a
           // vela atual proxima da borda direita. setVisibleLogicalRange preserva o auto-follow.
@@ -947,6 +1063,17 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
             f.close = price
             f.high = Math.max(f.high, price)
             f.low = Math.min(f.low, price)
+          }
+          // Mantem o espelho de velas em sincronia para os indicadores.
+          {
+            const arr = candleArrayRef.current
+            const cur = formingRef.current
+            if (arr.length && arr[arr.length - 1].time === cur.time) {
+              arr[arr.length - 1] = { ...cur }
+            } else {
+              arr.push({ ...cur })
+              if (arr.length > 600) arr.shift()
+            }
           }
           try {
             seriesRef.current.update({
@@ -1035,6 +1162,119 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     loadDataRef.current?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe, reloadKey])
+
+  // ===== INDICADORES: cria/remove series e atualiza os dados =====
+  useEffect(() => {
+    const chart = chartRef.current
+    const lwc = lwcRef.current
+    if (!chart || !lwc) return
+
+    const S = indSeriesRef.current
+    const ind = indicators
+    const lineOpts = (color: string, extra: any = {}) => ({
+      color,
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      ...extra,
+    })
+    const addLine = (opts: any, pane = 0) =>
+      lwc.LineSeries ? chart.addSeries(lwc.LineSeries, opts, pane) : (chart as any).addLineSeries(opts)
+    const addHist = (opts: any, pane = 0) =>
+      lwc.HistogramSeries ? chart.addSeries(lwc.HistogramSeries, opts, pane) : (chart as any).addHistogramSeries(opts)
+    const remove = (key: keyof typeof S) => {
+      if (S[key]) {
+        try {
+          chart.removeSeries(S[key])
+        } catch {}
+        S[key] = undefined
+      }
+    }
+
+    // --- Medias Moveis (SMA 9 e SMA 21) ---
+    if (ind.ma && !S.ma9) {
+      S.ma9 = addLine(lineOpts("#FFC400"))
+      S.ma21 = addLine(lineOpts("#38bdf8"))
+    } else if (!ind.ma && S.ma9) {
+      remove("ma9")
+      remove("ma21")
+    }
+
+    // --- Bandas de Bollinger (20, 2) ---
+    if (ind.boll && !S.bollM) {
+      S.bollU = addLine(lineOpts("#787B86", { lineWidth: 1 }))
+      S.bollM = addLine(lineOpts("#a855f7", { lineWidth: 1, lineStyle: lwc.LineStyle?.Dashed ?? 1 }))
+      S.bollL = addLine(lineOpts("#787B86", { lineWidth: 1 }))
+    } else if (!ind.boll && S.bollM) {
+      remove("bollU")
+      remove("bollM")
+      remove("bollL")
+    }
+
+    // --- Fractais (marcadores numa serie transparente propria) ---
+    if (ind.fractal && !S.fractal) {
+      S.fractal = addLine(lineOpts("rgba(0,0,0,0)", { lineWidth: 1 }))
+      try {
+        if (lwc.createSeriesMarkers) fractalMarkersApiRef.current = lwc.createSeriesMarkers(S.fractal, [])
+      } catch {}
+    } else if (!ind.fractal && S.fractal) {
+      try {
+        fractalMarkersApiRef.current?.setMarkers([])
+      } catch {}
+      fractalMarkersApiRef.current = null
+      remove("fractal")
+    }
+
+    // --- MACD (12, 26, 9) em painel separado abaixo ---
+    if (ind.macd && !S.macdHist) {
+      S.macdHist = addHist({ priceLineVisible: false, lastValueVisible: false, priceFormat: { type: "volume" } }, 1)
+      S.macdLine = addLine(lineOpts("#38bdf8"), 1)
+      S.macdSignal = addLine(lineOpts("#FFC400"), 1)
+      try {
+        const panes = chart.panes?.()
+        if (panes && panes[1]?.setHeight) panes[1].setHeight(120)
+      } catch {}
+    } else if (!ind.macd && S.macdHist) {
+      remove("macdHist")
+      remove("macdLine")
+      remove("macdSignal")
+    }
+
+    // Recalcula e aplica os dados dos indicadores ativos.
+    const refresh = () => {
+      const data = candleArrayRef.current
+      if (!data || data.length < 3) return
+      try {
+        if (S.ma9) S.ma9.setData(smaLine(data, 9))
+        if (S.ma21) S.ma21.setData(smaLine(data, 21))
+        if (S.bollM) {
+          const b = bollingerLines(data, 20, 2)
+          S.bollU.setData(b.upper)
+          S.bollM.setData(b.mid)
+          S.bollL.setData(b.lower)
+        }
+        if (S.macdHist) {
+          const m = macdData(data, 12, 26, 9)
+          S.macdHist.setData(m.hist)
+          S.macdLine.setData(m.macd)
+          S.macdSignal.setData(m.signal)
+        }
+        if (S.fractal && fractalMarkersApiRef.current) {
+          S.fractal.setData(data.map((c) => ({ time: c.time as any, value: c.close })))
+          fractalMarkersApiRef.current.setMarkers(fractalMarkers(data))
+        }
+      } catch {}
+    }
+
+    refresh()
+    const anyOn = ind.ma || ind.boll || ind.fractal || ind.macd
+    const id = anyOn ? setInterval(refresh, 500) : undefined
+    return () => {
+      if (id) clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators, seriesReady, symbol, timeframe])
 
   // ===== TRADE LINES + MARKERS (native, attached to chart) =====
   useEffect(() => {
@@ -1279,6 +1519,65 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
         </button>
+
+        <div className="my-0.5 h-px w-6 bg-[#2A2E39]" />
+
+        {/* Indicadores tecnicos */}
+        <div className="relative">
+          <button
+            type="button"
+            title="Indicadores"
+            aria-label="Indicadores tecnicos"
+            onClick={() => setShowIndicators((s) => !s)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+            style={{
+              backgroundColor: indicators.ma || indicators.boll || indicators.fractal || indicators.macd ? "#9333ea" : "transparent",
+              color: indicators.ma || indicators.boll || indicators.fractal || indicators.macd ? "#fff" : "#94A3B8",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18" />
+              <path d="m7 14 3-4 3 3 4-6" />
+            </svg>
+          </button>
+          {showIndicators && (
+            <div className="absolute left-10 top-0 w-52 rounded-xl border border-[#2A2E39] bg-[#0d0d0f] p-1.5 shadow-xl">
+              {(
+                [
+                  { key: "ma", label: "Médias Móveis", desc: "SMA 9 / 21", color: "#FFC400" },
+                  { key: "boll", label: "Bandas de Bollinger", desc: "20, 2", color: "#a855f7" },
+                  { key: "fractal", label: "Fractais", desc: "Bill Williams", color: "#38bdf8" },
+                  { key: "macd", label: "MACD", desc: "12, 26, 9", color: "#00E676" },
+                ] as const
+              ).map((it) => {
+                const on = indicators[it.key]
+                return (
+                  <button
+                    key={it.key}
+                    type="button"
+                    onClick={() => setIndicators((prev) => ({ ...prev, [it.key]: !prev[it.key] }))}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/5"
+                  >
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: it.color }} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium text-white">{it.label}</span>
+                      <span className="block text-[10px] text-[#787B86]">{it.desc}</span>
+                    </span>
+                    <span
+                      className="flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors"
+                      style={{ backgroundColor: on ? "#9333ea" : "#2A2E39" }}
+                    >
+                      <span
+                        className="h-3 w-3 rounded-full bg-white transition-transform"
+                        style={{ transform: on ? "translateX(12px)" : "translateX(0)" }}
+                      />
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Relogio minimizado (UTC-3) no canto inferior esquerdo */}

@@ -2,47 +2,59 @@
 
 import type React from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useEffect, Suspense } from "react"
-import { CheckCircle2, User, Mail, Phone, Lock, ArrowRight, Loader2, X } from "lucide-react"
+import { CheckCircle2, ChevronDown, Loader2, X } from "lucide-react"
+
+const COUNTRIES = [
+  { name: "Brasil", code: "BR", dial: "+55" },
+  { name: "Portugal", code: "PT", dial: "+351" },
+  { name: "Angola", code: "AO", dial: "+244" },
+  { name: "Moçambique", code: "MZ", dial: "+258" },
+  { name: "Argentina", code: "AR", dial: "+54" },
+  { name: "Estados Unidos", code: "US", dial: "+1" },
+  { name: "Espanha", code: "ES", dial: "+34" },
+]
+
+function Flag({ code, className }: { code: string; className?: string }) {
+  return (
+    <Image
+      src={`https://flagcdn.com/w40/${code.toLowerCase()}.png`}
+      alt={code}
+      width={24}
+      height={18}
+      className={className}
+      unoptimized
+    />
+  )
+}
 
 function SignUpForm() {
-  const [fullName, setFullName] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [country, setCountry] = useState(COUNTRIES[0])
   const [email, setEmail] = useState("")
-  const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
-  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [phone, setPhone] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
+  const [showCountries, setShowCountries] = useState(false)
   const [referralCode, setReferralCode] = useState("")
   const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
     const ref = searchParams.get("ref")
-    if (ref) {
-      setReferralCode(ref.toUpperCase())
-    }
+    if (ref) setReferralCode(ref.toUpperCase())
   }, [searchParams])
 
-  const formatPhone = (value: string) => {
-    const numbers = value.replace(/\D/g, "")
-    if (numbers.length <= 2) return `(${numbers}`
-    if (numbers.length <= 7) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`
-    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`
-  }
-
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatPhone(e.target.value)
-    if (formatted.length <= 16) setPhone(formatted)
+    const numbers = e.target.value.replace(/\D/g, "")
+    setPhone(numbers.slice(0, 13))
   }
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -51,48 +63,38 @@ function SignUpForm() {
     setIsLoading(true)
     setError(null)
 
-    if (!acceptTerms) {
-      setError("Você precisa aceitar os termos e condições")
-      setIsLoading(false)
-      return
-    }
-
     if (password.length < 6) {
       setError("A senha deve ter pelo menos 6 caracteres")
       setIsLoading(false)
       return
     }
 
+    const fullName = `${firstName} ${lastName}`.trim()
+
     try {
-      // Call server-side API that creates user with auto-confirmed email
       const res = await fetch("/api/auth/sign-up", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, fullName, phone, referralCode }),
+        body: JSON.stringify({
+          email,
+          password,
+          fullName,
+          phone: `${country.dial} ${phone}`.trim(),
+          referralCode,
+        }),
       })
 
       const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao criar conta")
 
-      if (!res.ok) {
-        throw new Error(result.error || "Erro ao criar conta")
-      }
-
-      // User is created and confirmed - now sign in
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) {
         console.error("[v0] Sign-in error:", signInError)
         throw new Error("Conta criada, mas houve erro ao entrar. Tente fazer login.")
       }
 
       setSuccess(true)
-
-      setTimeout(() => {
-        router.push("/trade")
-      }, 2000)
+      setTimeout(() => router.push("/trade"), 2000)
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : "Erro ao criar conta"
       if (errMsg.includes("already registered")) {
@@ -105,243 +107,211 @@ function SignUpForm() {
     }
   }
 
+  const handleGoogle = async () => {
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/trade` },
+      })
+      if (error) throw error
+    } catch {
+      setError("Login com Google indisponível no momento.")
+    }
+  }
+
   if (success) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "#0B0F14" }}>
+      <div className="min-h-screen w-full flex items-center justify-center bg-white">
         <div className="text-center px-6 animate-in fade-in zoom-in duration-500">
-          <div
-            className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: "rgba(147, 51, 234, 0.2)" }}
-          >
-            <CheckCircle2 className="w-12 h-12" style={{ color: "#9333ea" }} />
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center bg-green-100">
+            <CheckCircle2 className="w-12 h-12 text-green-600" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Conta criada com sucesso!</h1>
-          <p className="text-gray-400 mb-6">Você será redirecionado para a plataforma...</p>
-          <div className="flex items-center justify-center gap-2">
-            <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#9333ea" }} />
-            <span style={{ color: "#9333ea" }}>Entrando...</span>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Conta criada com sucesso!</h1>
+          <p className="text-gray-500 mb-6">Você será redirecionado para a plataforma...</p>
+          <div className="flex items-center justify-center gap-2 text-green-600">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Entrando...</span>
           </div>
         </div>
       </div>
     )
   }
 
+  const inputClass =
+    "w-full h-12 px-4 rounded-md bg-white text-gray-800 text-[15px] border border-gray-300 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+
   return (
-    <div className="min-h-screen w-full" style={{ backgroundColor: "#0B0F14" }}>
+    <div className="min-h-screen w-full bg-white flex flex-col">
+      {/* Faixa lateral escura em degrade (decorativa) */}
+      <div
+        className="hidden md:block fixed left-0 top-0 h-full w-8 z-10"
+        style={{ background: "linear-gradient(180deg, #1a1035 0%, #3b0764 60%, #1a1035 100%)" }}
+        aria-hidden="true"
+      />
+
+      {/* Modal de Termos */}
       {showTerms && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.8)" }}
-        >
-          <div
-            className="relative w-full max-w-lg max-h-[85vh] rounded-2xl overflow-hidden flex flex-col"
-            style={{ backgroundColor: "#1a2332" }}
-          >
-            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "#2a3442" }}>
-              <h2 className="text-lg font-bold text-white">Termos e Condições de Uso</h2>
-              <button
-                onClick={() => setShowTerms(false)}
-                className="p-2 rounded-full hover:bg-gray-700 transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="relative w-full max-w-lg max-h-[85vh] rounded-2xl overflow-hidden flex flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-lg font-bold text-gray-800">Termos e Condições de Uso</h2>
+              <button onClick={() => setShowTerms(false)} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-4 text-gray-300 text-sm leading-relaxed space-y-4">
-              <p className="text-xs text-gray-500">Última atualização: Janeiro de 2026</p>
-
+            <div className="flex-1 overflow-y-auto p-4 text-gray-600 text-sm leading-relaxed space-y-3">
+              <p className="text-xs text-gray-400">Última atualização: Janeiro de 2026</p>
               <p>
                 Ao acessar, cadastrar-se ou utilizar a plataforma Kodilex Broker, o usuário declara que leu, compreendeu e
                 concorda integralmente com os presentes Termos e Condições.
               </p>
-
-              <h3 className="text-white font-semibold pt-2">1. DEFINIÇÕES</h3>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>
-                  <strong>Kodilex Broker:</strong> Plataforma digital para operações em opções binárias.
-                </li>
-                <li>
-                  <strong>Usuário:</strong> Pessoa física que acessa ou utiliza a plataforma.
-                </li>
-                <li>
-                  <strong>Conta:</strong> Cadastro individual do usuário na plataforma.
-                </li>
-              </ul>
-
-              <h3 className="text-white font-semibold pt-2">2. ACEITAÇÃO DOS TERMOS</h3>
-              <p>O uso da plataforma está condicionado à aceitação integral destes Termos e Condições.</p>
-
-              <h3 className="text-white font-semibold pt-2">3. ELEGIBILIDADE</h3>
+              <h3 className="text-gray-800 font-semibold pt-1">1. Elegibilidade</h3>
               <p>A utilização é exclusiva para pessoas maiores de 18 anos.</p>
-
-              <h3 className="text-white font-semibold pt-2">4. CADASTRO</h3>
+              <h3 className="text-gray-800 font-semibold pt-1">2. Cadastro</h3>
               <p>O usuário compromete-se a fornecer informações verdadeiras e completas.</p>
-
-              <h3 className="text-white font-semibold pt-2">5. VERIFICAÇÃO KYC</h3>
-              <p>A Kodilex Broker poderá solicitar documentos para verificação de identidade. Prazo de até 24 horas.</p>
-
-              <h3 className="text-white font-semibold pt-2">6. DEPÓSITOS</h3>
-              <p>Valor mínimo: R$ 50,00. Processamento instantâneo via PIX.</p>
-
-              <h3 className="text-white font-semibold pt-2">7. SAQUES</h3>
-              <p>Valor mínimo: R$ 10,00. Prazo de até 24 horas para primeiro saque.</p>
-
-              <h3 className="text-white font-semibold pt-2">8. RISCOS</h3>
+              <h3 className="text-gray-800 font-semibold pt-1">3. Riscos</h3>
               <p>Operações financeiras envolvem riscos e podem resultar em perdas. A Kodilex Broker não garante lucros.</p>
-
-              <h3 className="text-white font-semibold pt-2">9. ACEITE FINAL</h3>
-              <p>Ao marcar o checkbox, o usuário declara que leu, é maior de 18 anos e concorda com todas as regras.</p>
             </div>
-
-            <div className="p-4 border-t" style={{ borderColor: "#2a3442" }}>
-              <Button
+            <div className="p-4 border-t border-gray-200">
+              <button
                 onClick={() => setShowTerms(false)}
-                className="w-full h-12 rounded-xl text-white font-semibold"
-                style={{ backgroundColor: "#9333ea" }}
+                className="w-full h-12 rounded-md text-white font-semibold bg-green-600 hover:bg-green-700 transition-colors"
               >
                 Li e Entendi
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <header className="flex items-center justify-between px-5 py-4">
+      {/* Header */}
+      <header className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-gray-50/60">
         <Link href="/" className="flex items-center">
-          <Image
-            src="/images/kodilex-logo.png"
-            alt="Kodilex Broker"
-            width={160}
-            height={40}
-            className="h-10 w-auto"
-            unoptimized
-          />
+          <Image src="/images/kodilex-logo.png" alt="Kodilex Broker" width={150} height={38} className="h-9 w-auto" unoptimized />
         </Link>
-        <Link href="/auth/login">
-          <Button
-            variant="outline"
-            className="bg-transparent rounded-full px-6 h-10"
-            style={{ borderColor: "#9333ea", color: "#9333ea" }}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-gray-600 text-sm font-medium">
+            <Flag code="BR" className="rounded-full w-5 h-5 object-cover" />
+            Pt
+          </div>
+          <Link
+            href="/auth/login"
+            className="rounded-md border border-blue-500 text-blue-600 hover:bg-blue-50 px-6 h-10 flex items-center font-medium text-sm transition-colors"
           >
             Entrar
-          </Button>
-        </Link>
+          </Link>
+        </div>
       </header>
 
-      <div className="px-5 pt-2 pb-4">
-        <h1 className="text-2xl font-bold text-white mb-1">Crie sua conta</h1>
-        <p className="text-gray-400 text-sm">Comece a operar em menos de 1 minuto</p>
-      </div>
+      {/* Form */}
+      <main className="flex-1 flex flex-col items-center px-5 py-10">
+        <h1 className="text-3xl font-semibold text-gray-500 mb-8 text-center">Registrar-se</h1>
 
-      <div className="px-5 pb-8">
-        <form onSubmit={handleSignUp} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name" className="text-white text-sm font-medium flex items-center gap-2">
-              <User className="w-4 h-4" style={{ color: "#9333ea" }} />
-              Nome completo
-            </Label>
-            <Input
-              id="name"
-              type="text"
-              placeholder="Digite seu nome"
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="text-white placeholder:text-gray-500 h-12 rounded-xl border-0 focus:ring-2"
-              style={{ backgroundColor: "#1a2332", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)" }}
-            />
+        <form onSubmit={handleSignUp} className="w-full max-w-[420px] flex flex-col gap-4">
+          <input
+            type="text"
+            placeholder="Nome"
+            required
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            className={inputClass}
+          />
+          <input
+            type="text"
+            placeholder="Sobrenome"
+            required
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            className={inputClass}
+          />
+
+          {/* País */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowCountries((v) => !v)}
+              className="w-full h-12 px-4 rounded-md bg-white border border-gray-300 flex items-center justify-between text-gray-800 text-[15px] focus:border-blue-500 outline-none"
+            >
+              <span className="flex items-center gap-2">
+                <Flag code={country.code} className="rounded-full w-5 h-5 object-cover" />
+                {country.name}
+              </span>
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            </button>
+            {showCountries && (
+              <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg max-h-56 overflow-y-auto">
+                {COUNTRIES.map((c) => (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => {
+                      setCountry(c)
+                      setShowCountries(false)
+                    }}
+                    className="w-full px-4 py-2.5 flex items-center gap-2 text-gray-700 text-sm hover:bg-gray-50 text-left"
+                  >
+                    <Flag code={c.code} className="rounded-full w-5 h-5 object-cover" />
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-gray-500 text-xs mt-2">Certifique-se de que este é seu país de residência permanente</p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-white text-sm font-medium flex items-center gap-2">
-              <Mail className="w-4 h-4" style={{ color: "#9333ea" }} />
-              E-mail
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="Digite seu e-mail"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="text-white placeholder:text-gray-500 h-12 rounded-xl border-0 focus:ring-2"
-              style={{ backgroundColor: "#1a2332", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)" }}
-            />
-          </div>
+          <input
+            type="email"
+            placeholder="E-mail"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={inputClass}
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={inputClass}
+          />
 
-          <div className="space-y-2">
-            <Label htmlFor="phone" className="text-white text-sm font-medium flex items-center gap-2">
-              <Phone className="w-4 h-4" style={{ color: "#9333ea" }} />
-              Telefone
-            </Label>
-            <Input
-              id="phone"
+          {/* Telefone */}
+          <div className="flex items-stretch gap-2">
+            <div className="flex items-center gap-2 px-3 rounded-md bg-white border border-gray-300 text-gray-800 text-[15px]">
+              <Flag code={country.code} className="rounded-full w-5 h-5 object-cover" />
+              {country.dial}
+            </div>
+            <input
               type="tel"
-              placeholder="(99) 99999-9999"
-              required
+              placeholder="Número de telefone"
               value={phone}
               onChange={handlePhoneChange}
-              className="text-white placeholder:text-gray-500 h-12 rounded-xl border-0 focus:ring-2"
-              style={{ backgroundColor: "#1a2332", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)" }}
+              className={`${inputClass} flex-1`}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-white text-sm font-medium flex items-center gap-2">
-              <Lock className="w-4 h-4" style={{ color: "#9333ea" }} />
-              Senha
-            </Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="Mínimo 6 caracteres"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="text-white placeholder:text-gray-500 h-12 rounded-xl border-0 focus:ring-2"
-              style={{ backgroundColor: "#1a2332", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)" }}
-            />
-          </div>
-
-          <div className="flex items-start gap-3 pt-2">
-            <Checkbox
-              id="terms"
-              checked={acceptTerms}
-              onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
-              className="mt-0.5 rounded"
-              style={{
-                borderColor: acceptTerms ? "#9333ea" : "#374151",
-                backgroundColor: acceptTerms ? "#9333ea" : "transparent",
-              }}
-            />
-            <label htmlFor="terms" className="text-gray-400 text-sm leading-relaxed">
-              Tenho mais de 18 anos e concordo com os{" "}
-              <button
-                type="button"
-                onClick={() => setShowTerms(true)}
-                className="underline underline-offset-2 hover:opacity-80"
-                style={{ color: "#9333ea" }}
-              >
-                Termos & Condições
-              </button>
-            </label>
-          </div>
+          <p className="text-gray-500 text-sm text-center leading-relaxed">
+            Ao criar uma conta, você aceita nossos{" "}
+            <button type="button" onClick={() => setShowTerms(true)} className="text-blue-600 hover:underline">
+              Termos e Condições
+            </button>
+            , a <span className="text-blue-600">Política de Privacidade</span> e confirma que você tem 18 anos de idade ou
+            mais.
+          </p>
 
           {error && (
-            <div
-              className="text-sm p-3 rounded-xl flex items-center gap-2"
-              style={{ color: "#EF4444", backgroundColor: "rgba(239, 68, 68, 0.1)" }}
-            >
-              <span className="text-red-500">⚠</span>
+            <div className="text-sm p-3 rounded-md flex items-center gap-2 text-red-600 bg-red-50 border border-red-200">
+              <span>⚠</span>
               {error}
             </div>
           )}
 
-          <Button
+          <button
             type="submit"
-            className="w-full text-white h-14 rounded-xl font-semibold text-base mt-4 transition-all duration-200 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
-            style={{ backgroundColor: "#9333ea", boxShadow: "0 4px 14px rgba(147, 51, 234, 0.4)" }}
             disabled={isLoading}
+            className="w-full h-14 rounded-md text-white font-semibold text-base bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {isLoading ? (
               <>
@@ -349,23 +319,42 @@ function SignUpForm() {
                 Criando conta...
               </>
             ) : (
-              <>
-                Criar conta grátis
-                <ArrowRight className="w-5 h-5" />
-              </>
+              "Abrir uma conta grátis"
             )}
-          </Button>
+          </button>
 
-          <p className="text-center text-gray-400 text-sm pt-4">
+          {/* Divisor social */}
+          <div className="flex items-center gap-3 my-1">
+            <div className="h-px flex-1 bg-gray-200" />
+            <span className="text-gray-400 text-sm">ou use uma conta social</span>
+            <div className="h-px flex-1 bg-gray-200" />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogle}
+            className="w-full h-12 rounded-md border border-gray-300 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-3 text-gray-700 font-medium"
+          >
+            <Image src="https://www.google.com/favicon.ico" alt="Google" width={20} height={20} unoptimized />
+            Inscreva-se com Google
+          </button>
+
+          <p className="text-center text-gray-500 text-sm pt-2">
             Já tem uma conta?{" "}
-            <Link href="/auth/login" className="font-semibold" style={{ color: "#9333ea" }}>
-              Faça login
+            <Link href="/auth/login" className="font-semibold text-blue-600 hover:underline">
+              Entrar
             </Link>
           </p>
         </form>
-      </div>
+      </main>
     </div>
   )
 }
 
-export default SignUpForm
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen w-full bg-white" />}>
+      <SignUpForm />
+    </Suspense>
+  )
+}

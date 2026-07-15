@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
-import { ChevronLeft, Copy, Check, Loader2, Clock, RefreshCw, CreditCard, CheckCircle2, XCircle } from "lucide-react"
+import { ChevronLeft, Copy, Check, Loader2, Clock, RefreshCw, CreditCard, CheckCircle2, XCircle, X, Info, Sparkles, ShieldCheck, Lock } from "lucide-react"
 import Image from "next/image"
 import { QRCodeSVG } from "qrcode.react"
 
@@ -37,6 +37,8 @@ export default function DepositPage() {
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [promoCode, setPromoCode] = useState("")
+  const [promoMsg, setPromoMsg] = useState<string | null>(null)
 
   // PIX state
   const [pixData, setPixData] = useState<PixPaymentData | null>(null)
@@ -429,6 +431,11 @@ export default function DepositPage() {
     setError(null)
   }
 
+  const handleApplyPromo = () => {
+    if (!promoCode.trim()) return
+    setPromoMsg("Código promocional inválido ou expirado.")
+  }
+
   const pixCode = pixData?.copy_paste || pixData?.qr_code || ""
 
   const processingMessages = [
@@ -642,16 +649,37 @@ export default function DepositPage() {
   }
 
   // Main deposit form
+  const methodTitle =
+    method === "pix"
+      ? "PIX (Apenas seu CPF)"
+      : method === "card"
+        ? "Cartão de Crédito/Débito"
+        : cryptoType === "usdt"
+          ? "USDT (Tether)"
+          : "Bitcoin (BTC)"
+
   return (
-    <div className="min-h-screen bg-[#0B0F14]">
-      <div className="sticky top-0 z-10 px-4 py-4 flex items-center gap-3 border-b border-[#1F2933] bg-[#0B0F14]">
-        <button onClick={() => router.back()} className="p-2 -ml-2">
-          <ChevronLeft className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-[#0d0d0f]">
+      <div className="sticky top-0 z-10 px-4 sm:px-8 py-4 flex items-center gap-4 bg-[#0d0d0f]">
+        <button
+          onClick={() => router.back()}
+          aria-label="Fechar"
+          className="w-10 h-10 rounded-full bg-[#1c1c1f] hover:bg-[#26262a] flex items-center justify-center transition-colors"
+        >
+          <X className="w-5 h-5 text-white/80" />
         </button>
-        <h1 className="text-xl font-bold text-white">Deposito</h1>
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-1 text-[#9CA3AF] hover:text-white transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+          <span className="text-base">Moeda</span>
+        </button>
       </div>
 
-      <div className="px-4 py-6 space-y-6 max-w-xl mx-auto">
+      <div className="px-4 sm:px-8 py-6 max-w-5xl mx-auto">
+        <div className="flex flex-col lg:flex-row lg:gap-16">
+          <div className="w-full lg:max-w-md space-y-6">
         {/* Method selector */}
         <div className="flex gap-2 p-1 bg-[#121826] rounded-xl border border-[#1F2933]">
           <button
@@ -698,59 +726,19 @@ export default function DepositPage() {
           )}
         </div>
 
-        {/* Method info */}
+        {/* Title with icon */}
         <div className="flex items-center gap-3">
-          {method === "pix" && (
-            <>
-              <div className="w-12 h-12 rounded-lg overflow-hidden bg-white flex items-center justify-center">
-                <Image src="/images/a57db68e-f6a1-44c5-bde8.jpeg" alt="PIX" width={48} height={48} className="w-full h-full object-cover" />
-              </div>
-              <div>
-                <h2 className="text-white font-semibold">PIX</h2>
-                <p className="text-sm text-[#9CA3AF]">Transfira instantaneamente usando o PIX.</p>
-              </div>
-            </>
-          )}
-          {method === "card" && (
-            <>
-              <div className="w-12 h-12 rounded-lg bg-[#1A2332] border border-[#1F2933] flex items-center justify-center">
-                <CreditCard className="w-6 h-6 text-[#9333ea]" />
-              </div>
-              <div>
-                <h2 className="text-white font-semibold">Cartao de Credito/Debito</h2>
-                <p className="text-sm text-[#9CA3AF]">Deposite usando seu cartao.</p>
-              </div>
-            </>
-          )}
-          {method === "crypto" && (
-            <>
-              <div className="w-12 h-12 rounded-lg bg-[#1A2332] border border-[#1F2933] flex items-center justify-center">
-                {cryptoType === "usdt" ? (
-                  <span className="text-[#26A17B] font-bold text-lg">₮</span>
-                ) : (
-                  <span className="text-[#F7931A] font-bold text-lg">₿</span>
-                )}
-              </div>
-              <div>
-                <h2 className="text-white font-semibold">
-                  {cryptoType === "usdt" ? "USDT (Tether)" : "Bitcoin (BTC)"}
-                </h2>
-                <p className="text-sm text-[#9CA3AF]">
-                  Deposite usando {cryptoType === "usdt" ? "USDT" : "BTC"} na rede Ethereum.
-                </p>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Min value - hide for crypto since it has its own input */}
-        {method !== "crypto" && (
-          <div className="inline-block px-3 py-1.5 rounded-full bg-[#1A2332] border border-[#1F2933]">
-            <p className="text-xs text-[#9CA3AF]">
-              Valor minimo: R$ 50,00
-            </p>
+          <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center bg-white shrink-0">
+            {method === "pix" ? (
+              <Image src="/images/a57db68e-f6a1-44c5-bde8.jpeg" alt="PIX" width={36} height={36} className="w-full h-full object-cover" />
+            ) : method === "card" ? (
+              <CreditCard className="w-5 h-5 text-[#0d0d0f]" />
+            ) : (
+              <span className="text-[#0d0d0f] font-bold text-lg">{cryptoType === "usdt" ? "₮" : "₿"}</span>
+            )}
           </div>
-        )}
+          <h1 className="text-2xl font-semibold text-white text-balance">{methodTitle}</h1>
+        </div>
 
         {/* Error */}
         {error && (
@@ -762,15 +750,15 @@ export default function DepositPage() {
         {/* Amount - hide for crypto since it has its own USD input */}
         {method !== "crypto" && (
           <div>
-            <label className="block text-sm text-white mb-2 font-medium">Valor</label>
+            <label className="block text-sm text-[#9CA3AF] mb-2">Valor</label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B7280] text-lg">R$</span>
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[#6B7280] text-lg">R$</span>
               <input
                 type="text"
                 value={amount}
                 onChange={handleAmountChange}
                 placeholder="50,00"
-                className="w-full py-4 pl-12 pr-4 rounded-xl text-white text-lg bg-[#121826] border border-[#1F2933] focus:border-[#9333ea] outline-none"
+                className="w-full py-2 pl-8 pr-4 text-white text-lg bg-transparent border-0 border-b border-[#2a2a2e] focus:border-[#9333ea] outline-none"
                 inputMode="numeric"
               />
             </div>
@@ -779,16 +767,67 @@ export default function DepositPage() {
 
         {/* Quick amounts - hide for crypto */}
         {method !== "crypto" && (
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-3">
             {QUICK_AMOUNTS.map((value) => (
               <button
                 key={value}
                 onClick={() => handleQuickAmount(value)}
-                className="py-3 px-2 rounded-lg text-sm font-medium text-white bg-[#121826] border border-[#1F2933] hover:border-[#9333ea] transition-colors"
+                className="py-3 px-2 rounded-lg text-sm font-medium text-white bg-[#151517] border border-[#26262a] hover:border-[#9333ea] transition-colors"
               >
                 R$ {value.toLocaleString("pt-BR")}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* PROMOÇÃO */}
+        {method !== "crypto" && (
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-semibold tracking-wider text-[#9CA3AF]">PROMOÇÃO</span>
+              <button
+                type="button"
+                onClick={() => setPromoMsg("Nenhuma promoção disponível no momento.")}
+                className="flex items-center gap-1 text-sm text-[#3b82f6] hover:text-[#60a5fa] transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                Exibir disponíveis
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={promoCode}
+                onChange={(e) => {
+                  setPromoCode(e.target.value)
+                  setPromoMsg(null)
+                }}
+                placeholder="Insira seu código promocional"
+                className="flex-1 border-b border-[#2a2a2e] bg-transparent py-2 text-white outline-none placeholder:text-[#4b5563] focus:border-[#9333ea]"
+              />
+              <button
+                type="button"
+                onClick={handleApplyPromo}
+                className="rounded-md bg-[#1c1c1f] px-6 text-sm text-[#9CA3AF] transition-colors hover:bg-[#26262a]"
+              >
+                Aplicar
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-[#6b7280]">{promoMsg || "Um código promocional por depósito"}</p>
+          </div>
+        )}
+
+        {/* DETALHES DO PAGAMENTO */}
+        {method !== "crypto" && (
+          <div>
+            <span className="text-xs font-semibold tracking-wider text-[#9CA3AF]">DETALHES DO PAGAMENTO</span>
+            <div className="mt-3 flex items-start gap-3 rounded-lg border border-[#26262a] bg-[#151517] p-4">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#9CA3AF]" />
+              <p className="text-sm leading-relaxed text-[#9CA3AF]">
+                Nossa plataforma não permite CNPJ, CPF de terceiros e/ou métodos de pagamento de terceiros. 90% dos
+                pagamentos são processados pelo provedor em até 5 minutos.
+              </p>
+            </div>
           </div>
         )}
 
@@ -1186,6 +1225,40 @@ export default function DepositPage() {
             </div>
           </div>
         )}
+          </div>
+
+          {/* RIGHT COLUMN - selos de seguranca */}
+          <div className="hidden lg:flex flex-1 flex-col gap-8 pt-2 opacity-40">
+            <div className="flex items-center gap-3">
+              <CreditCard className="h-8 w-8 text-white/70" />
+              <span className="text-sm leading-tight text-white/70">
+                mastercard
+                <br />
+                ID Check
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="h-8 w-8 text-white/70" />
+              <span className="text-sm leading-tight text-white/70">PCI DSS</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <CreditCard className="h-8 w-8 text-white/70" />
+              <span className="text-sm leading-tight text-white/70">
+                VISA
+                <br />
+                Secure
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Lock className="h-8 w-8 text-white/70" />
+              <span className="text-sm leading-tight text-white/70">
+                SSL certified 256-bit
+                <br />
+                Security
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

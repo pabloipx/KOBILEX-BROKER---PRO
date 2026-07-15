@@ -25,7 +25,9 @@ import {
   Search,
   Clock,
   LayoutGrid,
+  Lock,
 } from "lucide-react"
+import { getMarketStatus } from "@/lib/market-hours"
 
 interface ActiveTrade {
   id: string
@@ -185,6 +187,28 @@ export default function TradePage() {
     (sym: string) => availableAssets.find((a) => a.symbol === sym),
     [availableAssets],
   )
+
+  // Relógio que reavalia o horário de mercado periodicamente (para abrir/fechar sozinho).
+  const [clockTick, setClockTick] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setClockTick(Date.now()), 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Status do mercado do ativo selecionado (fechado no fim de semana para forex de mercado aberto).
+  const marketStatus = useMemo(
+    () => getMarketStatus(selectedAsset, new Date(clockTick)),
+    [selectedAsset, clockTick],
+  )
+  const marketClosed = !marketStatus.open
+  const nextOpenLabel = useMemo(() => {
+    if (!marketStatus.nextOpen) return null
+    return marketStatus.nextOpen.toLocaleString("pt-BR", {
+      weekday: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }, [marketStatus.nextOpen])
 
   // Garante que o ativo selecionado sempre tenha uma aba aberta
   useEffect(() => {
@@ -558,6 +582,13 @@ export default function TradePage() {
         return
       }
 
+      // Bloqueia entradas quando o mercado do ativo está fechado (ex.: forex no fim de semana).
+      if (!marketStatus.open) {
+        setTradeError(marketStatus.reason || "Mercado fechado")
+        setTimeout(() => setTradeError(null), 3000)
+        return
+      }
+
       // Validations
       if (amount <= 0) {
         setTradeError("Valor deve ser maior que zero")
@@ -660,7 +691,7 @@ export default function TradePage() {
         setIsTrading(false)
       }
     },
-    [user, amount, currentBalance, selectedSymbol, price, expiryTime, accountType, payout, isTrading],
+    [user, amount, currentBalance, selectedSymbol, price, expiryTime, accountType, payout, isTrading, marketStatus],
   )
 
   const handleExpiryChange = useCallback(
@@ -1003,29 +1034,42 @@ export default function TradePage() {
             <p className="text-white/40 text-xs">+{payout}%</p>
           </div>
 
+          {/* Aviso de mercado fechado */}
+          {marketClosed && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5">
+              <Lock className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+              <div className="text-left">
+                <p className="text-yellow-500 text-xs font-semibold">{marketStatus.reason}</p>
+                {nextOpenLabel && (
+                  <p className="text-yellow-500/70 text-[11px] mt-0.5">Abre {nextOpenLabel}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Trading Buttons */}
           <div className="space-y-3">
             <button
               onClick={() => executeTrade("CALL")}
-              disabled={amount > currentBalance}
+              disabled={amount > currentBalance || marketClosed}
               className="w-full py-4 rounded-xl font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: "linear-gradient(135deg, #00B35A 0%, #00E676 100%)",
               }}
             >
-              <TrendingUp className="w-5 h-5" />
+              {marketClosed ? <Lock className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
               <span>Comprar</span>
             </button>
 
             <button
               onClick={() => executeTrade("PUT")}
-              disabled={amount > currentBalance}
+              disabled={amount > currentBalance || marketClosed}
               className="w-full py-4 rounded-xl font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)",
               }}
             >
-              <TrendingDown className="w-5 h-5" />
+              {marketClosed ? <Lock className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
               <span>Vender</span>
             </button>
           </div>
@@ -1125,6 +1169,16 @@ export default function TradePage() {
             </div>
           </div>
 
+          {marketClosed && (
+            <div className="flex items-center gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2">
+              <Lock className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+              <p className="text-yellow-500 text-[11px] font-semibold">
+                {marketStatus.reason}
+                {nextOpenLabel ? ` · Abre ${nextOpenLabel}` : ""}
+              </p>
+            </div>
+          )}
+
           {/* Row 2: Return + Buttons */}
           <div className="flex items-center gap-3">
             <div className="text-center px-3 py-2 rounded-xl shrink-0" style={{ backgroundColor: "#1a1a1e" }}>
@@ -1135,24 +1189,24 @@ export default function TradePage() {
             <div className="flex-1 grid grid-cols-2 gap-2">
               <button
                 onClick={() => executeTrade("PUT")}
-                disabled={amount > currentBalance}
+                disabled={amount > currentBalance || marketClosed}
                 className="py-3 rounded-xl font-bold text-white text-sm flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)",
                 }}
               >
-                <TrendingDown className="w-4 h-4" />
+                {marketClosed ? <Lock className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                 <span>Vender</span>
               </button>
               <button
                 onClick={() => executeTrade("CALL")}
-                disabled={amount > currentBalance}
+                disabled={amount > currentBalance || marketClosed}
                 className="py-3 rounded-xl font-bold text-white text-sm flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   background: "linear-gradient(135deg, #00B35A 0%, #00E676 100%)",
                 }}
               >
-                <TrendingUp className="w-4 h-4" />
+                {marketClosed ? <Lock className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
                 <span>Comprar</span>
               </button>
             </div>

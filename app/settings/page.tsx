@@ -18,6 +18,8 @@ import {
   Check,
   Camera,
 } from "lucide-react"
+import { TwoFactor } from "@/components/settings/two-factor"
+import { ConnectedDevices } from "@/components/settings/connected-devices"
 
 interface UserProfile {
   id: string
@@ -154,6 +156,16 @@ export default function SettingsPage() {
         <div className="w-8 h-8 border-2 border-[#9333ea] border-t-transparent rounded-full animate-spin" />
       </div>
     )
+  }
+
+  // Two-Factor Authentication Section
+  if (activeSection === "2fa") {
+    return <TwoFactor onBack={() => setActiveSection(null)} />
+  }
+
+  // Connected Devices Section
+  if (activeSection === "devices") {
+    return <ConnectedDevices onBack={() => setActiveSection(null)} />
   }
 
   // Profile Edit Section
@@ -416,10 +428,7 @@ export default function SettingsPage() {
                 <Globe className="w-5 h-5 text-[#9CA3AF]" />
                 <span className="text-white">Idioma</span>
               </div>
-              <div className="flex items-center gap-2 text-[#9CA3AF]">
-                <span className="text-sm">Português</span>
-                <ChevronRight className="w-5 h-5" />
-              </div>
+              <span className="text-sm text-[#9CA3AF]">Português</span>
             </div>
           </div>
         </div>
@@ -428,7 +437,10 @@ export default function SettingsPage() {
         <div>
           <h2 className="text-sm font-semibold text-[#9CA3AF] mb-3 uppercase tracking-wider">Segurança</h2>
           <div className="space-y-2">
-            <div className="p-4 rounded-xl flex items-center justify-between bg-[#121826]">
+            <button
+              onClick={() => setActiveSection("2fa")}
+              className="w-full p-4 rounded-xl flex items-center justify-between bg-[#121826] hover:bg-[#1A2332] transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <Smartphone className="w-5 h-5 text-[#9CA3AF]" />
                 <div className="text-left">
@@ -437,9 +449,12 @@ export default function SettingsPage() {
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-[#6B7280]" />
-            </div>
+            </button>
 
-            <div className="p-4 rounded-xl flex items-center justify-between bg-[#121826]">
+            <button
+              onClick={() => setActiveSection("devices")}
+              className="w-full p-4 rounded-xl flex items-center justify-between bg-[#121826] hover:bg-[#1A2332] transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <Shield className="w-5 h-5 text-[#9CA3AF]" />
                 <div className="text-left">
@@ -448,7 +463,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-[#6B7280]" />
-            </div>
+            </button>
           </div>
         </div>
 

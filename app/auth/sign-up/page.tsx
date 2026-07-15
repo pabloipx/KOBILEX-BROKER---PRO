@@ -7,6 +7,7 @@ import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useEffect, Suspense } from "react"
 import { CheckCircle2, ChevronDown, Loader2, X } from "lucide-react"
+import { recordDeviceSession } from "@/lib/device-session"
 
 const COUNTRIES = [
   { name: "Brasil", code: "BR", dial: "+55" },
@@ -92,6 +93,8 @@ function SignUpForm() {
         console.error("[v0] Sign-in error:", signInError)
         throw new Error("Conta criada, mas houve erro ao entrar. Tente fazer login.")
       }
+
+      await recordDeviceSession()
 
       setSuccess(true)
       setTimeout(() => router.push("/trade"), 2000)

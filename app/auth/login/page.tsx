@@ -7,6 +7,7 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
+import { recordDeviceSession } from "@/lib/device-session"
 
 function Flag({ code, className }: { code: string; className?: string }) {
   return (
@@ -77,6 +78,9 @@ export default function LoginPage() {
         }
         throw new Error(signInError.message)
       }
+
+      // Registra este dispositivo/navegador para a tela "Dispositivos conectados".
+      await recordDeviceSession()
 
       router.push("/trade")
     } catch (err: unknown) {

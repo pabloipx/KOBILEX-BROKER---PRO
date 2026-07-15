@@ -22,7 +22,11 @@ import {
   TrendingDown,
   Target,
   Trophy,
+  Award,
+  Lock,
+  Check,
 } from "lucide-react"
+import { computeRank, RANKS, type RankProgress } from "@/lib/ranks"
 
 interface UserProfile {
   id: string
@@ -60,6 +64,7 @@ export default function ProfilePage() {
   const [balance, setBalance] = useState<UserBalance>({ balance_real: 0, balance_demo: 1000 })
   const [stats, setStats] = useState<TradeStats>({ total_trades: 0, wins: 0, losses: 0, total_profit: 0 })
   const [recentWithdrawals, setRecentWithdrawals] = useState<RecentWithdrawal[]>([])
+  const [rank, setRank] = useState<RankProgress>(() => computeRank(0, 0))
   const [loading, setLoading] = useState(true)
 
   const supabase = createBrowserClient(
@@ -115,6 +120,27 @@ export default function ProfilePage() {
             losses,
             total_profit,
           })
+        }
+
+        // --- RANK: total depositado (acumulado) + total de entradas reais ---
+        // Total depositado: soma de todos os depositos aprovados/concluidos.
+        const { data: depositsData } = await supabase
+          .from("deposits")
+          .select("amount, status")
+          .eq("user_id", user.id)
+          .in("status", ["approved", "completed"])
+
+        const totalDeposited = (depositsData || []).reduce((sum, d) => sum + Number(d.amount || 0), 0)
+
+        // Total de entradas reais: todas as operacoes da conta real (independente do resultado).
+        const { count: entriesCount } = await supabase
+          .from("trades")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("is_demo", false)
+
+        if (isMounted) {
+          setRank(computeRank(totalDeposited, entriesCount || 0))
         }
 
         // Load recent withdrawals (last 5)
@@ -238,6 +264,130 @@ export default function ProfilePage() {
               </span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Rank / Nivel */}
+      <div className="px-4 pt-5">
+        <div
+          className="rounded-2xl border p-5"
+          style={{ backgroundColor: "#121826", borderColor: `${rank.current.color}40` }}
+        >
+          {/* Cabecalho do rank atual */}
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${rank.current.color}22` }}
+              >
+                <Award className="w-6 h-6" style={{ color: rank.current.color }} />
+              </div>
+              <div>
+                <p className="text-[10px] text-[#6B7280] uppercase tracking-wide">Seu rank</p>
+                <p className="text-lg font-bold" style={{ color: rank.current.color }}>
+                  {rank.current.name}
+                </p>
+              </div>
+            </div>
+            {rank.next ? (
+              <div className="text-right">
+                <p className="text-[10px] text-[#6B7280] uppercase tracking-wide">Próximo</p>
+                <p className="text-sm font-semibold" style={{ color: rank.next.color }}>
+                  {rank.next.name}
+                </p>
+              </div>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ color: rank.current.color, backgroundColor: `${rank.current.color}22` }}>
+                Nível máximo
+              </span>
+            )}
+          </div>
+
+          {/* Escada de ranks */}
+          <div className="flex items-center gap-1.5 mb-5">
+            {RANKS.map((r) => {
+              const achieved = rank.current.id >= r.id
+              return (
+                <div key={r.id} className="flex-1 flex flex-col items-center gap-1.5">
+                  <div
+                    className="w-full h-1.5 rounded-full"
+                    style={{ backgroundColor: achieved ? r.color : "#1F2933" }}
+                  />
+                  <span
+                    className="text-[9px] font-medium"
+                    style={{ color: achieved ? r.color : "#4B5563" }}
+                  >
+                    {r.name}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+
+          {rank.next ? (
+            <>
+              {/* Meta de deposito */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Banknote className="w-3.5 h-3.5 text-[#9CA3AF]" />
+                    <span className="text-xs text-[#9CA3AF]">Depósito acumulado</span>
+                  </div>
+                  <span className="text-xs font-semibold text-white">
+                    R$ {formatCurrency(rank.totalDeposited)} / R$ {formatCurrency(rank.next.minDeposit)}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-[#0B0F14] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${rank.depositPct}%`, backgroundColor: rank.next.color }}
+                  />
+                </div>
+              </div>
+
+              {/* Meta de entradas */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-[#9CA3AF]" />
+                    <span className="text-xs text-[#9CA3AF]">Entradas realizadas</span>
+                  </div>
+                  <span className="text-xs font-semibold text-white">
+                    {rank.totalEntries} / {rank.next.minEntries}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-[#0B0F14] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${rank.entriesPct}%`, backgroundColor: rank.next.color }}
+                  />
+                </div>
+              </div>
+
+              {/* Resumo do que falta */}
+              <div className="flex items-center gap-2 rounded-xl p-3" style={{ backgroundColor: "#0B0F14" }}>
+                <Lock className="w-4 h-4 shrink-0" style={{ color: rank.next.color }} />
+                <p className="text-xs text-[#9CA3AF]">
+                  Para alcançar <span className="font-semibold" style={{ color: rank.next.color }}>{rank.next.name}</span>
+                  {rank.depositRemaining > 0 && (
+                    <> deposite mais <span className="font-semibold text-white">R$ {formatCurrency(rank.depositRemaining)}</span></>
+                  )}
+                  {rank.depositRemaining > 0 && rank.entriesRemaining > 0 && " e"}
+                  {rank.entriesRemaining > 0 && (
+                    <> faça mais <span className="font-semibold text-white">{rank.entriesRemaining}</span> {rank.entriesRemaining === 1 ? "entrada" : "entradas"}</>
+                  )}
+                  .
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl p-3" style={{ backgroundColor: "#0B0F14" }}>
+              <Check className="w-4 h-4 shrink-0" style={{ color: rank.current.color }} />
+              <p className="text-xs text-[#9CA3AF]">
+                Parabéns! Você atingiu o rank máximo com R$ {formatCurrency(rank.totalDeposited)} depositados e {rank.totalEntries} entradas.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

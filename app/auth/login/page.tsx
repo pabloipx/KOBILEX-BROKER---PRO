@@ -2,14 +2,24 @@
 
 import type React from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
-import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
+
+function Flag({ code, className }: { code: string; className?: string }) {
+  return (
+    <Image
+      src={`https://flagcdn.com/w40/${code.toLowerCase()}.png`}
+      alt={code}
+      width={24}
+      height={18}
+      className={className}
+      unoptimized
+    />
+  )
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -20,20 +30,20 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const supabase = createClient()
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    const checkSession = async () => {
+      const supabase = createClient()
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
         router.replace("/trade")
       } else {
         setIsCheckingSession(false)
       }
-    })
+    }
+    checkSession()
   }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-
     if (isLoading) return
 
     const trimmedEmail = email.trim().toLowerCase()
@@ -49,7 +59,6 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient()
-
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
         password: trimmedPassword,
@@ -79,110 +88,79 @@ export default function LoginPage() {
 
   if (isCheckingSession) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "#0B0F14" }}>
-        <div className="w-10 h-10 border-2 border-[#9333ea] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen w-full flex items-center justify-center bg-white">
+        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
+  const inputClass =
+    "w-full h-12 px-4 rounded-md bg-white text-gray-800 text-[15px] border border-gray-300 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+
   return (
-    <div className="min-h-screen w-full" style={{ backgroundColor: "#0B0F14" }}>
+    <div className="min-h-screen w-full bg-white flex flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 py-4">
+      <header className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-gray-50/60">
         <Link href="/" className="flex items-center">
-          <Image
-            src="/images/kodilex-logo.png"
-            alt="Kodilex Broker"
-            width={160}
-            height={40}
-            className="h-10 w-auto"
-            unoptimized
-          />
+          <Image src="/images/kodilex-logo.png" alt="Kodilex Broker" width={150} height={38} className="h-9 w-auto" unoptimized />
         </Link>
-        <Link href="/auth/sign-up">
-          <Button
-            variant="outline"
-            className="bg-transparent rounded-full px-6 h-10"
-            style={{ borderColor: "#9333ea", color: "#9333ea" }}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-gray-600 text-sm font-medium">
+            <Flag code="BR" className="rounded-full w-5 h-5 object-cover" />
+            Pt
+          </div>
+          <Link
+            href="/auth/sign-up"
+            className="rounded-md border border-blue-500 text-blue-600 hover:bg-blue-50 px-6 h-10 flex items-center font-medium text-sm transition-colors"
           >
-            Criar conta
-          </Button>
-        </Link>
+            Registrar-se
+          </Link>
+        </div>
       </header>
 
-      {/* Hero Section */}
-      <div className="px-5 pt-8 pb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">Bem-vindo de volta</h1>
-        <p className="text-gray-400 text-sm">Entre na sua conta para continuar operando</p>
-      </div>
-
       {/* Form */}
-      <div className="px-5 pb-8">
-        <form onSubmit={handleLogin} className="space-y-4">
-          {/* Email */}
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-white text-sm font-medium flex items-center gap-2">
-              <Mail className="w-4 h-4" style={{ color: "#9333ea" }} />
-              E-mail
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="Digite seu e-mail"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              disabled={isLoading}
-              className="text-white placeholder:text-gray-500 h-12 rounded-xl border-0 focus:ring-2 disabled:opacity-50"
-              style={{ backgroundColor: "#1a2332", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)" }}
-            />
-          </div>
+      <main className="flex-1 flex flex-col items-center px-5 py-10">
+        <h1 className="text-3xl font-semibold text-gray-500 mb-8 text-center">Entrar</h1>
 
-          {/* Senha */}
-          <div className="space-y-2">
-            <Label htmlFor="password" className="text-white text-sm font-medium flex items-center gap-2">
-              <Lock className="w-4 h-4" style={{ color: "#9333ea" }} />
-              Senha
-            </Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="Digite sua senha"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              disabled={isLoading}
-              className="text-white placeholder:text-gray-500 h-12 rounded-xl border-0 focus:ring-2 disabled:opacity-50"
-              style={{ backgroundColor: "#1a2332", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)" }}
-            />
-          </div>
+        <form onSubmit={handleLogin} className="w-full max-w-[420px] flex flex-col gap-4">
+          <input
+            type="email"
+            placeholder="E-mail"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            disabled={isLoading}
+            className={inputClass}
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            disabled={isLoading}
+            className={inputClass}
+          />
 
-          {/* Forgot Password */}
-          <div className="text-right">
-            <Link href="/auth/forgot-password" className="text-sm hover:underline" style={{ color: "#9333ea" }}>
+          <div className="text-right -mt-1">
+            <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">
               Esqueceu sua senha?
             </Link>
           </div>
 
-          {/* Error */}
           {error && (
-            <div
-              className="text-sm p-3 rounded-xl flex items-center gap-2"
-              style={{ color: "#EF4444", backgroundColor: "rgba(239, 68, 68, 0.1)" }}
-            >
-              <span className="text-red-500">!</span>
+            <div className="text-sm p-3 rounded-md flex items-center gap-2 text-red-600 bg-red-50 border border-red-200">
+              <span>⚠</span>
               {error}
             </div>
           )}
 
-          {/* Submit Button */}
-          <Button
+          <button
             type="submit"
-            className="w-full text-white h-14 rounded-xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
-            style={{ backgroundColor: "#9333ea", boxShadow: "0 4px 14px rgba(147, 51, 234, 0.4)" }}
             disabled={isLoading}
+            className="w-full h-14 rounded-md text-white font-semibold text-base bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {isLoading ? (
               <>
@@ -190,41 +168,18 @@ export default function LoginPage() {
                 Entrando...
               </>
             ) : (
-              <>
-                Entrar
-                <ArrowRight className="w-5 h-5" />
-              </>
+              "Entrar"
             )}
-          </Button>
+          </button>
 
-          {/* Sign Up Link */}
-          <p className="text-center text-gray-400 text-sm pt-4">
+          <p className="text-center text-gray-500 text-sm pt-2">
             Não tem uma conta?{" "}
-            <Link href="/auth/sign-up" className="font-semibold" style={{ color: "#9333ea" }}>
-              Cadastre-se grátis
+            <Link href="/auth/sign-up" className="font-semibold text-blue-600 hover:underline">
+              Registrar-se
             </Link>
           </p>
         </form>
-
-        {/* Trust Badge */}
-        <div
-          className="mt-8 p-4 rounded-xl"
-          style={{ backgroundColor: "rgba(147, 51, 234, 0.1)", border: "1px solid rgba(147, 51, 234, 0.3)" }}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "#9333ea" }}
-            >
-              <Lock className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="text-white font-semibold text-sm">Conexão Segura</p>
-              <p className="text-gray-400 text-xs">Seus dados estão protegidos</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      </main>
     </div>
   )
 }

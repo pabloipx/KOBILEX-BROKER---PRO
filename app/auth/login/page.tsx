@@ -30,15 +30,16 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getSession().then((res) => {
-      const session = res.data.session
-      if (session) {
+    const checkSession = async () => {
+      const supabase = createClient()
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
         router.replace("/trade")
       } else {
         setIsCheckingSession(false)
       }
-    })
+    }
+    checkSession()
   }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -85,19 +86,6 @@ export default function LoginPage() {
     }
   }
 
-  const handleGoogle = async () => {
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/trade` },
-      })
-      if (error) throw error
-    } catch {
-      setError("Login com Google indisponível no momento.")
-    }
-  }
-
   if (isCheckingSession) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-white">
@@ -111,13 +99,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full bg-white flex flex-col">
-      {/* Faixa lateral escura em degrade (decorativa) */}
-      <div
-        className="hidden md:block fixed left-0 top-0 h-full w-8 z-10"
-        style={{ background: "linear-gradient(180deg, #1a1035 0%, #3b0764 60%, #1a1035 100%)" }}
-        aria-hidden="true"
-      />
-
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-gray-50/60">
         <Link href="/" className="flex items-center">
@@ -189,22 +170,6 @@ export default function LoginPage() {
             ) : (
               "Entrar"
             )}
-          </button>
-
-          {/* Divisor social */}
-          <div className="flex items-center gap-3 my-1">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-gray-400 text-sm">ou use uma conta social</span>
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleGoogle}
-            className="w-full h-12 rounded-md border border-gray-300 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-3 text-gray-700 font-medium"
-          >
-            <Image src="https://www.google.com/favicon.ico" alt="Google" width={20} height={20} unoptimized />
-            Entrar com Google
           </button>
 
           <p className="text-center text-gray-500 text-sm pt-2">

@@ -107,19 +107,6 @@ function SignUpForm() {
     }
   }
 
-  const handleGoogle = async () => {
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/trade` },
-      })
-      if (error) throw error
-    } catch {
-      setError("Login com Google indisponível no momento.")
-    }
-  }
-
   if (success) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-white">
@@ -143,13 +130,6 @@ function SignUpForm() {
 
   return (
     <div className="min-h-screen w-full bg-white flex flex-col">
-      {/* Faixa lateral escura em degrade (decorativa) */}
-      <div
-        className="hidden md:block fixed left-0 top-0 h-full w-8 z-10"
-        style={{ background: "linear-gradient(180deg, #1a1035 0%, #3b0764 60%, #1a1035 100%)" }}
-        aria-hidden="true"
-      />
-
       {/* Modal de Termos */}
       {showTerms && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -321,22 +301,6 @@ function SignUpForm() {
             ) : (
               "Abrir uma conta grátis"
             )}
-          </button>
-
-          {/* Divisor social */}
-          <div className="flex items-center gap-3 my-1">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-gray-400 text-sm">ou use uma conta social</span>
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleGoogle}
-            className="w-full h-12 rounded-md border border-gray-300 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-3 text-gray-700 font-medium"
-          >
-            <Image src="https://www.google.com/favicon.ico" alt="Google" width={20} height={20} unoptimized />
-            Inscreva-se com Google
           </button>
 
           <p className="text-center text-gray-500 text-sm pt-2">

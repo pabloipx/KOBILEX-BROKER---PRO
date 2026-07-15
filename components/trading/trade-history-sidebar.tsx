@@ -16,11 +16,13 @@ interface Trade {
   timeframe: number
   entry_time: string
   expiry_time: string
+  is_demo: boolean
 }
 
 interface TradeHistorySidebarProps {
   userId: string
   refreshTrigger?: number
+  isDemo: boolean
 }
 
 function sortTrades(trades: Trade[]): Trade[] {
@@ -38,7 +40,7 @@ function sortTrades(trades: Trade[]): Trade[] {
   })
 }
 
-export function TradeHistorySidebar({ userId, refreshTrigger }: TradeHistorySidebarProps) {
+export function TradeHistorySidebar({ userId, refreshTrigger, isDemo }: TradeHistorySidebarProps) {
   const [trades, setTrades] = useState<Trade[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(Date.now())
@@ -62,6 +64,7 @@ export function TradeHistorySidebar({ userId, refreshTrigger }: TradeHistorySide
           .from("trades")
           .select("*")
           .eq("user_id", userId)
+          .eq("is_demo", isDemo)
           .order("created_at", { ascending: false })
           .limit(20)
 
@@ -79,7 +82,7 @@ export function TradeHistorySidebar({ userId, refreshTrigger }: TradeHistorySide
         fetchingRef.current = false
       }
     },
-    [userId],
+    [userId, isDemo],
   )
 
   useEffect(() => {
@@ -88,6 +91,12 @@ export function TradeHistorySidebar({ userId, refreshTrigger }: TradeHistorySide
       mountedRef.current = false
     }
   }, [])
+
+  // Ao trocar de conta (demo/real), esvazia a lista para não misturar históricos.
+  useEffect(() => {
+    setTrades([])
+    setIsLoading(true)
+  }, [isDemo])
 
   useEffect(() => {
     if (!userId) return
@@ -111,12 +120,15 @@ export function TradeHistorySidebar({ userId, refreshTrigger }: TradeHistorySide
 
           if (payload.eventType === "INSERT") {
             const newTrade = payload.new as Trade
+            // Ignora trades do outro tipo de conta (demo vs real).
+            if (newTrade.is_demo !== isDemo) return
             setTrades((prev) => {
               const updated = [newTrade, ...prev.filter((t) => t.id !== newTrade.id)]
               return sortTrades(updated)
             })
           } else if (payload.eventType === "UPDATE") {
             const updatedTrade = payload.new as Trade
+            if (updatedTrade.is_demo !== isDemo) return
             setTrades((prev) => {
               const updated = prev.map((t) => (t.id === updatedTrade.id ? updatedTrade : t))
               return sortTrades(updated)

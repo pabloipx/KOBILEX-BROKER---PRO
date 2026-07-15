@@ -1083,7 +1083,11 @@ export default function TradePage() {
 
         {/* History below buttons */}
         <div className="flex-1 min-h-0 overflow-hidden border-t border-[#1a1a1e]">
-          <TradeHistorySidebar userId={user?.id || ""} refreshTrigger={historyRefresh} />
+          <TradeHistorySidebar
+            userId={user?.id || ""}
+            refreshTrigger={historyRefresh}
+            isDemo={accountType === "demo"}
+          />
         </div>
       </div>
 

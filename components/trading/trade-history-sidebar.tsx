@@ -256,7 +256,7 @@ export function TradeHistorySidebar({ userId, refreshTrigger, isDemo }: TradeHis
             <RefreshCw className={`w-4 h-4 text-white/60 ${isRefreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
-        <p className="text-white/40 text-sm text-center py-6">Nenhuma opera��ão ainda</p>
+        <p className="text-white/40 text-sm text-center py-6">Nenhuma operação ainda</p>
       </div>
     )
   }
@@ -267,7 +267,7 @@ export function TradeHistorySidebar({ userId, refreshTrigger, isDemo }: TradeHis
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 lg:gap-2">
             <Clock className="w-3 h-3 lg:w-4 lg:h-4 text-white/60" />
-            <h3 className="text-white font-semibold text-[10px] lg:text-sm">Historico</h3>
+            <h3 className="text-white font-semibold text-[10px] lg:text-sm">Histórico</h3>
             <span className="text-white/40 text-[9px] lg:text-xs">({trades.length})</span>
           </div>
           <button

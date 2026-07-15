@@ -1162,7 +1162,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           backgroundRepeat: "no-repeat",
           backgroundPosition: "center 45%",
           backgroundSize: "55% auto",
-          opacity: 0.32,
+          opacity: 0.24,
         }}
       />
       {/* Vinheta sutil para dar profundidade */}

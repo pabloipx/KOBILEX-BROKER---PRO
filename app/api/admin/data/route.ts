@@ -380,7 +380,7 @@ export async function POST(req: NextRequest) {
               commission_percent: commissionPercent,
               commission_amount: commissionAmount,
               created_at: new Date().toISOString(),
-            }).catch(() => {})
+            })
           }
         }
       } catch (affiliateError) {

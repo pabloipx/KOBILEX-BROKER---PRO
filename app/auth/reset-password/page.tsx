@@ -25,13 +25,13 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const supabase = createClient()
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       if (event === "PASSWORD_RECOVERY" || session) {
         setValidSession(true)
       }
     })
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
       setValidSession(!!session)
     })
 

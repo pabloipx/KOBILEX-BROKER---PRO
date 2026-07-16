@@ -41,7 +41,7 @@ export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
 
       // Get user emails
       const withdrawalsWithEmails = await Promise.all(
-        (data || []).map(async (withdrawal) => {
+        (data || []).map(async (withdrawal: any) => {
           const { data: profile } = await supabase
             .from("profiles")
             .select("email")

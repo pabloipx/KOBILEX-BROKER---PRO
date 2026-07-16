@@ -346,7 +346,7 @@ export default function TradePage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
+    } = supabase.auth.onAuthStateChange((event: any) => {
       if (event === "SIGNED_OUT" && mountedRef.current) {
         router.replace("/auth/login")
       }
@@ -374,7 +374,7 @@ export default function TradePage() {
 
       // Filter only truly expired trades
       const now = Date.now()
-      const expiredTrades = pendingTrades.filter((t) => {
+      const expiredTrades = pendingTrades.filter((t: any) => {
         const entryMs = new Date(t.entry_time).getTime()
         const expiryMs = (t.timeframe || 60) * 1000
         return now >= entryMs + expiryMs
@@ -925,7 +925,7 @@ export default function TradePage() {
         {/* Chart Area - Candlestick chart with native trade lines + 24h history */}
         <div className="flex-1 min-h-0 relative">
           <div className="absolute inset-0">
-            {isTraderIAActive && <TraderIAWatermark />}
+            {isTraderIAActive && <TraderIAWatermark isActive={isTraderIAActive} />}
             <MarketChart
               candles={candles || []}
               currentPrice={price || 0}

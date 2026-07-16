@@ -40,7 +40,7 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
 
       // Get user emails
       const depositsWithEmails = await Promise.all(
-        (data || []).map(async (deposit) => {
+        (data || []).map(async (deposit: any) => {
           const { data: profile } = await supabase
             .from("profiles")
             .select("email")

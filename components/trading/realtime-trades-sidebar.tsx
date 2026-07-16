@@ -60,7 +60,7 @@ export function RealtimeTradesSidebar({ userId }: RealtimeTradesSidebarProps) {
           table: "trades",
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
+        (payload: any) => {
           setTrades((prev) => [payload.new as Trade, ...prev].slice(0, 10))
         },
       )
@@ -72,7 +72,7 @@ export function RealtimeTradesSidebar({ userId }: RealtimeTradesSidebarProps) {
           table: "trades",
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
+        (payload: any) => {
           setTrades((prev) => prev.map((t) => (t.id === payload.new.id ? (payload.new as Trade) : t)))
         },
       )

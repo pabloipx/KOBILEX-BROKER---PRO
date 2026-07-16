@@ -115,7 +115,7 @@ export function TradeHistorySidebar({ userId, refreshTrigger, isDemo }: TradeHis
           table: "trades",
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
+        (payload: any) => {
           if (!mountedRef.current) return
 
           if (payload.eventType === "INSERT") {

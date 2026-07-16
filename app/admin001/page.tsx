@@ -40,7 +40,7 @@ export default function AdminLoginPage() {
         <div className="text-center mb-8">
           <Image
             src="/images/kodilex-logo.png"
-            alt="Kodilex Broker"
+            alt="URYN BROKER"
             width={200}
             height={50}
             className="mx-auto mb-4"
@@ -84,7 +84,7 @@ export default function AdminLoginPage() {
           <Button
             type="submit"
             disabled={isLoading || !email || !password}
-            className="w-full h-12 bg-gradient-to-r from-[#9333ea] to-[#a855f7] hover:from-[#7e22ce] hover:to-[#9333ea] text-white font-semibold"
+            className="w-full h-12 bg-gradient-to-r from-[#f97316] to-[#fb923c] hover:from-[#c2410c] hover:to-[#f97316] text-white font-semibold"
           >
             {isLoading ? "Entrando..." : "Entrar"}
           </Button>

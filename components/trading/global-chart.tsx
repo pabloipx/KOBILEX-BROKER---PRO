@@ -255,7 +255,7 @@ export function GlobalChart({
         const isBullish = candle.close >= candle.open
 
         // Cores profissionais estilo trading
-        const bullColor = "#a855f7"
+        const bullColor = "#fb923c"
         const bearColor = "#ef4444"
         const color = isBullish ? bullColor : bearColor
 
@@ -275,8 +275,8 @@ export function GlobalChart({
         // Gradiente sutil no corpo
         const bodyGradient = ctx.createLinearGradient(x - candleWidth / 2, bodyTop, x + candleWidth / 2, bodyTop)
         if (isBullish) {
-          bodyGradient.addColorStop(0, "#a855f7")
-          bodyGradient.addColorStop(1, "#9333ea")
+          bodyGradient.addColorStop(0, "#fb923c")
+          bodyGradient.addColorStop(1, "#f97316")
         } else {
           bodyGradient.addColorStop(0, "#ef4444")
           bodyGradient.addColorStop(1, "#dc2626")
@@ -286,7 +286,7 @@ export function GlobalChart({
         ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight)
 
         // Borda sutil
-        ctx.strokeStyle = isBullish ? "#7e22ce" : "#b91c1c"
+        ctx.strokeStyle = isBullish ? "#c2410c" : "#b91c1c"
         ctx.lineWidth = 0.5
         ctx.strokeRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight)
       }
@@ -308,7 +308,7 @@ export function GlobalChart({
       const priceBoxHeight = 20
 
       // Fundo com bordas arredondadas
-      ctx.fillStyle = "#a855f7"
+      ctx.fillStyle = "#fb923c"
       ctx.beginPath()
       const boxX = chartPadding.left + chartWidth + 3
       const boxY = currentPriceY - priceBoxHeight / 2
@@ -344,7 +344,7 @@ export function GlobalChart({
 
       if (entryPrice) {
         const entryY = priceToY(entryPrice)
-        const entryColor = direction === "CALL" ? "#a855f7" : "#ef4444"
+        const entryColor = direction === "CALL" ? "#fb923c" : "#ef4444"
 
         ctx.strokeStyle = entryColor
         ctx.lineWidth = 1.5

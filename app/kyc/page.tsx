@@ -238,7 +238,7 @@ export default function KYCPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
       </div>
     )
   }
@@ -257,19 +257,19 @@ export default function KYCPage() {
         </header>
 
         <div className="p-4 max-w-lg mx-auto">
-          <Card className="border-green-500/30 bg-purple-500/5">
+          <Card className="border-green-500/30 bg-orange-500/5">
             <CardContent className="pt-6">
               <div className="text-center py-8">
-                <div className="w-20 h-20 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="h-10 w-10 text-purple-500" />
+                <div className="w-20 h-20 rounded-full bg-orange-500/20 flex items-center justify-center mx-auto mb-6">
+                  <CheckCircle className="h-10 w-10 text-orange-500" />
                 </div>
-                <h2 className="text-2xl font-bold text-purple-500 mb-2">Conta Verificada</h2>
+                <h2 className="text-2xl font-bold text-orange-500 mb-2">Conta Verificada</h2>
                 <p className="text-muted-foreground mb-6">
                   Sua conta foi verificada com sucesso! Você tem acesso completo a todas as funcionalidades, incluindo
                   saques.
                 </p>
                 <div className="space-y-3">
-                  <Button onClick={() => router.push("/withdraw")} className="w-full bg-purple-600 hover:bg-purple-700">
+                  <Button onClick={() => router.push("/withdraw")} className="w-full bg-orange-600 hover:bg-orange-700">
                     Fazer Saque
                   </Button>
                   <Button onClick={() => router.push("/trade")} variant="outline" className="w-full">
@@ -300,11 +300,11 @@ export default function KYCPage() {
       <div className="p-4 max-w-lg mx-auto space-y-6">
         {/* Success Message */}
         {success && (
-          <Card className="border-green-500 bg-purple-500/10">
+          <Card className="border-green-500 bg-orange-500/10">
             <CardContent className="pt-6">
               <div className="text-center">
-                <CheckCircle className="h-12 w-12 text-purple-500 mx-auto mb-3" />
-                <p className="text-purple-500 font-semibold">Documentos enviados com sucesso!</p>
+                <CheckCircle className="h-12 w-12 text-orange-500 mx-auto mb-3" />
+                <p className="text-orange-500 font-semibold">Documentos enviados com sucesso!</p>
                 <p className="text-muted-foreground text-sm mt-2">Aguarde a análise em até 24 horas.</p>
               </div>
             </CardContent>
@@ -327,7 +327,7 @@ export default function KYCPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              {kycStatus === "pending" && <Clock className="h-5 w-5 text-purple-500" />}
+              {kycStatus === "pending" && <Clock className="h-5 w-5 text-orange-500" />}
               {kycStatus === "rejected" && <XCircle className="h-5 w-5 text-red-500" />}
               {kycStatus === "unverified" && <AlertTriangle className="h-5 w-5 text-orange-500" />}
               Status da Verificação
@@ -336,8 +336,8 @@ export default function KYCPage() {
           <CardContent>
             {kycStatus === "pending" && (
               <div className="text-center py-4">
-                <Clock className="h-16 w-16 text-purple-500 mx-auto mb-4" />
-                <p className="text-purple-500 font-semibold text-lg">Em Análise</p>
+                <Clock className="h-16 w-16 text-orange-500 mx-auto mb-4" />
+                <p className="text-orange-500 font-semibold text-lg">Em Análise</p>
                 <p className="text-muted-foreground mt-2">
                   Seus documentos foram enviados e estão sendo analisados. Aguarde a aprovação em até 24 horas.
                 </p>
@@ -396,7 +396,7 @@ export default function KYCPage() {
                       className="w-full h-48 object-cover rounded-lg"
                     />
                     {documentFrontPath && (
-                      <div className="absolute top-2 right-2 bg-purple-500 rounded-full p-1">
+                      <div className="absolute top-2 right-2 bg-orange-500 rounded-full p-1">
                         <CheckCircle className="h-4 w-4 text-white" />
                       </div>
                     )}
@@ -458,7 +458,7 @@ export default function KYCPage() {
                       className="w-full h-48 object-cover rounded-lg"
                     />
                     {documentBackPath && (
-                      <div className="absolute top-2 right-2 bg-purple-500 rounded-full p-1">
+                      <div className="absolute top-2 right-2 bg-orange-500 rounded-full p-1">
                         <CheckCircle className="h-4 w-4 text-white" />
                       </div>
                     )}
@@ -520,7 +520,7 @@ export default function KYCPage() {
                       className="w-full h-48 object-cover rounded-lg"
                     />
                     {selfiePath && (
-                      <div className="absolute top-2 right-2 bg-purple-500 rounded-full p-1">
+                      <div className="absolute top-2 right-2 bg-orange-500 rounded-full p-1">
                         <CheckCircle className="h-4 w-4 text-white" />
                       </div>
                     )}
@@ -556,7 +556,7 @@ export default function KYCPage() {
 
             {/* Submit Button */}
             <Button
-              className="w-full h-14 bg-purple-600 hover:bg-purple-700 text-lg font-semibold"
+              className="w-full h-14 bg-orange-600 hover:bg-orange-700 text-lg font-semibold"
               onClick={handleSubmit}
               disabled={submitting || !documentFrontPath || !documentBackPath || !selfiePath}
             >
@@ -575,9 +575,9 @@ export default function KYCPage() {
 
             {/* Progress indicator */}
             <div className="flex justify-center gap-2 pt-2">
-              <div className={`h-2 w-16 rounded-full ${documentFrontPath ? "bg-purple-500" : "bg-muted"}`} />
-              <div className={`h-2 w-16 rounded-full ${documentBackPath ? "bg-purple-500" : "bg-muted"}`} />
-              <div className={`h-2 w-16 rounded-full ${selfiePath ? "bg-purple-500" : "bg-muted"}`} />
+              <div className={`h-2 w-16 rounded-full ${documentFrontPath ? "bg-orange-500" : "bg-muted"}`} />
+              <div className={`h-2 w-16 rounded-full ${documentBackPath ? "bg-orange-500" : "bg-muted"}`} />
+              <div className={`h-2 w-16 rounded-full ${selfiePath ? "bg-orange-500" : "bg-muted"}`} />
             </div>
             <p className="text-center text-sm text-muted-foreground">
               {[documentFrontPath, documentBackPath, selfiePath].filter(Boolean).length}/3 documentos enviados

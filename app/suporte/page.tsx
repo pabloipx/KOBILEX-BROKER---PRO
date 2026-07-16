@@ -10,7 +10,7 @@ const supportFlow: Record<
   { message: string; options?: { label: string; value: string }[]; input?: boolean; inputPlaceholder?: string }
 > = {
   START: {
-    message: `👋 Olá! Bem-vindo ao suporte da Kodilex Broker.
+    message: `👋 Olá! Bem-vindo ao suporte da URYN BROKER.
 
 Antes de começarmos, como posso te chamar?`,
     input: true,
@@ -669,12 +669,12 @@ export default function SupportPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#a855f7] to-[#9333ea] flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#fb923c] to-[#f97316] flex items-center justify-center">
             <MessageCircle className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-white font-semibold">Suporte Kodilex Broker</h1>
-            <p className="text-xs text-[#a855f7]">{isTyping ? "Digitando..." : "Online agora"}</p>
+            <h1 className="text-white font-semibold">Suporte URYN BROKER</h1>
+            <p className="text-xs text-[#fb923c]">{isTyping ? "Digitando..." : "Online agora"}</p>
           </div>
         </div>
       </header>
@@ -687,7 +687,7 @@ export default function SupportPage() {
             <div key={message.id}>
               {message.type === "bot" && (
                 <div className="flex gap-2 items-start">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#a855f7] to-[#9333ea] flex items-center justify-center flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#fb923c] to-[#f97316] flex items-center justify-center flex-shrink-0">
                     <MessageCircle className="w-4 h-4 text-white" />
                   </div>
                   <div className="flex-1 max-w-[85%]">
@@ -695,7 +695,7 @@ export default function SupportPage() {
                       <p className="text-gray-200 text-sm whitespace-pre-line leading-relaxed">{message.content}</p>
 
                       {message.showTimer && (
-                        <div className="mt-3 flex items-center gap-2 text-[#a855f7]">
+                        <div className="mt-3 flex items-center gap-2 text-[#fb923c]">
                           <Clock className="w-4 h-4 animate-pulse" />
                           <span className="text-sm font-mono">{formatTime(analysisTimer)}</span>
                           <span className="text-xs text-gray-400">Analisando...</span>
@@ -709,7 +709,7 @@ export default function SupportPage() {
                           <button
                             key={option.value}
                             onClick={() => handleOptionClick(option)}
-                            className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-200 bg-[#0f1419] hover:bg-[#a855f7]/20 border border-[#30363D] hover:border-[#a855f7]/50 transition-all duration-200 active:scale-[0.98]"
+                            className="w-full text-left px-4 py-3 rounded-xl text-sm text-gray-200 bg-[#0f1419] hover:bg-[#fb923c]/20 border border-[#30363D] hover:border-[#fb923c]/50 transition-all duration-200 active:scale-[0.98]"
                           >
                             {option.label}
                           </button>
@@ -722,7 +722,7 @@ export default function SupportPage() {
 
               {message.type === "user" && (
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3 bg-gradient-to-r from-[#a855f7] to-[#9333ea]">
+                  <div className="max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3 bg-gradient-to-r from-[#fb923c] to-[#f97316]">
                     <p className="text-white text-sm">{message.content}</p>
                   </div>
                 </div>
@@ -733,7 +733,7 @@ export default function SupportPage() {
 
         {isTyping && (
           <div className="flex gap-2 items-start">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#a855f7] to-[#9333ea] flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#fb923c] to-[#f97316] flex items-center justify-center flex-shrink-0">
               <MessageCircle className="w-4 h-4 text-white" />
             </div>
             <div className="rounded-2xl rounded-tl-sm px-4 py-3 bg-[#1a2332]">
@@ -758,13 +758,13 @@ export default function SupportPage() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleInputSubmit()}
               placeholder={lastBotMessage?.inputPlaceholder || "Digite aqui..."}
-              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-xl px-4 py-3 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-[#a855f7] transition-colors"
+              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-xl px-4 py-3 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-[#fb923c] transition-colors"
               autoFocus
             />
             <Button
               onClick={handleInputSubmit}
               disabled={!inputValue.trim()}
-              className="bg-gradient-to-r from-[#a855f7] to-[#9333ea] hover:opacity-90 text-white px-4 rounded-xl disabled:opacity-50"
+              className="bg-gradient-to-r from-[#fb923c] to-[#f97316] hover:opacity-90 text-white px-4 rounded-xl disabled:opacity-50"
             >
               <Send className="w-5 h-5" />
             </Button>

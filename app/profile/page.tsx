@@ -177,7 +177,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0B0F14" }}>
-        <div className="w-8 h-8 border-2 border-[#9333ea] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[#f97316] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -227,12 +227,12 @@ export default function ProfilePage() {
       {/* Hero / User card */}
       <div className="px-4 pt-6">
         <div
-          className="relative overflow-hidden rounded-2xl border border-[#9333ea]/20 p-6"
-          style={{ background: "linear-gradient(135deg, #9333ea22 0%, #121826 60%)" }}
+          className="relative overflow-hidden rounded-2xl border border-[#f97316]/20 p-6"
+          style={{ background: "linear-gradient(135deg, #f9731622 0%, #121826 60%)" }}
         >
           <div className="flex items-center gap-4">
             <div className="relative">
-              <div className="w-20 h-20 rounded-full flex items-center justify-center border-2 border-[#9333ea]/40 bg-[#0B0F14] overflow-hidden">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center border-2 border-[#f97316]/40 bg-[#0B0F14] overflow-hidden">
                 {profile?.avatar_url ? (
                   <img
                     src={profile.avatar_url || "/placeholder.svg"}
@@ -240,12 +240,12 @@ export default function ProfilePage() {
                     className="w-full h-full rounded-full object-cover"
                   />
                 ) : (
-                  <span className="text-2xl font-bold text-[#9333ea]">{initials}</span>
+                  <span className="text-2xl font-bold text-[#f97316]">{initials}</span>
                 )}
               </div>
               {profile?.is_verified && (
                 <span className="absolute -bottom-1 -right-1 rounded-full bg-[#0B0F14] p-0.5">
-                  <BadgeCheck className="w-6 h-6 text-[#9333ea]" fill="#9333ea" stroke="#0B0F14" />
+                  <BadgeCheck className="w-6 h-6 text-[#f97316]" fill="#f97316" stroke="#0B0F14" />
                 </span>
               )}
             </div>
@@ -255,7 +255,7 @@ export default function ProfilePage() {
               <span
                 className={`inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-xs font-medium ${
                   profile?.is_verified
-                    ? "bg-[#9333ea]/20 text-[#c084fc]"
+                    ? "bg-[#f97316]/20 text-[#fdba74]"
                     : "bg-[#374151]/40 text-[#9CA3AF]"
                 }`}
               >
@@ -396,7 +396,7 @@ export default function ProfilePage() {
         <div className="rounded-2xl border border-[#1F2933] p-5" style={{ backgroundColor: "#121826" }}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-[#9333ea]" />
+              <Trophy className="w-4 h-4 text-[#f97316]" />
               <span className="text-sm font-semibold text-white">Desempenho (conta real)</span>
             </div>
             <span className="text-xs text-[#6B7280]">{stats.total_trades} operações</span>
@@ -413,7 +413,7 @@ export default function ProfilePage() {
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${winRate}%`,
-                  background: "linear-gradient(90deg, #9333ea, #c084fc)",
+                  background: "linear-gradient(90deg, #f97316, #fdba74)",
                 }}
               />
             </div>
@@ -437,7 +437,7 @@ export default function ProfilePage() {
             </div>
             <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "#0B0F14" }}>
               <div className="flex items-center justify-center gap-1 mb-1">
-                <Target className="w-3.5 h-3.5 text-[#9333ea]" />
+                <Target className="w-3.5 h-3.5 text-[#f97316]" />
                 <span className="text-[10px] text-[#9CA3AF] uppercase tracking-wide">Lucro</span>
               </div>
               <p className={`text-lg font-bold ${stats.total_profit >= 0 ? "text-[#22c55e]" : "text-[#EF4444]"}`}>
@@ -454,7 +454,7 @@ export default function ProfilePage() {
         <div className="grid grid-cols-2 gap-3">
           <div className="p-4 rounded-2xl border border-[#1F2933]" style={{ backgroundColor: "#121826" }}>
             <div className="flex items-center gap-2 mb-2">
-              <Wallet className="w-4 h-4 text-[#9333ea]" />
+              <Wallet className="w-4 h-4 text-[#f97316]" />
               <span className="text-xs text-[#9CA3AF]">Saldo Real</span>
             </div>
             <p className="text-xl font-bold text-white">R$ {formatCurrency(balance.balance_real)}</p>
@@ -473,10 +473,10 @@ export default function ProfilePage() {
       <div className="px-4 pt-6">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <HandCoins className="w-4 h-4 text-[#9333ea]" />
+            <HandCoins className="w-4 h-4 text-[#f97316]" />
             <h3 className="text-base font-semibold text-white">Histórico de saques</h3>
           </div>
-          <Link href="/transactions" className="flex items-center gap-1 text-xs font-medium text-[#c084fc] active:opacity-70">
+          <Link href="/transactions" className="flex items-center gap-1 text-xs font-medium text-[#fdba74] active:opacity-70">
             Ver tudo
             <ChevronRight className="w-4 h-4" />
           </Link>
@@ -491,7 +491,7 @@ export default function ProfilePage() {
               <HandCoins className="w-7 h-7 text-[#4B5563]" />
             </div>
             <p className="text-[#9CA3AF] text-sm">Nenhum saque ainda</p>
-            <Link href="/withdraw" className="mt-3 inline-block text-sm font-medium text-[#c084fc] active:opacity-70">
+            <Link href="/withdraw" className="mt-3 inline-block text-sm font-medium text-[#fdba74] active:opacity-70">
               Solicitar saque
             </Link>
           </div>
@@ -506,8 +506,8 @@ export default function ProfilePage() {
                   className="flex items-center gap-3 p-3 rounded-xl border border-[#1F2933]"
                   style={{ backgroundColor: "#121826" }}
                 >
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-[#9333ea]/15">
-                    <HandCoins className="w-5 h-5 text-[#9333ea]" />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-[#f97316]/15">
+                    <HandCoins className="w-5 h-5 text-[#f97316]" />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -543,8 +543,8 @@ export default function ProfilePage() {
           <div className="p-5 rounded-2xl border border-[#1F2933] active:scale-[0.99] transition-transform" style={{ backgroundColor: "#121826" }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-[#9333ea]/15 flex items-center justify-center">
-                  <Banknote className="w-5 h-5 text-[#9333ea]" />
+                <div className="w-11 h-11 rounded-xl bg-[#f97316]/15 flex items-center justify-center">
+                  <Banknote className="w-5 h-5 text-[#f97316]" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">Depósito</h3>
@@ -577,20 +577,20 @@ export default function ProfilePage() {
         {/* Invite */}
         <Link href="/afiliados" className="block">
           <div
-            className="p-5 rounded-2xl border border-[#9333ea]/30 active:scale-[0.99] transition-transform"
-            style={{ background: "linear-gradient(135deg, #9333ea18 0%, #121826 100%)" }}
+            className="p-5 rounded-2xl border border-[#f97316]/30 active:scale-[0.99] transition-transform"
+            style={{ background: "linear-gradient(135deg, #f9731618 0%, #121826 100%)" }}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-[#9333ea]/20 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-[#9333ea]" />
+                <div className="w-11 h-11 rounded-xl bg-[#f97316]/20 flex items-center justify-center">
+                  <Users className="w-5 h-5 text-[#f97316]" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">Convide amigos</h3>
                   <p className="text-[#6B7280] text-xs">Indique e ganhe comissões!</p>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#9333ea]" />
+              <ChevronRight className="w-5 h-5 text-[#f97316]" />
             </div>
           </div>
         </Link>

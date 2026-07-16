@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
         <Link href="/" className="flex items-center">
           <Image
             src="/images/kodilex-logo.png"
-            alt="Kodilex Broker"
+            alt="URYN BROKER"
             width={160}
             height={40}
             className="h-10 w-auto"
@@ -73,7 +73,7 @@ export default function ForgotPasswordPage() {
           <Button
             variant="outline"
             className="bg-transparent rounded-full px-6 h-10"
-            style={{ borderColor: "#9333ea", color: "#9333ea" }}
+            style={{ borderColor: "#f97316", color: "#f97316" }}
           >
             Entrar
           </Button>
@@ -98,7 +98,7 @@ export default function ForgotPasswordPage() {
 
           <div
             className="mt-6 p-4 rounded-xl"
-            style={{ backgroundColor: "rgba(147, 51, 234, 0.1)", border: "1px solid rgba(147, 51, 234, 0.3)" }}
+            style={{ backgroundColor: "rgba(249, 115, 22, 0.1)", border: "1px solid rgba(249, 115, 22, 0.3)" }}
           >
             <p className="text-gray-400 text-xs leading-relaxed">
               Não recebeu? Verifique a caixa de spam ou tente novamente em alguns minutos.
@@ -112,13 +112,13 @@ export default function ForgotPasswordPage() {
             }}
             variant="outline"
             className="w-full bg-transparent h-12 rounded-xl mt-6"
-            style={{ borderColor: "#9333ea", color: "#9333ea" }}
+            style={{ borderColor: "#f97316", color: "#f97316" }}
           >
             Enviar para outro e-mail
           </Button>
 
           <Link href="/auth/login" className="block">
-            <Button className="w-full text-white h-12 rounded-xl mt-3" style={{ backgroundColor: "#9333ea" }}>
+            <Button className="w-full text-white h-12 rounded-xl mt-3" style={{ backgroundColor: "#f97316" }}>
               Voltar para o login
             </Button>
           </Link>
@@ -138,7 +138,7 @@ export default function ForgotPasswordPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-white text-sm font-medium flex items-center gap-2">
-                  <Mail className="w-4 h-4" style={{ color: "#9333ea" }} />
+                  <Mail className="w-4 h-4" style={{ color: "#f97316" }} />
                   E-mail
                 </Label>
                 <Input
@@ -168,7 +168,7 @@ export default function ForgotPasswordPage() {
               <Button
                 type="submit"
                 className="w-full text-white h-14 rounded-xl font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
-                style={{ backgroundColor: "#9333ea", boxShadow: "0 4px 14px rgba(147, 51, 234, 0.4)" }}
+                style={{ backgroundColor: "#f97316", boxShadow: "0 4px 14px rgba(249, 115, 22, 0.4)" }}
                 disabled={isLoading}
               >
                 {isLoading ? (

@@ -579,7 +579,7 @@ export default function AdminDashboardClient() {
         <button onClick={() => setSidebarOpen(true)}>
           <Menu className="w-6 h-6 text-white" />
         </button>
-        <Image src="/images/kodilex-logo.png" alt="Kodilex Broker" width={120} height={30} />
+        <Image src="/images/kodilex-logo.png" alt="URYN BROKER" width={120} height={30} />
         <button onClick={handleLogout}>
           <LogOut className="w-6 h-6 text-red-500" />
         </button>
@@ -590,7 +590,7 @@ export default function AdminDashboardClient() {
         <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setSidebarOpen(false)}>
           <div className="w-64 h-full bg-[#0B0F14] border-r border-[#1E2633] p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-8">
-              <Image src="/images/kodilex-logo.png" alt="Kodilex Broker" width={120} height={30} />
+              <Image src="/images/kodilex-logo.png" alt="URYN BROKER" width={120} height={30} />
               <button onClick={() => setSidebarOpen(false)}>
                 <X className="w-6 h-6 text-white" />
               </button>
@@ -604,7 +604,7 @@ export default function AdminDashboardClient() {
                     setSidebarOpen(false)
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
-                    activeTab === item.id ? "bg-purple-500/20 text-purple-500" : "text-gray-400 hover:bg-[#1A1F2E]"
+                    activeTab === item.id ? "bg-orange-500/20 text-orange-500" : "text-gray-400 hover:bg-[#1A1F2E]"
                   }`}
                 >
                   <item.icon className="w-5 h-5" />
@@ -625,7 +625,7 @@ export default function AdminDashboardClient() {
         {/* Desktop Sidebar */}
         <div className="hidden lg:flex lg:flex-col w-64 min-h-screen border-r border-[#1E2633] p-4">
           <div className="mb-8">
-            <Image src="/images/kodilex-logo.png" alt="Kodilex Broker" width={150} height={40} />
+            <Image src="/images/kodilex-logo.png" alt="URYN BROKER" width={150} height={40} />
             <p className="text-gray-400 text-sm mt-2">Painel Admin</p>
           </div>
           <nav className="space-y-2 flex-1">
@@ -634,7 +634,7 @@ export default function AdminDashboardClient() {
                 key={item.id}
                 onClick={() => setActiveTab(item.id as any)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
-                  activeTab === item.id ? "bg-purple-500/20 text-purple-500" : "text-gray-400 hover:bg-[#1A1F2E]"
+                  activeTab === item.id ? "bg-orange-500/20 text-orange-500" : "text-gray-400 hover:bg-[#1A1F2E]"
                 }`}
               >
                 <item.icon className="w-5 h-5" />
@@ -777,7 +777,7 @@ export default function AdminDashboardClient() {
                       onClick={() => setUserDaysFilter(opt.value)}
                       className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
                         active
-                          ? "bg-purple-500 text-white"
+                          ? "bg-orange-500 text-white"
                           : "border border-[#2A3142] bg-[#11161f] text-gray-400 hover:bg-[#171d28] hover:text-gray-200"
                       }`}
                     >
@@ -805,7 +805,7 @@ export default function AdminDashboardClient() {
                               <span className="px-2 py-0.5 bg-red-500/20 text-red-500 text-xs rounded">Bloqueado</span>
                             )}
   {user.is_verified && (
-  <span className="px-2 py-0.5 bg-purple-500/20 text-purple-500 text-xs rounded">
+  <span className="px-2 py-0.5 bg-orange-500/20 text-orange-500 text-xs rounded">
   Verificado
   </span>
   )}
@@ -875,7 +875,7 @@ export default function AdminDashboardClient() {
                             <p className="text-white font-medium">{deposit.user_email || "Usuário"}</p>
                             <span className={`px-2 py-0.5 text-xs rounded ${
                               deposit.method === "crypto" ? "bg-yellow-500/20 text-yellow-500" :
-                              deposit.method === "card" ? "bg-purple-500/20 text-purple-500" :
+                              deposit.method === "card" ? "bg-orange-500/20 text-orange-500" :
                               "bg-green-500/20 text-green-500"
                             }`}>
                               {deposit.method === "crypto" ? "USDT" : deposit.method === "card" ? "Cartao" : "PIX"}
@@ -1258,8 +1258,8 @@ export default function AdminDashboardClient() {
                   {/* Card Deposit Toggle */}
                   <div className="flex items-center justify-between p-4 bg-[#0B0F14] rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                        <CreditCard className="w-5 h-5 text-purple-500" />
+                      <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                        <CreditCard className="w-5 h-5 text-orange-500" />
                       </div>
                       <div>
                         <p className="text-white font-medium">Deposito via Cartao</p>
@@ -1445,14 +1445,14 @@ function StatCard({
   badge?: string
 }) {
   const accents: Record<string, string> = {
-    blue: "#a855f7",
+    blue: "#fb923c",
     green: "#22c55e",
     red: "#ef4444",
-    purple: "#a78bfa",
+    purple: "#fdba74",
     cyan: "#22d3ee",
     yellow: "#eab308",
   }
-  const accent = accents[color] || "#a855f7"
+  const accent = accents[color] || "#fb923c"
 
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c121c] p-5 transition-all duration-300 hover:border-white/[0.12] hover:-translate-y-0.5">

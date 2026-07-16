@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { AccountSelector } from "./account-selector"
 
 interface TradingHeaderProps {
@@ -17,15 +16,15 @@ export function TradingHeader({ balance, isDemo, payout, onToggleDemo }: Trading
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link href="/trade" className="flex items-center gap-2">
-          <Image
-            src="/images/kodilex-logo.png"
-            alt="URYN BROKER"
-            width={150}
-            height={40}
-            className="h-8 w-auto"
-            priority
-            unoptimized
-          />
+          <div className="flex items-end gap-0.5">
+            <div className="w-1 h-3 bg-[#fb923c] rounded-sm" />
+            <div className="w-1 h-5 bg-[#f97316] rounded-sm" />
+            <div className="w-1 h-4 bg-[#fb923c] rounded-sm" />
+            <div className="w-1 h-6 bg-[#f97316] rounded-sm" />
+          </div>
+          <span className="text-white font-bold text-lg">
+            URYN<span className="text-[#fb923c]"> BROKER</span>
+          </span>
         </Link>
 
         {/* Account Selector */}

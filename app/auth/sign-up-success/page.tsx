@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 
 export default function SignUpSuccessPage() {
@@ -7,10 +8,15 @@ export default function SignUpSuccessPage() {
       <div className="w-full max-w-sm">
         <div className="rounded-2xl border border-white/10 p-6 space-y-6" style={{ backgroundColor: "#131318" }}>
           {/* Header */}
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-white">
-              URYN<span className="text-orange-500"> BROKER</span>
-            </h1>
+          <div className="flex justify-center">
+            <Image
+              src="/images/kodilex-logo.png"
+              alt="URYN BROKER"
+              width={160}
+              height={40}
+              className="h-10 w-auto"
+              unoptimized
+            />
           </div>
 
           {/* Success Icon */}

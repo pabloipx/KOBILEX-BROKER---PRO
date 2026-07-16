@@ -121,8 +121,8 @@ export function SidebarMenu({
         <div className="p-5 pb-0 flex-shrink-0">
           <div className="flex items-center justify-between mb-5">
             <img
-              src="/images/kodilex-logo.png"
-              alt="URYN BROKER"
+              src="/images/uryn-fox-logo.png"
+              alt="URYNBROKER"
               className="h-8 w-auto"
             />
             <button

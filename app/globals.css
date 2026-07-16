@@ -165,6 +165,122 @@
   animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* ===== Fundo animado do hero (brilhos + particulas) ===== */
+
+/* Orbes de brilho flutuando lentamente */
+@keyframes hero-float-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(6%, -8%) scale(1.12);
+  }
+}
+
+@keyframes hero-float-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate(-7%, 6%) scale(0.92);
+  }
+}
+
+@keyframes hero-float-c {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(5%, 7%) scale(1.15);
+  }
+}
+
+.animate-hero-float-a {
+  animation: hero-float-a 14s ease-in-out infinite;
+  will-change: transform;
+}
+.animate-hero-float-b {
+  animation: hero-float-b 18s ease-in-out infinite;
+  will-change: transform;
+}
+.animate-hero-float-c {
+  animation: hero-float-c 22s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Pulso de opacidade/brilho */
+@keyframes hero-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.animate-hero-pulse {
+  animation: hero-pulse 6s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Grade em perspectiva deslizando */
+@keyframes hero-grid-slide {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 60px;
+  }
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(to right, rgba(249, 115, 22, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(249, 115, 22, 0.12) 1px, transparent 1px);
+  background-size: 60px 60px;
+  animation: hero-grid-slide 8s linear infinite;
+  will-change: background-position;
+}
+
+/* Particulas subindo */
+@keyframes hero-particle {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--p-opacity, 0.8);
+  }
+  90% {
+    opacity: var(--p-opacity, 0.8);
+  }
+  100% {
+    transform: translateY(-120px) scale(0.4);
+    opacity: 0;
+  }
+}
+
+.animate-hero-particle {
+  animation: hero-particle var(--p-duration, 9s) linear infinite;
+  animation-delay: var(--p-delay, 0s);
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-float-a,
+  .animate-hero-float-b,
+  .animate-hero-float-c,
+  .animate-hero-pulse,
+  .hero-grid,
+  .animate-hero-particle {
+    animation: none;
+  }
+}
+
 /* ===== Efeito tecnológico da seção showcase ===== */
 
 /* Linha de varredura vertical (scanline estilo HUD) */

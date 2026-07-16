@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Globe, ChevronDown, ShieldCheck, Zap, GraduationCap, Wallet, LineChart, Clock } from "lucide-react"
 import { CryptoTicker } from "@/components/landing/crypto-ticker"
 import { LiveChart } from "@/components/landing/live-chart"
+import { HeroBackground } from "@/components/landing/hero-background"
 
 export const metadata = {
   title: "URYN BROKER - Trade inteligente e seguro, do seu jeito",
@@ -106,17 +107,8 @@ export default function HomePage() {
 
       {/* HERO — tela cheia */}
       <section className="relative flex min-h-screen flex-col overflow-hidden">
-        {/* Fundo: plataforma de trading escurecida */}
-        <div className="absolute inset-0">
-          <img
-            src="/images/hero-trading.png"
-            alt=""
-            className="h-full w-full object-cover object-center opacity-60"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#07090d]/70 via-[#07090d]/85 to-[#07090d]" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#07090d] via-transparent to-[#07090d]" />
-          <div className="absolute left-1/2 top-1/3 h-72 w-[42rem] max-w-[90%] -translate-x-1/2 rounded-full bg-[#f97316]/15 blur-[130px]" />
-        </div>
+        {/* Fundo: brilhos e efeitos animados reativos a rolagem */}
+        <HeroBackground />
 
         {/* Conteúdo do hero */}
         <div className="relative z-20 flex flex-1 flex-col items-center justify-center px-6 py-28 text-center">

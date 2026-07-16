@@ -75,14 +75,14 @@ export function AssetSelector({
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#121826] border border-[#1f2933] hover:border-[#9333ea]/50 transition-all"
+        className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#121826] border border-[#1f2933] hover:border-[#f97316]/50 transition-all"
       >
         <span className="text-xl">{categoryIcons[safeSelectedAsset.category] || "💱"}</span>
         <div className="flex flex-col items-start">
           <span className="text-white font-semibold text-sm">{safeSelectedAsset.name || "EUR/USD (OTC)"}</span>
           <div className="flex items-center gap-2">
-            <span className="text-[#9333ea] font-mono text-xs font-medium">{formatPrice(currentPrice)}</span>
-            <span className={`text-xs flex items-center gap-0.5 ${isUp ? "text-[#a855f7]" : "text-[#EF4444]"}`}>
+            <span className="text-[#f97316] font-mono text-xs font-medium">{formatPrice(currentPrice)}</span>
+            <span className={`text-xs flex items-center gap-0.5 ${isUp ? "text-[#fb923c]" : "text-[#EF4444]"}`}>
               {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
               {isUp ? "+" : ""}
               {safePriceChange.toFixed(2)}%
@@ -105,7 +105,7 @@ export function AssetSelector({
                   placeholder="Buscar ativo..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-[#0B0F14] border border-[#1f2933] rounded-lg text-white text-sm placeholder:text-[#6B7280] focus:outline-none focus:border-[#9333ea]"
+                  className="w-full pl-9 pr-3 py-2 bg-[#0B0F14] border border-[#1f2933] rounded-lg text-white text-sm placeholder:text-[#6B7280] focus:outline-none focus:border-[#f97316]"
                 />
               </div>
             </div>
@@ -115,7 +115,7 @@ export function AssetSelector({
               <button
                 onClick={() => setActiveCategory(null)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                  !activeCategory ? "bg-[#9333ea] text-white" : "bg-[#1f2933] text-[#9CA3AF] hover:text-white"
+                  !activeCategory ? "bg-[#f97316] text-white" : "bg-[#1f2933] text-[#9CA3AF] hover:text-white"
                 }`}
               >
                 Todos
@@ -125,7 +125,7 @@ export function AssetSelector({
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                    activeCategory === cat ? "bg-[#9333ea] text-white" : "bg-[#1f2933] text-[#9CA3AF] hover:text-white"
+                    activeCategory === cat ? "bg-[#f97316] text-white" : "bg-[#1f2933] text-[#9CA3AF] hover:text-white"
                   }`}
                 >
                   {categoryNames[cat] || cat}
@@ -150,7 +150,7 @@ export function AssetSelector({
                         setSearch("")
                       }}
                       className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1f2933] transition-colors ${
-                        isSelected ? "bg-[#9333ea]/10 border-l-2 border-[#9333ea]" : "border-l-2 border-transparent"
+                        isSelected ? "bg-[#f97316]/10 border-l-2 border-[#f97316]" : "border-l-2 border-transparent"
                       }`}
                     >
                       <span className="text-xl">{categoryIcons[asset.category] || "💱"}</span>
@@ -159,7 +159,7 @@ export function AssetSelector({
                         <div className="text-[#6B7280] text-xs">{asset.symbol}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[#9333ea] font-medium text-sm">{asset.payout || 96}%</div>
+                        <div className="text-[#f97316] font-medium text-sm">{asset.payout || 96}%</div>
                         <div className="text-[#6B7280] text-xs">payout</div>
                       </div>
                     </button>

@@ -4,17 +4,17 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ========================================
-   KODILEX BROKER - PALETA DE CORES (TEMA ROXO)
+   URYN BROKER - PALETA DE CORES (TEMA LARANJA)
    ======================================== */
 
 /* All colors defined statically in @theme inline below */
 
 /* Remove light mode - platform is always dark */
 .dark {
-  --primary: #9333ea;
+  --primary: #f97316;
   --primary-foreground: #ffffff;
-  --primary-hover: #a855f7;
-  --primary-dark: #3b0764;
+  --primary-hover: #fb923c;
+  --primary-dark: #7c2d12;
   --background: #0b0f14;
   --foreground: #ffffff;
   --card: #121826;
@@ -31,20 +31,20 @@
   --destructive-foreground: #ffffff;
   --border: #1f2933;
   --input: #121826;
-  --ring: #9333ea;
-  --chart-1: #9333ea;
+  --ring: #f97316;
+  --chart-1: #f97316;
   --chart-2: #ef4444;
-  --chart-3: #a855f7;
+  --chart-3: #fb923c;
   --chart-4: #f59e0b;
-  --chart-5: #3b0764;
-  --sidebar: #3b0764;
+  --chart-5: #7c2d12;
+  --sidebar: #7c2d12;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #9333ea;
+  --sidebar-primary: #f97316;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #1f2933;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #1f2933;
-  --sidebar-ring: #9333ea;
+  --sidebar-ring: #f97316;
 }
 
 @theme inline {
@@ -56,7 +56,7 @@
   --color-card-foreground: #ffffff;
   --color-popover: #121826;
   --color-popover-foreground: #ffffff;
-  --color-primary: #9333ea;
+  --color-primary: #f97316;
   --color-primary-foreground: #ffffff;
   --color-secondary: #1f2933;
   --color-secondary-foreground: #ffffff;
@@ -68,29 +68,29 @@
   --color-destructive-foreground: #ffffff;
   --color-border: #1f2933;
   --color-input: #121826;
-  --color-ring: #9333ea;
-  --color-chart-1: #9333ea;
+  --color-ring: #f97316;
+  --color-chart-1: #f97316;
   --color-chart-2: #ef4444;
-  --color-chart-3: #a855f7;
+  --color-chart-3: #fb923c;
   --color-chart-4: #f59e0b;
-  --color-chart-5: #3b0764;
+  --color-chart-5: #7c2d12;
   --radius-sm: 0.5rem;
   --radius-md: 0.625rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
-  --color-sidebar: #3b0764;
+  --color-sidebar: #7c2d12;
   --color-sidebar-foreground: #ffffff;
-  --color-sidebar-primary: #9333ea;
+  --color-sidebar-primary: #f97316;
   --color-sidebar-primary-foreground: #ffffff;
   --color-sidebar-accent: #1f2933;
   --color-sidebar-accent-foreground: #ffffff;
   --color-sidebar-border: #1f2933;
-  --color-sidebar-ring: #9333ea;
+  --color-sidebar-ring: #f97316;
 
-  /* Custom Kodilex Broker colors */
-  --color-atlas-blue: #9333ea;
-  --color-atlas-purple-hover: #a855f7;
-  --color-atlas-purple-dark: #3b0764;
+  /* Custom URYN BROKER colors */
+  --color-atlas-blue: #f97316;
+  --color-atlas-orange-hover: #fb923c;
+  --color-atlas-orange-dark: #7c2d12;
   --color-atlas-bg: #0b0f14;
   --color-atlas-card: #121826;
   --color-atlas-alt: #1f2933;
@@ -165,6 +165,92 @@
   animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* ===== Efeito tecnológico da seção showcase ===== */
+
+/* Linha de varredura vertical (scanline estilo HUD) */
+@keyframes tech-scan {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(1300%);
+    opacity: 0;
+  }
+}
+
+.animate-tech-scan {
+  animation: tech-scan 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+/* Grade tecnológica deslizando */
+@keyframes tech-grid {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 44px;
+  }
+}
+
+.tech-grid {
+  background-image:
+    linear-gradient(to right, rgba(249, 115, 22, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(249, 115, 22, 0.18) 1px, transparent 1px);
+  background-size: 44px 44px;
+  animation: tech-grid 3s linear infinite;
+  will-change: background-position;
+}
+
+/* Glow pulsante da moldura */
+@keyframes tech-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+.animate-tech-pulse {
+  animation: tech-pulse 3.5s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+/* Ponto orbitando a moldura */
+@keyframes tech-orbit {
+  from {
+    transform: rotate(0deg) translateX(var(--orbit-r, 220px)) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(var(--orbit-r, 220px)) rotate(-360deg);
+  }
+}
+
+.animate-tech-orbit {
+  animation: tech-orbit 9s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-tech-scan,
+  .tech-grid,
+  .animate-tech-pulse,
+  .animate-tech-orbit {
+    animation: none;
+  }
+}
+
 /* Otimizando performance de scroll e animações */
 @media (prefers-reduced-motion: no-preference) {
   :root {
@@ -189,12 +275,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #9333ea;
+  background: #f97316;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a855f7;
+  background: #fb923c;
 }
 
 input[type="number"]::-webkit-inner-spin-button,

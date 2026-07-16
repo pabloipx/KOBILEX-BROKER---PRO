@@ -70,8 +70,8 @@ export function AnimatedCandlesBg() {
       const { x, y, width, height, isGreen, wickTop, wickBottom, opacity } = candle
 
       // Colors
-      const bodyColor = isGreen ? `rgba(147, 51, 234, ${opacity})` : `rgba(239, 68, 68, ${opacity})`
-      const wickColor = isGreen ? `rgba(147, 51, 234, ${opacity * 0.7})` : `rgba(239, 68, 68, ${opacity * 0.7})`
+      const bodyColor = isGreen ? `rgba(249, 115, 22, ${opacity})` : `rgba(239, 68, 68, ${opacity})`
+      const wickColor = isGreen ? `rgba(249, 115, 22, ${opacity * 0.7})` : `rgba(239, 68, 68, ${opacity * 0.7})`
 
       // Draw wick (linha vertical)
       ctx.beginPath()
@@ -86,12 +86,12 @@ export function AnimatedCandlesBg() {
       ctx.fillRect(x, y, width, height)
 
       // Draw border
-      ctx.strokeStyle = isGreen ? `rgba(168, 85, 247, ${opacity * 1.5})` : `rgba(248, 113, 113, ${opacity * 1.5})`
+      ctx.strokeStyle = isGreen ? `rgba(251, 146, 60, ${opacity * 1.5})` : `rgba(248, 113, 113, ${opacity * 1.5})`
       ctx.lineWidth = 1
       ctx.strokeRect(x, y, width, height)
 
       // Glow effect
-      ctx.shadowColor = isGreen ? "#9333ea" : "#EF4444"
+      ctx.shadowColor = isGreen ? "#f97316" : "#EF4444"
       ctx.shadowBlur = 15
       ctx.fillStyle = bodyColor
       ctx.fillRect(x, y, width, height)

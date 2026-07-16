@@ -153,7 +153,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0B0F14]">
-        <div className="w-8 h-8 border-2 border-[#9333ea] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[#f97316] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -194,7 +194,7 @@ export default function SettingsPage() {
                   <User className="w-12 h-12 text-[#6B7280]" />
                 )}
               </div>
-              <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[#9333ea] flex items-center justify-center">
+              <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-[#f97316] flex items-center justify-center">
                 <Camera className="w-4 h-4 text-white" />
               </button>
             </div>
@@ -207,7 +207,7 @@ export default function SettingsPage() {
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#9333ea] outline-none"
+              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#f97316] outline-none"
               placeholder="Seu nome"
             />
           </div>
@@ -231,7 +231,7 @@ export default function SettingsPage() {
               type="tel"
               value={phone}
               onChange={(e) => setPhone(formatPhone(e.target.value))}
-              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#9333ea] outline-none"
+              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#f97316] outline-none"
               placeholder="(00) 00000-0000"
             />
           </div>
@@ -239,7 +239,7 @@ export default function SettingsPage() {
           {error && <p className="text-sm text-[#EF4444] text-center">{error}</p>}
 
           {success && (
-            <div className="flex items-center justify-center gap-2 text-[#9333ea]">
+            <div className="flex items-center justify-center gap-2 text-[#f97316]">
               <Check className="w-5 h-5" />
               <span>Perfil atualizado!</span>
             </div>
@@ -248,7 +248,7 @@ export default function SettingsPage() {
           <button
             onClick={handleSaveProfile}
             disabled={saving}
-            className="w-full py-4 rounded-xl font-semibold text-white bg-[#9333ea] hover:bg-[#a855f7] disabled:opacity-50 transition-colors"
+            className="w-full py-4 rounded-xl font-semibold text-white bg-[#f97316] hover:bg-[#fb923c] disabled:opacity-50 transition-colors"
           >
             {saving ? "Salvando..." : "Salvar alterações"}
           </button>
@@ -277,7 +277,7 @@ export default function SettingsPage() {
                 type={showCurrentPassword ? "text" : "password"}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full py-4 px-4 pr-12 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#9333ea] outline-none"
+                className="w-full py-4 px-4 pr-12 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#f97316] outline-none"
                 placeholder="Digite sua senha atual"
               />
               <button
@@ -298,7 +298,7 @@ export default function SettingsPage() {
                 type={showNewPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full py-4 px-4 pr-12 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#9333ea] outline-none"
+                className="w-full py-4 px-4 pr-12 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#f97316] outline-none"
                 placeholder="Digite sua nova senha"
               />
               <button
@@ -318,7 +318,7 @@ export default function SettingsPage() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#9333ea] outline-none"
+              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#f97316] outline-none"
               placeholder="Confirme sua nova senha"
             />
           </div>
@@ -326,7 +326,7 @@ export default function SettingsPage() {
           {error && <p className="text-sm text-[#EF4444] text-center">{error}</p>}
 
           {success && (
-            <div className="flex items-center justify-center gap-2 text-[#9333ea]">
+            <div className="flex items-center justify-center gap-2 text-[#f97316]">
               <Check className="w-5 h-5" />
               <span>Senha alterada com sucesso!</span>
             </div>
@@ -335,7 +335,7 @@ export default function SettingsPage() {
           <button
             onClick={handleChangePassword}
             disabled={saving || !newPassword || !confirmPassword}
-            className="w-full py-4 rounded-xl font-semibold text-white bg-[#9333ea] hover:bg-[#a855f7] disabled:opacity-50 transition-colors"
+            className="w-full py-4 rounded-xl font-semibold text-white bg-[#f97316] hover:bg-[#fb923c] disabled:opacity-50 transition-colors"
           >
             {saving ? "Alterando..." : "Alterar senha"}
           </button>
@@ -364,7 +364,7 @@ export default function SettingsPage() {
               className="w-full p-4 rounded-xl flex items-center justify-between bg-[#121826]"
             >
               <div className="flex items-center gap-3">
-                <User className="w-5 h-5 text-[#9333ea]" />
+                <User className="w-5 h-5 text-[#f97316]" />
                 <div className="text-left">
                   <span className="text-white block">Editar perfil</span>
                   <span className="text-xs text-[#6B7280]">Nome, foto, telefone</span>
@@ -378,7 +378,7 @@ export default function SettingsPage() {
               className="w-full p-4 rounded-xl flex items-center justify-between bg-[#121826]"
             >
               <div className="flex items-center gap-3">
-                <Lock className="w-5 h-5 text-[#9333ea]" />
+                <Lock className="w-5 h-5 text-[#f97316]" />
                 <div className="text-left">
                   <span className="text-white block">Alterar senha</span>
                   <span className="text-xs text-[#6B7280]">Segurança da conta</span>
@@ -400,7 +400,7 @@ export default function SettingsPage() {
               </div>
               <button
                 onClick={() => setNotifications(!notifications)}
-                className={`w-12 h-6 rounded-full transition-colors ${notifications ? "bg-[#9333ea]" : "bg-[#374151]"}`}
+                className={`w-12 h-6 rounded-full transition-colors ${notifications ? "bg-[#f97316]" : "bg-[#374151]"}`}
               >
                 <div
                   className={`w-5 h-5 rounded-full bg-white transition-transform ${notifications ? "translate-x-6" : "translate-x-1"}`}
@@ -415,7 +415,7 @@ export default function SettingsPage() {
               </div>
               <button
                 onClick={() => setDarkMode(!darkMode)}
-                className={`w-12 h-6 rounded-full transition-colors ${darkMode ? "bg-[#9333ea]" : "bg-[#374151]"}`}
+                className={`w-12 h-6 rounded-full transition-colors ${darkMode ? "bg-[#f97316]" : "bg-[#374151]"}`}
               >
                 <div
                   className={`w-5 h-5 rounded-full bg-white transition-transform ${darkMode ? "translate-x-6" : "translate-x-1"}`}
@@ -469,7 +469,7 @@ export default function SettingsPage() {
 
         {/* App Info */}
         <div className="pt-6 text-center">
-          <p className="text-sm text-[#6B7280]">Kodilex Broker v1.0.0</p>
+          <p className="text-sm text-[#6B7280]">URYN BROKER v1.0.0</p>
           <p className="text-xs text-[#4B5563] mt-1">© 2026 Todos os direitos reservados</p>
         </div>
       </div>

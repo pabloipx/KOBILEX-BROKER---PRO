@@ -346,7 +346,7 @@ export default function TradePage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
+    } = supabase.auth.onAuthStateChange((event: any) => {
       if (event === "SIGNED_OUT" && mountedRef.current) {
         router.replace("/auth/login")
       }
@@ -374,7 +374,7 @@ export default function TradePage() {
 
       // Filter only truly expired trades
       const now = Date.now()
-      const expiredTrades = pendingTrades.filter((t) => {
+      const expiredTrades = pendingTrades.filter((t: any) => {
         const entryMs = new Date(t.entry_time).getTime()
         const expiryMs = (t.timeframe || 60) * 1000
         return now >= entryMs + expiryMs
@@ -728,7 +728,7 @@ export default function TradePage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0e0e0e" }}>
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-gray-400 text-sm">Carregando...</p>
         </div>
       </div>
@@ -915,7 +915,7 @@ export default function TradePage() {
             {/* Wallet Button */}
             <button
               onClick={() => (window.location.href = "/deposit")}
-              className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl flex items-center justify-center bg-[#9333ea] hover:bg-[#a855f7] transition-all duration-200 shadow-lg shadow-[#9333ea]/20 active:scale-95 shrink-0"
+              className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl flex items-center justify-center bg-[#f97316] hover:bg-[#fb923c] transition-all duration-200 shadow-lg shadow-[#f97316]/20 active:scale-95 shrink-0"
             >
               <Wallet className="w-4 h-4 lg:w-5 lg:h-5 text-white" />
             </button>
@@ -925,7 +925,7 @@ export default function TradePage() {
         {/* Chart Area - Candlestick chart with native trade lines + 24h history */}
         <div className="flex-1 min-h-0 relative">
           <div className="absolute inset-0">
-            {isTraderIAActive && <TraderIAWatermark />}
+            {isTraderIAActive && <TraderIAWatermark isActive={isTraderIAActive} />}
             <MarketChart
               candles={candles || []}
               currentPrice={price || 0}
@@ -1327,7 +1327,7 @@ export default function TradePage() {
                         {assetMarketTab === "otc" && <p className="text-gray-400 text-xs">Opção binária</p>}
                       </div>
                     </div>
-                    <span className="text-purple-500 font-semibold text-sm">{asset.payout}%</span>
+                    <span className="text-orange-500 font-semibold text-sm">{asset.payout}%</span>
                   </button>
                 ))}
               </div>
@@ -1341,7 +1341,7 @@ export default function TradePage() {
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-pulse">
           <div
             className={`px-6 py-3 rounded-xl font-bold text-white shadow-2xl ${
-              tradeResult.type === "win" ? "bg-purple-500" : "bg-red-500"
+              tradeResult.type === "win" ? "bg-orange-500" : "bg-red-500"
             }`}
           >
             {tradeResult.type === "win"

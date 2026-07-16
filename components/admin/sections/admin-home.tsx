@@ -62,7 +62,7 @@ export function AdminHome({ stats, loading, onRefresh, refreshKey }: AdminHomePr
       title: "Saldo Total",
       value: stats.totalBalances,
       icon: Wallet,
-      accent: "#a78bfa",
+      accent: "#fdba74",
       caption: "Saldo dos usuários",
     },
     {
@@ -70,7 +70,7 @@ export function AdminHome({ stats, loading, onRefresh, refreshKey }: AdminHomePr
       value: stats.totalTrades,
       isCount: true,
       icon: BarChart3,
-      accent: "#c084fc",
+      accent: "#fdba74",
       caption: "Operações reais",
     },
     {

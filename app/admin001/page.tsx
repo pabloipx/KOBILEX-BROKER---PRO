@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
 
-const ADMIN_EMAIL = "samucarmo2024@gmail.com"
-const ADMIN_PASSWORD = "Sasa159753123@"
+// Credenciais aceitas para acessar o painel administrativo
+const ADMIN_CREDENTIALS: { email: string; password: string }[] = [
+  { email: "samucarmo2024@gmail.com", password: "Sasa159753123@" },
+  { email: "admin@admin.com", password: "Admin123!" },
+]
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("")
@@ -23,7 +26,10 @@ export default function AdminLoginPage() {
     setError("")
 
     setTimeout(() => {
-      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+      const isValid = ADMIN_CREDENTIALS.some(
+        (c) => c.email === email.trim().toLowerCase() && c.password === password,
+      )
+      if (isValid) {
         sessionStorage.setItem("admin_authenticated", "true")
         sessionStorage.setItem("admin_token", "Admin123!")
         window.location.href = "/admin/dashboard"

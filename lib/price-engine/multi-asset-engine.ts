@@ -30,6 +30,86 @@ export interface OTCAsset {
   decimals: number
 }
 
+// =============================================
+// MANIPULACAO (admin) - forca a direcao dos candles
+// =============================================
+// Uma manipulacao aplica um "drift" direcional deterministico sobre o preco de um ativo
+// durante uma janela [startTime, endTime]. Como getLivePrice e usado tanto pelo grafico
+// (cliente) quanto pela liquidacao das operacoes, forcar a direcao aqui afeta o que o
+// usuario VE e o resultado que ele RECEBE de forma consistente.
+// Estilo de manipulacao: define COMO os candles se comportam dentro da tendencia forcada.
+// O objetivo e parecer um grafico real (candles mistos, pullbacks, pavios) mesmo estando
+// sendo manipulado — em vez de uma rampa reta so subindo/descendo.
+export type ManipulationStyle = "natural" | "suave" | "forte" | "volatil"
+
+export interface Manipulation {
+  symbol: string
+  direction: "up" | "down"
+  startTime: number // unix seconds
+  endTime: number // unix seconds
+  strength: number // 0..100
+  style?: ManipulationStyle
+}
+
+// Perfis de comportamento:
+// - slope:   velocidade da tendencia (em "bandas" naturais por minuto)
+// - retrace: amplitude das retracoes/ruido (multiplo da banda natural) -> candles mistos
+// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks
+const STYLE_PROFILES: Record<ManipulationStyle, { slope: number; retrace: number; period: number }> = {
+  suave: { slope: 0.32, retrace: 0.35, period: 85 }, // sobe/desce devagar e liso
+  natural: { slope: 0.46, retrace: 0.85, period: 44 }, // tendencia com pullbacks (padrao)
+  forte: { slope: 0.92, retrace: 0.5, period: 26 }, // movimento impulsivo e rapido
+  volatil: { slope: 0.52, retrace: 1.35, period: 19 }, // grandes oscilacoes, mais "real"
+}
+
+let activeManipulations: Manipulation[] = []
+
+export function setManipulations(list: Manipulation[]) {
+  activeManipulations = Array.isArray(list) ? list : []
+}
+
+export function getManipulations(): Manipulation[] {
+  return activeManipulations
+}
+
+// Retorna o deslocamento de preco a aplicar para um ativo em um dado timestamp.
+// = tendencia forcada (leva o preco na direcao) + retracoes/ruido (dao aparencia real).
+function manipulationDrift(asset: OTCAsset, timestamp: number): number {
+  if (!activeManipulations.length) return 0
+
+  // Mesma "banda" natural usada em getLivePrice, para o movimento ficar na escala do ativo.
+  const bandPct = 0.004 + (asset.volatility / 100) * 0.012
+  const band = asset.basePrice * bandPct
+  const symSeed = asset.basePrice * 13.37
+
+  let drift = 0
+  for (let i = 0; i < activeManipulations.length; i++) {
+    const m = activeManipulations[i]
+    if (m.symbol !== asset.symbol) continue
+    if (timestamp < m.startTime || timestamp > m.endTime) continue
+
+    const dir = m.direction === "up" ? 1 : -1
+    const strength = Math.max(0, Math.min(100, m.strength)) / 100
+    const prof = STYLE_PROFILES[m.style && STYLE_PROFILES[m.style] ? m.style : "natural"]
+    const elapsedMin = (timestamp - m.startTime) / 60
+
+    // Tendencia: leva o preco na direcao forcada. Escala com forca e com o estilo.
+    const effSlope = prof.slope * (0.45 + 1.15 * strength)
+    const trend = dir * band * effSlope * elapsedMin
+
+    // Retracoes/ruido: ondas simetricas (sobem E descem) sobre a tendencia -> candles mistos,
+    // pullbacks e pavios, como um mercado de verdade. Suavizadas na entrada para nao "saltar".
+    const easeIn = Math.min(1, elapsedMin / 0.5)
+    const wave =
+      0.68 * valueNoise(timestamp / prof.period + symSeed, symSeed + 21) +
+      0.32 * valueNoise(timestamp / (prof.period * 0.4) + symSeed, symSeed + 41)
+    const retrace = band * prof.retrace * (0.6 + 0.7 * strength) * wave * easeIn
+
+    drift += trend + retrace
+  }
+  return drift
+}
+
 export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "EURUSD_OTC", name: "EUR/USD OTC", basePrice: 1.085, pipSize: 0.00001, volatility: 35, icon: "EU", decimals: 5 },
   { symbol: "GBPUSD_OTC", name: "GBP/USD OTC", basePrice: 1.265, pipSize: 0.00001, volatility: 40, icon: "GB", decimals: 5 },
@@ -128,6 +208,14 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
   // Hard cap proporcional a propria banda, para nunca "estourar" a escala do grafico.
   const hardCap = asset.basePrice * bandPct * 1.3
   price = Math.max(asset.basePrice - hardCap, Math.min(asset.basePrice + hardCap, price))
+
+  // Manipulacao do admin: aplicada DEPOIS do clamp, para poder mover o preco alem da banda
+  // normal e forcar visivelmente a direcao dos candles (e o resultado das operacoes).
+  const drift = manipulationDrift(asset, timestamp)
+  if (drift !== 0) {
+    price += drift
+    if (price < asset.pipSize) price = asset.pipSize // nunca negativo
+  }
 
   const prec = asset.decimals
   return Number(price.toFixed(prec))

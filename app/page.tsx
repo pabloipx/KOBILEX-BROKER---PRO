@@ -240,13 +240,53 @@ export default function HomePage() {
             só lugar.
           </p>
 
-          <div className="relative mx-auto mt-12 max-w-4xl">
-            <div className="absolute -inset-4 rounded-3xl bg-[#f97316]/20 blur-2xl" />
-            <img
-              src="/images/kodilex-showcase.png"
-              alt="Plataforma de trading da URYN BROKER com gráfico de candles e painel de operações"
-              className="relative w-full rounded-2xl border border-white/10 shadow-[0_30px_80px_-20px_rgba(249, 115, 22,0.5)]"
-            />
+          <div className="group relative mx-auto mt-12 max-w-4xl">
+            {/* Glow pulsante atrás da moldura */}
+            <div className="animate-tech-pulse absolute -inset-6 rounded-[2rem] bg-[#f97316]/25 blur-3xl" />
+
+            {/* Pontos orbitando o quadro */}
+            <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 sm:block">
+              <span className="animate-tech-orbit absolute h-2.5 w-2.5 rounded-full bg-[#fdba74] shadow-[0_0_12px_4px_rgba(251,146,60,0.8)]" />
+              <span
+                className="animate-tech-orbit absolute h-1.5 w-1.5 rounded-full bg-[#f97316] shadow-[0_0_10px_3px_rgba(249,115,22,0.7)]"
+                style={{ animationDelay: "-4.5s", animationDuration: "12s" }}
+              />
+            </div>
+
+            {/* Moldura tecnológica */}
+            <div className="relative overflow-hidden rounded-2xl border border-[#f97316]/30 bg-[#0b0f14] shadow-[0_30px_90px_-20px_rgba(249,115,22,0.55)]">
+              {/* Grade tecnológica animada */}
+              <div className="tech-grid pointer-events-none absolute inset-0 z-10 opacity-40" />
+
+              {/* Vinheta para dar profundidade */}
+              <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_45%,rgba(11,15,20,0.75)_100%)]" />
+
+              {/* Linha de varredura (scanline) */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-16 bg-gradient-to-b from-[#fdba74]/40 via-[#f97316]/15 to-transparent blur-[2px] animate-tech-scan" />
+
+              {/* Cantos estilo HUD */}
+              <span className="pointer-events-none absolute left-3 top-3 z-30 h-6 w-6 rounded-tl-md border-l-2 border-t-2 border-[#f97316]" />
+              <span className="pointer-events-none absolute right-3 top-3 z-30 h-6 w-6 rounded-tr-md border-r-2 border-t-2 border-[#f97316]" />
+              <span className="pointer-events-none absolute bottom-3 left-3 z-30 h-6 w-6 rounded-bl-md border-b-2 border-l-2 border-[#f97316]" />
+              <span className="pointer-events-none absolute bottom-3 right-3 z-30 h-6 w-6 rounded-br-md border-b-2 border-r-2 border-[#f97316]" />
+
+              {/* Badge "ao vivo" */}
+              <div className="absolute left-4 top-4 z-30 flex items-center gap-2 rounded-full border border-[#f97316]/40 bg-[#0b0f14]/80 px-3 py-1.5 backdrop-blur-sm">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#fb923c] opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#f97316]" />
+                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-[#fdba74]">
+                  Sistema ativo
+                </span>
+              </div>
+
+              <img
+                src="/images/uryn-showcase.png"
+                alt="Plataforma de trading da URYN BROKER com gráfico de candles, foguete e painel de operações"
+                className="relative z-0 w-full transition-transform duration-700 ease-out group-hover:scale-[1.03]"
+              />
+            </div>
           </div>
         </div>
       </section>

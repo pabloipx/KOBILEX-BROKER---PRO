@@ -48,8 +48,8 @@ export default function HomePage() {
           {/* Logo */}
           <Link href="/" className="flex items-center">
             <img
-              src="/images/kodilex-logo.png"
-              alt="URYN BROKER"
+              src="/images/uryn-fox-logo.png"
+              alt="URYNBROKER"
               className="h-8 w-auto object-contain sm:h-9"
             />
           </Link>
@@ -363,8 +363,8 @@ export default function HomePage() {
       <footer className="relative border-t border-white/10 px-6 py-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
           <img
-            src="/images/kodilex-logo.png"
-            alt="URYN BROKER"
+            src="/images/uryn-fox-logo.png"
+            alt="URYNBROKER"
             className="h-7 w-auto object-contain"
           />
           <p className="text-xs text-white/40">

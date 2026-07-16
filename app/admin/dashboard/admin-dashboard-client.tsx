@@ -1246,8 +1246,11 @@ export default function AdminDashboardClient() {
 
           {activeTab === "cards" && <AdminCards />}
 
-          {/* Ativos Tab */}
-          {activeTab === "assets" && <AdminAssets />}
+            {/* Ativos Tab */}
+            {activeTab === "assets" && <AdminAssets />}
+
+            {/* Manipulacao Tab */}
+            {activeTab === "manipulation" && <AdminManipulation />}
 
           {/* Settings Tab */}
           {activeTab === "settings" && (

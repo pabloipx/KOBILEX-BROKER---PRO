@@ -9,6 +9,7 @@ import { TraderIAModal } from "@/components/trading/trader-ia-modal"
 import { TraderIAWatermark } from "@/components/trading/trader-ia-watermark"
 import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
 import { useGlobalOTC } from "@/lib/hooks/use-global-otc"
+import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { playCallSound, playPutSound, playWinSound, playLossSound, unlockAudio } from "@/lib/sounds"
 import Image from "next/image"
 import {
@@ -383,10 +384,14 @@ export default function TradePage() {
       if (expiredTrades.length === 0) return
 
       for (const trade of expiredTrades) {
-        // Calcula um preco de saida realista em torno do preco de entrada (movimento aleatorio).
-        // O resultado segue SEMPRE o preco real, para todos os usuarios (sem vitoria forcada).
-        const move = (Math.random() - 0.5) * 0.01 // +/- 0.5%
-        const exitPrice = trade.entry_price * (1 + move)
+        // Preco de saida: usa o preco ATUAL do motor para o ativo (que ja inclui qualquer
+        // manipulacao do admin), garantindo que o resultado seja consistente com o grafico.
+        // Fallback para um pequeno movimento aleatorio apenas se o motor nao tiver preco.
+        const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
+        const exitPrice =
+          enginePrice && enginePrice > 0
+            ? enginePrice
+            : trade.entry_price * (1 + (Math.random() - 0.5) * 0.01)
         const isWin =
           trade.direction === "CALL" ? exitPrice > trade.entry_price : exitPrice < trade.entry_price
         const result = isWin ? "win" : "loss"

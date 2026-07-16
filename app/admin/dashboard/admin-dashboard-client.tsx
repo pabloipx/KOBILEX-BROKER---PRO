@@ -23,6 +23,7 @@ import {
   UserPlus,
   Settings,
   CandlestickChart,
+  Zap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,6 +34,7 @@ import { AdminCards } from "@/components/admin/sections/admin-cards"
 import { AdminCharts } from "@/components/admin/sections/admin-charts"
 import { UsersChart, DepositsChart } from "@/components/admin/sections/tab-charts"
 import { AdminAssets } from "@/components/admin/sections/admin-assets"
+import { AdminManipulation } from "@/components/admin/sections/admin-manipulation"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -97,7 +99,7 @@ interface KycRequest {
 export default function AdminDashboardClient() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [activeTab, setActiveTab] = useState<"home" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "cards" | "assets" | "settings">("home")
+  const [activeTab, setActiveTab] = useState<"home" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "cards" | "assets" | "manipulation" | "settings">("home")
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Stats - initialize with default values to prevent null errors
@@ -200,6 +202,7 @@ export default function AdminDashboardClient() {
     { id: "affiliates", label: "Afiliados", icon: UserPlus },
     { id: "trades", label: "Operacoes", icon: History },
     { id: "assets", label: "Ativos", icon: CandlestickChart },
+    { id: "manipulation", label: "Manipulacao", icon: Zap },
     { id: "cards", label: "Cartoes", icon: CreditCard },
     { id: "settings", label: "Configuracoes", icon: Settings },
   ]

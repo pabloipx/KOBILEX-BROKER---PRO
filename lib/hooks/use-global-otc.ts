@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { multiAssetEngine, OTC_ASSETS, type OTCCandle } from "@/lib/price-engine/multi-asset-engine"
 import { ensureRealFeed } from "@/lib/price-engine/real-price-feed"
 import { hasRealPrice, getRealRevision, isRealSymbol } from "@/lib/price-engine/real-price-store"
+import { ensureManipulationSync } from "@/lib/price-engine/manipulation-sync"
 
 /**
  * useGlobalOTC — feed de preco 100% CLIENT-SIDE.
@@ -55,6 +56,11 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
     const stop = ensureRealFeed(validSymbol, timeframe)
     return stop
   }, [validSymbol, timeframe])
+
+  // Sincroniza as manipulacoes do admin (singleton, roda uma unica vez por aba).
+  useEffect(() => {
+    ensureManipulationSync()
+  }, [])
 
   // Loop de animacao: recalcula o preco vivo deterministicamente a cada frame.
   useEffect(() => {

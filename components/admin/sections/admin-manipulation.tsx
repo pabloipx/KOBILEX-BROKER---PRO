@@ -23,6 +23,18 @@ const TIMEFRAMES = [
   { value: 600, label: "10m" },
 ]
 
+// Estilos de candle: como o movimento aparece no grafico (parecer real, nao manipulado).
+const STYLES = [
+  { value: "natural", label: "Realista", desc: "Tendencia com pullbacks (candles mistos)" },
+  { value: "suave", label: "Suave", desc: "Sobe/desce devagar e liso" },
+  { value: "forte", label: "Forte", desc: "Movimento impulsivo e rapido" },
+  { value: "volatil", label: "Volatil", desc: "Grandes oscilacoes, mais real (arriscado)" },
+]
+
+function styleLabel(v: string) {
+  return STYLES.find((s) => s.value === v)?.label || "Realista"
+}
+
 // Somente ativos OTC (os sinteticos, que passam pelo motor manipulavel).
 const OTC_ONLY = OTC_ASSETS.filter((a) => a.symbol.endsWith("_OTC"))
 
@@ -35,6 +47,7 @@ interface Manipulation {
   end_time: string
   duration_candles: number
   strength: number
+  style: string
   active: boolean
   created_at: string
 }
@@ -58,6 +71,7 @@ export function AdminManipulation() {
   const [symbol, setSymbol] = useState(OTC_ONLY[0]?.symbol || "EURUSD_OTC")
   const [assetSearch, setAssetSearch] = useState("")
   const [direction, setDirection] = useState<"up" | "down">("up")
+  const [style, setStyle] = useState("natural")
   const [timeframe, setTimeframe] = useState(60)
   const [mode, setMode] = useState<"now" | "scheduled">("now")
   const [startAt, setStartAt] = useState("")
@@ -113,6 +127,7 @@ export function AdminManipulation() {
         body: JSON.stringify({
           symbol,
           direction,
+          style,
           timeframe,
           mode,
           startAt: mode === "scheduled" ? new Date(startAt).toISOString() : undefined,
@@ -274,6 +289,27 @@ export function AdminManipulation() {
             </button>
           </div>
 
+          {/* Estilo dos candles */}
+          <label className="mb-1.5 block text-xs font-medium text-gray-400">Estilo dos candles</label>
+          <div className="mb-1 grid grid-cols-2 gap-2">
+            {STYLES.map((s) => (
+              <button
+                key={s.value}
+                onClick={() => setStyle(s.value)}
+                className={`rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-all ${
+                  style === s.value
+                    ? "border-orange-500 bg-orange-500/15 text-orange-400"
+                    : "border-white/[0.06] bg-[#0a0e16] text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <p className="mb-4 text-[11px] leading-relaxed text-gray-500">
+            {STYLES.find((s) => s.value === style)?.desc}
+          </p>
+
           {/* Tempo grafico */}
           <label className="mb-1.5 block text-xs font-medium text-gray-400">Tempo do candle</label>
           <div className="mb-4 grid grid-cols-3 gap-2">
@@ -420,8 +456,8 @@ export function AdminManipulation() {
                           </span>
                         </div>
                         <p className="mt-0.5 text-xs text-gray-500">
-                          {m.direction === "up" ? "Alta" : "Baixa"} &middot; {tfLabel(m.timeframe)} &middot;{" "}
-                          {m.duration_candles} candle(s) &middot; forca {m.strength}%
+                          {m.direction === "up" ? "Alta" : "Baixa"} &middot; {styleLabel(m.style)} &middot;{" "}
+                          {tfLabel(m.timeframe)} &middot; {m.duration_candles} candle(s) &middot; forca {m.strength}%
                         </p>
                         <p className="mt-0.5 text-xs font-medium text-gray-400">
                           {isRunning ? remainingLabel(m) : "Encerrada"}

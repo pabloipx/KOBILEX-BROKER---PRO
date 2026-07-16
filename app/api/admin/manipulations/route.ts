@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 
 const ADMIN_TOKEN = "Admin123!"
 const VALID_TIMEFRAMES = [60, 300, 600]
+const VALID_STYLES = ["natural", "suave", "forte", "volatil"]
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
@@ -47,7 +48,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { symbol, direction, timeframe, mode, startAt, durationCandles, strength } = body
+    const { symbol, direction, timeframe, mode, startAt, durationCandles, strength, style } = body
+    const candleStyle = VALID_STYLES.includes(style) ? style : "natural"
 
     if (!symbol || typeof symbol !== "string") {
       return NextResponse.json({ error: "Ativo invalido" }, { status: 400 })
@@ -85,6 +87,7 @@ export async function POST(req: NextRequest) {
         end_time: end.toISOString(),
         duration_candles: candles,
         strength: force,
+        style: candleStyle,
         active: true,
       })
       .select()

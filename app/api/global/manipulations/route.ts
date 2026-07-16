@@ -23,7 +23,7 @@ export async function GET() {
     const nowIso = new Date().toISOString()
     const { data, error } = await supabase
       .from("otc_manipulations")
-      .select("symbol, direction, start_time, end_time, strength")
+      .select("symbol, direction, start_time, end_time, strength, style")
       .eq("active", true)
       .gte("end_time", nowIso)
 
@@ -35,6 +35,7 @@ export async function GET() {
       startTime: Math.floor(new Date(m.start_time).getTime() / 1000),
       endTime: Math.floor(new Date(m.end_time).getTime() / 1000),
       strength: Number(m.strength) || 60,
+      style: m.style || "natural",
     }))
 
     return NextResponse.json({ manipulations })

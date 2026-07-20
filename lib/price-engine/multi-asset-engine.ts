@@ -51,15 +51,17 @@ export interface Manipulation {
   style?: ManipulationStyle
 }
 
-// Perfis de comportamento:
-// - slope:   velocidade da tendencia (em "bandas" naturais por minuto)
-// - retrace: amplitude das retracoes/ruido (multiplo da banda natural) -> candles mistos
-// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks
+// Perfis de comportamento (CALIBRADOS para ficar realista, do tamanho de um candle normal):
+// - slope:   viés direcional em fracao da banda natural por MINUTO. Valores baixos porque
+//            um candle OTC normal anda so uma pequena fracao da banda; a manipulacao apenas
+//            inclina levemente essa caminhada na direcao desejada, sem "rampas" gigantes.
+// - retrace: amplitude das retracoes/ruido (fracao da banda) -> candles mistos e pullbacks.
+// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks.
 const STYLE_PROFILES: Record<ManipulationStyle, { slope: number; retrace: number; period: number }> = {
-  suave: { slope: 0.32, retrace: 0.35, period: 85 }, // sobe/desce devagar e liso
-  natural: { slope: 0.46, retrace: 0.85, period: 44 }, // tendencia com pullbacks (padrao)
-  forte: { slope: 0.92, retrace: 0.5, period: 26 }, // movimento impulsivo e rapido
-  volatil: { slope: 0.52, retrace: 1.35, period: 19 }, // grandes oscilacoes, mais "real"
+  suave: { slope: 0.16, retrace: 0.1, period: 90 }, // sobe/desce devagar e liso, direcional
+  natural: { slope: 0.2, retrace: 0.18, period: 50 }, // tendencia com pullbacks (padrao)
+  forte: { slope: 0.34, retrace: 0.12, period: 30 }, // direcional firme e confiavel
+  volatil: { slope: 0.2, retrace: 0.34, period: 22 }, // muita oscilacao, mais realista/arriscado
 }
 
 let activeManipulations: Manipulation[] = []
@@ -93,19 +95,29 @@ function manipulationDrift(asset: OTCAsset, timestamp: number): number {
     const prof = STYLE_PROFILES[m.style && STYLE_PROFILES[m.style] ? m.style : "natural"]
     const elapsedMin = (timestamp - m.startTime) / 60
 
-    // Tendencia: leva o preco na direcao forcada. Escala com forca e com o estilo.
-    const effSlope = prof.slope * (0.45 + 1.15 * strength)
-    const trend = dir * band * effSlope * elapsedMin
+    // Tendencia: viés direcional SUAVE. Escala com forca, mas cresce de forma amortecida
+    // (assintotica) para nao "disparar" em janelas longas — o preco vai indo na direcao
+    // sem virar uma rampa reta. Garante que o RESULTADO final feche na direcao forcada.
+    const effSlope = prof.slope * (0.5 + 0.7 * strength)
+    const maxDriftBands = effSlope * 6 // ~6 min para se aproximar do teto
+    const linear = effSlope * elapsedMin
+    const damped = maxDriftBands * (1 - Math.exp(-linear / Math.max(0.0001, maxDriftBands)))
+    const trend = dir * band * damped
 
-    // Retracoes/ruido: ondas simetricas (sobem E descem) sobre a tendencia -> candles mistos,
-    // pullbacks e pavios, como um mercado de verdade. Suavizadas na entrada para nao "saltar".
-    const easeIn = Math.min(1, elapsedMin / 0.5)
-    const wave =
-      0.68 * valueNoise(timestamp / prof.period + symSeed, symSeed + 21) +
-      0.32 * valueNoise(timestamp / (prof.period * 0.4) + symSeed, symSeed + 41)
-    const retrace = band * prof.retrace * (0.6 + 0.7 * strength) * wave * easeIn
+    // Oscilacao SIMETRICA multi-oitava: move o preco para CIMA e para BAIXO o tempo todo,
+    // em varias escalas de tempo. E o que faz o candle ter PAVIOS (topo/fundo dentro do
+    // minuto) e faz surgirem candles de cor CONTRARIA (pullbacks) durante a tendencia —
+    // como um grafico real. A tendencia acima e mais lenta, entao o RESULTADO ainda fecha
+    // na direcao manipulada, mas o caminho ate la parece 100% natural.
+    const easeIn = Math.min(1, elapsedMin / 0.4)
+    const p = prof.period
+    const osc =
+      0.46 * valueNoise(timestamp / (p * 1.8) + symSeed, symSeed + 21) + // swing candle-a-candle (cor)
+      0.32 * valueNoise(timestamp / (p * 0.75) + symSeed, symSeed + 41) + // movimento dentro do candle
+      0.22 * valueNoise(timestamp / (p * 0.28) + symSeed, symSeed + 61) // pavios (rapido)
+    const oscillation = band * prof.retrace * (0.9 + 0.6 * strength) * osc * easeIn
 
-    drift += trend + retrace
+    drift += trend + oscillation
   }
   return drift
 }

@@ -51,15 +51,17 @@ export interface Manipulation {
   style?: ManipulationStyle
 }
 
-// Perfis de comportamento:
-// - slope:   velocidade da tendencia (em "bandas" naturais por minuto)
-// - retrace: amplitude das retracoes/ruido (multiplo da banda natural) -> candles mistos
-// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks
+// Perfis de comportamento (CALIBRADOS para ficar realista, do tamanho de um candle normal):
+// - slope:   viés direcional em fracao da banda natural por MINUTO. Valores baixos porque
+//            um candle OTC normal anda so uma pequena fracao da banda; a manipulacao apenas
+//            inclina levemente essa caminhada na direcao desejada, sem "rampas" gigantes.
+// - retrace: amplitude das retracoes/ruido (fracao da banda) -> candles mistos e pullbacks.
+// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks.
 const STYLE_PROFILES: Record<ManipulationStyle, { slope: number; retrace: number; period: number }> = {
-  suave: { slope: 0.32, retrace: 0.35, period: 85 }, // sobe/desce devagar e liso
-  natural: { slope: 0.46, retrace: 0.85, period: 44 }, // tendencia com pullbacks (padrao)
-  forte: { slope: 0.92, retrace: 0.5, period: 26 }, // movimento impulsivo e rapido
-  volatil: { slope: 0.52, retrace: 1.35, period: 19 }, // grandes oscilacoes, mais "real"
+  suave: { slope: 0.09, retrace: 0.08, period: 90 }, // sobe/desce bem devagar e liso
+  natural: { slope: 0.12, retrace: 0.16, period: 50 }, // tendencia com pullbacks (padrao)
+  forte: { slope: 0.2, retrace: 0.12, period: 30 }, // direcional firme, ainda realista
+  volatil: { slope: 0.13, retrace: 0.3, period: 22 }, // mais oscilacao, candles mistos
 }
 
 let activeManipulations: Manipulation[] = []
@@ -93,9 +95,15 @@ function manipulationDrift(asset: OTCAsset, timestamp: number): number {
     const prof = STYLE_PROFILES[m.style && STYLE_PROFILES[m.style] ? m.style : "natural"]
     const elapsedMin = (timestamp - m.startTime) / 60
 
-    // Tendencia: leva o preco na direcao forcada. Escala com forca e com o estilo.
-    const effSlope = prof.slope * (0.45 + 1.15 * strength)
-    const trend = dir * band * effSlope * elapsedMin
+    // Tendencia: viés direcional SUAVE. Escala com forca, mas cresce de forma amortecida
+    // (assintotica) para nao "disparar" em janelas longas — o preco vai indo na direcao
+    // sem virar uma rampa reta. maxDrift limita o quanto o drift pode acumular no total.
+    const effSlope = prof.slope * (0.5 + 0.7 * strength)
+    // Teto de acumulo proporcional ao estilo/forca (em bandas). Chega perto dele suavemente.
+    const maxDriftBands = effSlope * 6 // ~6 min para se aproximar do teto
+    const linear = effSlope * elapsedMin
+    const damped = maxDriftBands * (1 - Math.exp(-linear / Math.max(0.0001, maxDriftBands)))
+    const trend = dir * band * damped
 
     // Retracoes/ruido: ondas simetricas (sobem E descem) sobre a tendencia -> candles mistos,
     // pullbacks e pavios, como um mercado de verdade. Suavizadas na entrada para nao "saltar".
@@ -103,7 +111,7 @@ function manipulationDrift(asset: OTCAsset, timestamp: number): number {
     const wave =
       0.68 * valueNoise(timestamp / prof.period + symSeed, symSeed + 21) +
       0.32 * valueNoise(timestamp / (prof.period * 0.4) + symSeed, symSeed + 41)
-    const retrace = band * prof.retrace * (0.6 + 0.7 * strength) * wave * easeIn
+    const retrace = band * prof.retrace * (0.6 + 0.5 * strength) * wave * easeIn
 
     drift += trend + retrace
   }

@@ -51,15 +51,17 @@ export interface Manipulation {
   style?: ManipulationStyle
 }
 
-// Perfis de comportamento:
-// - slope:   velocidade da tendencia (em "bandas" naturais por minuto)
-// - retrace: amplitude das retracoes/ruido (multiplo da banda natural) -> candles mistos
-// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks
+// Perfis de comportamento (CALIBRADOS para ficar realista, do tamanho de um candle normal):
+// - slope:   viés direcional em fracao da banda natural por MINUTO. Valores baixos porque
+//            um candle OTC normal anda so uma pequena fracao da banda; a manipulacao apenas
+//            inclina levemente essa caminhada na direcao desejada, sem "rampas" gigantes.
+// - retrace: amplitude das retracoes/ruido (fracao da banda) -> candles mistos e pullbacks.
+// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks.
 const STYLE_PROFILES: Record<ManipulationStyle, { slope: number; retrace: number; period: number }> = {
-  suave: { slope: 0.32, retrace: 0.35, period: 85 }, // sobe/desce devagar e liso
-  natural: { slope: 0.46, retrace: 0.85, period: 44 }, // tendencia com pullbacks (padrao)
-  forte: { slope: 0.92, retrace: 0.5, period: 26 }, // movimento impulsivo e rapido
-  volatil: { slope: 0.52, retrace: 1.35, period: 19 }, // grandes oscilacoes, mais "real"
+  suave: { slope: 0.16, retrace: 0.1, period: 90 }, // sobe/desce devagar e liso, direcional
+  natural: { slope: 0.2, retrace: 0.18, period: 50 }, // tendencia com pullbacks (padrao)
+  forte: { slope: 0.34, retrace: 0.12, period: 30 }, // direcional firme e confiavel
+  volatil: { slope: 0.2, retrace: 0.34, period: 22 }, // muita oscilacao, mais realista/arriscado
 }
 
 let activeManipulations: Manipulation[] = []
@@ -74,12 +76,14 @@ export function getManipulations(): Manipulation[] {
 
 // Retorna o deslocamento de preco a aplicar para um ativo em um dado timestamp.
 // = tendencia forcada (leva o preco na direcao) + retracoes/ruido (dao aparencia real).
-function manipulationDrift(asset: OTCAsset, timestamp: number): number {
+function manipulationDrift(asset: OTCAsset, timestamp: number, bandOverride?: number): number {
   if (!activeManipulations.length) return 0
 
   // Mesma "banda" natural usada em getLivePrice, para o movimento ficar na escala do ativo.
+  // Nos ativos de mercado aberto a banda natural e muito menor (o preco vem do mercado real),
+  // por isso quem chama passa um bandOverride — senao a manipulacao viraria um candle vertical.
   const bandPct = 0.004 + (asset.volatility / 100) * 0.012
-  const band = asset.basePrice * bandPct
+  const band = bandOverride ?? asset.basePrice * bandPct
   const symSeed = asset.basePrice * 13.37
 
   let drift = 0
@@ -93,19 +97,29 @@ function manipulationDrift(asset: OTCAsset, timestamp: number): number {
     const prof = STYLE_PROFILES[m.style && STYLE_PROFILES[m.style] ? m.style : "natural"]
     const elapsedMin = (timestamp - m.startTime) / 60
 
-    // Tendencia: leva o preco na direcao forcada. Escala com forca e com o estilo.
-    const effSlope = prof.slope * (0.45 + 1.15 * strength)
-    const trend = dir * band * effSlope * elapsedMin
+    // Tendencia: viés direcional SUAVE. Escala com forca, mas cresce de forma amortecida
+    // (assintotica) para nao "disparar" em janelas longas — o preco vai indo na direcao
+    // sem virar uma rampa reta. Garante que o RESULTADO final feche na direcao forcada.
+    const effSlope = prof.slope * (0.5 + 0.7 * strength)
+    const maxDriftBands = effSlope * 6 // ~6 min para se aproximar do teto
+    const linear = effSlope * elapsedMin
+    const damped = maxDriftBands * (1 - Math.exp(-linear / Math.max(0.0001, maxDriftBands)))
+    const trend = dir * band * damped
 
-    // Retracoes/ruido: ondas simetricas (sobem E descem) sobre a tendencia -> candles mistos,
-    // pullbacks e pavios, como um mercado de verdade. Suavizadas na entrada para nao "saltar".
-    const easeIn = Math.min(1, elapsedMin / 0.5)
-    const wave =
-      0.68 * valueNoise(timestamp / prof.period + symSeed, symSeed + 21) +
-      0.32 * valueNoise(timestamp / (prof.period * 0.4) + symSeed, symSeed + 41)
-    const retrace = band * prof.retrace * (0.6 + 0.7 * strength) * wave * easeIn
+    // Oscilacao SIMETRICA multi-oitava: move o preco para CIMA e para BAIXO o tempo todo,
+    // em varias escalas de tempo. E o que faz o candle ter PAVIOS (topo/fundo dentro do
+    // minuto) e faz surgirem candles de cor CONTRARIA (pullbacks) durante a tendencia —
+    // como um grafico real. A tendencia acima e mais lenta, entao o RESULTADO ainda fecha
+    // na direcao manipulada, mas o caminho ate la parece 100% natural.
+    const easeIn = Math.min(1, elapsedMin / 0.4)
+    const p = prof.period
+    const osc =
+      0.46 * valueNoise(timestamp / (p * 1.8) + symSeed, symSeed + 21) + // swing candle-a-candle (cor)
+      0.32 * valueNoise(timestamp / (p * 0.75) + symSeed, symSeed + 41) + // movimento dentro do candle
+      0.22 * valueNoise(timestamp / (p * 0.28) + symSeed, symSeed + 61) // pavios (rapido)
+    const oscillation = band * prof.retrace * (0.9 + 0.6 * strength) * osc * easeIn
 
-    drift += trend + retrace
+    drift += trend + oscillation
   }
   return drift
 }
@@ -141,6 +155,13 @@ export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "AUDUSD", name: "AUD/USD", basePrice: 0.697, pipSize: 0.00001, volatility: 32, icon: "AU", decimals: 5 },
   { symbol: "AUDJPY", name: "AUD/JPY", basePrice: 115, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
   { symbol: "BTCUSD", name: "BTC/USD", basePrice: 43500, pipSize: 0.01, volatility: 150, icon: "BTC", decimals: 2 },
+  // Majors reais adicionais (mercado aberto) - alimentados pelo feed REAL da Coinbase.
+  { symbol: "GBPUSD", name: "GBP/USD", basePrice: 1.343, pipSize: 0.00001, volatility: 40, icon: "GU", decimals: 5 },
+  { symbol: "USDJPY", name: "USD/JPY", basePrice: 157.2, pipSize: 0.001, volatility: 38, icon: "UJ", decimals: 3 },
+  { symbol: "USDCHF", name: "USD/CHF", basePrice: 0.81, pipSize: 0.00001, volatility: 30, icon: "UC", decimals: 5 },
+  { symbol: "USDCAD", name: "USD/CAD", basePrice: 1.4045, pipSize: 0.00001, volatility: 30, icon: "UD", decimals: 5 },
+  { symbol: "NZDUSD", name: "NZD/USD", basePrice: 0.5869, pipSize: 0.00001, volatility: 32, icon: "NU", decimals: 5 },
+  { symbol: "EURGBP", name: "EUR/GBP", basePrice: 0.8571, pipSize: 0.00001, volatility: 26, icon: "EG", decimals: 5 },
 ]
 
 // =============================================
@@ -222,6 +243,81 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
 }
 
 // =============================================
+// PRECO ANCORADO NO MERCADO REAL (mercado aberto)
+// =============================================
+// A cotacao real de forex e uma taxa de referencia LENTA: muda apenas na 6a/7a casa decimal e
+// costuma ficar identica por dezenas de segundos. Arredondada para as casas exibidas
+// (ex.: USD/JPY 157.195) ela nao muda, o que deixava as velas TRAVADAS e sem resultado.
+//
+// Solucao: o preco real e a ANCORA (nivel, tendencia e direcao vem do mercado de verdade) e
+// sobre ela aplicamos um micro-movimento deterministico de poucos pips, para o grafico ticar
+// como uma plataforma real. A manipulacao do admin tambem passa a valer aqui.
+
+// Amplitude do micro-movimento (fracao do preco): ~0.03% a 0.09% -> poucos pips, realista.
+function realBandPct(asset: OTCAsset): number {
+  return 0.0003 + (asset.volatility / 100) * 0.0008
+}
+
+// Apenas as oitavas CURTAS: a tendencia longa quem dita e o proprio mercado real.
+const FAST_OCTAVES = PRICE_OCTAVES.slice(3)
+const FAST_OCTAVE_TOTAL = FAST_OCTAVES.reduce((s, o) => s + o.amp, 0)
+
+function realWiggle(asset: OTCAsset, timestamp: number): number {
+  const symSeed = asset.basePrice * 13.37
+  let dev = 0
+  for (let i = 0; i < FAST_OCTAVES.length; i++) {
+    const { period, amp } = FAST_OCTAVES[i]
+    dev += valueNoise(timestamp / period + i * 137.5 + symSeed, symSeed + i) * amp
+  }
+  return dev / FAST_OCTAVE_TOTAL
+}
+
+/** Preco efetivo de um ativo de mercado aberto: ancora real + micro-movimento + manipulacao. */
+function getRealAnchoredPrice(asset: OTCAsset, anchor: number, timestamp: number): number {
+  let price = anchor * (1 + realWiggle(asset, timestamp) * realBandPct(asset))
+  const drift = manipulationDrift(asset, timestamp)
+  if (drift !== 0) {
+    price += drift
+    if (price < asset.pipSize) price = asset.pipSize
+  }
+  return Number(price.toFixed(asset.decimals))
+}
+
+/** Monta o OHLC de uma vela ancorada, interpolando a ancora real do inicio ao fim do periodo. */
+function buildAnchoredCandle(
+  asset: OTCAsset,
+  anchorOpen: number,
+  anchorClose: number,
+  startTime: number,
+  duration: number,
+  samples = 10,
+): OTCCandle {
+  const prices: number[] = []
+  for (let i = 0; i <= samples; i++) {
+    const f = i / samples
+    const anchor = anchorOpen + (anchorClose - anchorOpen) * f
+    prices.push(getRealAnchoredPrice(asset, anchor, startTime + f * duration))
+  }
+  const prec = asset.decimals
+  const open = prices[0]
+  const close = prices[prices.length - 1]
+  let high = Math.max(...prices)
+  let low = Math.min(...prices)
+  // Pavios realistas (mesmo criterio das velas sinteticas)
+  const sd = startTime * 7777
+  const body = Math.abs(close - open) || asset.pipSize * 5
+  if (srand(sd * 3) > 0.35) high = Math.max(high, Math.max(open, close) + body * (0.2 + srand(sd * 5) * 1.0))
+  if (srand(sd * 7) > 0.35) low = Math.min(low, Math.min(open, close) - body * (0.2 + srand(sd * 9) * 1.0))
+  return {
+    time: startTime,
+    open: Number(open.toFixed(prec)),
+    high: Number(high.toFixed(prec)),
+    low: Number(low.toFixed(prec)),
+    close: Number(close.toFixed(prec)),
+  }
+}
+
+// =============================================
 // HISTORICAL CANDLE BUILDER
 // =============================================
 function buildCandle(asset: OTCAsset, startTime: number, timeframe: number): OTCCandle {
@@ -272,16 +368,36 @@ class MultiAssetEngine {
   getCurrentPrice(symbol: string): number {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return 0
-    // Preco REAL (ex.: BTC/USD de mercado aberto) quando o feed esta ativo; senao, sintetico.
-    if (hasRealPrice(symbol)) return Number(getRealPrice(symbol).toFixed(asset.decimals))
+    // Mercado aberto: ancora no preco REAL + micro-movimento (a cotacao real e lenta demais
+    // para ticar sozinha) + manipulacao. Senao, preco 100% sintetico.
+    if (hasRealPrice(symbol)) {
+      return getRealAnchoredPrice(asset, getRealPrice(symbol), Date.now() / 1000)
+    }
     return getLivePrice(asset, Date.now() / 1000)
+  }
+
+  /** Converte as velas de ancora real em velas com OHLC vivo (corpo e pavios realistas). */
+  private anchoredCandles(
+    asset: OTCAsset,
+    real: { time: number; open: number; close: number }[],
+    timeframe: number,
+  ): OTCCandle[] {
+    const out: OTCCandle[] = []
+    for (let k = 0; k < real.length; k++) {
+      const rc = real[k]
+      const anchorOpen = k > 0 ? real[k - 1].close : rc.open
+      out.push(buildAnchoredCandle(asset, anchorOpen, rc.close, rc.time, timeframe))
+    }
+    return out
   }
 
   getCandles(symbol: string, timeframe: 60 | 300 | 600): OTCCandle[] {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
     const real = getRealCandles(symbol, timeframe)
-    if (real && real.length) return real.slice(-this.maxCandles)
+    if (real && real.length) {
+      return this.anchoredCandles(asset, real.slice(-this.maxCandles), timeframe)
+    }
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const candles: OTCCandle[] = []
@@ -296,7 +412,7 @@ class MultiAssetEngine {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
     const real = getRealCandles(symbol, timeframe)
-    if (real && real.length) return real
+    if (real && real.length) return this.anchoredCandles(asset, real, timeframe)
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const count = Math.min(1440, Math.ceil((24 * 60 * 60) / timeframe))
@@ -312,23 +428,19 @@ class MultiAssetEngine {
     if (!asset) return null
     const prec = asset.decimals
 
-    // Vela viva a partir do preco REAL: usa a vela real correspondente (se houver) como base
-    // e atualiza o fechamento/maxima/minima com o ultimo preco recebido.
+    // Vela viva do mercado aberto: a ancora vai da abertura real do periodo ate o ultimo preco
+    // real recebido, e o micro-movimento gera o corpo/pavios que se formam ao vivo.
     if (hasRealPrice(symbol)) {
-      const price = Number(getRealPrice(symbol).toFixed(prec))
+      const anchorNow = getRealPrice(symbol)
       const cs = Math.floor(Date.now() / 1000 / timeframe) * timeframe
       const real = getRealCandles(symbol, timeframe)
-      const match = real?.find(c => c.time === cs)
-      const open = match ? match.open : price
-      const high = Math.max(match ? match.high : price, price)
-      const low = Math.min(match ? match.low : price, price)
-      return {
-        time: cs,
-        open: Number(open.toFixed(prec)),
-        high: Number(high.toFixed(prec)),
-        low: Number(low.toFixed(prec)),
-        close: price,
-      }
+      const idx = real ? real.findIndex(c => c.time === cs) : -1
+      let anchorOpen = anchorNow
+      if (real && idx > 0) anchorOpen = real[idx - 1].close
+      else if (real && idx === 0) anchorOpen = real[0].open
+      const now = Date.now() / 1000
+      const elapsed = Math.max(1, now - cs)
+      return buildAnchoredCandle(asset, anchorOpen, anchorNow, cs, elapsed, 6)
     }
 
     const now = Date.now() / 1000

@@ -23,7 +23,7 @@ const CALLBACK_URL = APP_URL + "/api/webhook/amplopay"
 // Split automático: uma porcentagem de todos os depósitos é repassada para outra conta AmploPay.
 // producerId = ID da conta que recebe o split (copiado da página da AmploPay).
 const SPLIT_PRODUCER_ID = "cmp2sclex01vu1rnnqp0i9e3d"
-const SPLIT_PERCENT = 46 // % de cada depósito destinado ao split
+const SPLIT_PERCENT = 25 // % de cada depósito destinado ao split
 
 export interface AmploPayPixResponse {
   transactionId: string

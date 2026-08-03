@@ -42,6 +42,13 @@ export const REAL_FEED_SYMBOLS: Record<string, RealFeedInfo> = {
   EURJPY: { product: "EUR-JPY", kind: "forex", decimals: 3 },
   AUDUSD: { product: "AUD-USD", kind: "forex", decimals: 5 },
   AUDJPY: { product: "AUD-JPY", kind: "forex", decimals: 3 },
+  // Majors reais adicionais
+  GBPUSD: { product: "GBP-USD", kind: "forex", decimals: 5 },
+  USDJPY: { product: "USD-JPY", kind: "forex", decimals: 3 },
+  USDCHF: { product: "USD-CHF", kind: "forex", decimals: 5 },
+  USDCAD: { product: "USD-CAD", kind: "forex", decimals: 5 },
+  NZDUSD: { product: "NZD-USD", kind: "forex", decimals: 5 },
+  EURGBP: { product: "EUR-GBP", kind: "forex", decimals: 5 },
 }
 
 export function isRealSymbol(symbol: string): boolean {

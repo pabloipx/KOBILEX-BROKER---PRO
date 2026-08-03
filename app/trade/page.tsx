@@ -839,7 +839,9 @@ export default function TradePage() {
                     <p className="text-white font-bold text-xs lg:text-sm leading-tight truncate max-w-[90px] lg:max-w-[110px]">
                       {asset.name}
                     </p>
-                    <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
+                    {(asset.market || "otc") === "otc" && (
+                      <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
+                    )}
                   </div>
 
                   {/* Sublinhado laranja na aba ativa */}

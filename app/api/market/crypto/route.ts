@@ -12,6 +12,12 @@ const PRODUCTS: Record<string, string> = {
   EURJPY: "EUR-JPY",
   AUDUSD: "AUD-USD",
   AUDJPY: "AUD-JPY",
+  GBPUSD: "GBP-USD",
+  USDJPY: "USD-JPY",
+  USDCHF: "USD-CHF",
+  USDCAD: "USD-CAD",
+  NZDUSD: "NZD-USD",
+  EURGBP: "EUR-GBP",
 }
 
 // Granularidades suportadas pela Coinbase: 60, 300, 900, 3600, 21600, 86400.

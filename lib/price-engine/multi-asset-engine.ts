@@ -153,6 +153,13 @@ export const OTC_ASSETS: OTCAsset[] = [
   { symbol: "AUDUSD", name: "AUD/USD", basePrice: 0.697, pipSize: 0.00001, volatility: 32, icon: "AU", decimals: 5 },
   { symbol: "AUDJPY", name: "AUD/JPY", basePrice: 115, pipSize: 0.001, volatility: 40, icon: "AJ", decimals: 3 },
   { symbol: "BTCUSD", name: "BTC/USD", basePrice: 43500, pipSize: 0.01, volatility: 150, icon: "BTC", decimals: 2 },
+  // Majors reais adicionais (mercado aberto) - alimentados pelo feed REAL da Coinbase.
+  { symbol: "GBPUSD", name: "GBP/USD", basePrice: 1.343, pipSize: 0.00001, volatility: 40, icon: "GU", decimals: 5 },
+  { symbol: "USDJPY", name: "USD/JPY", basePrice: 157.2, pipSize: 0.001, volatility: 38, icon: "UJ", decimals: 3 },
+  { symbol: "USDCHF", name: "USD/CHF", basePrice: 0.81, pipSize: 0.00001, volatility: 30, icon: "UC", decimals: 5 },
+  { symbol: "USDCAD", name: "USD/CAD", basePrice: 1.4045, pipSize: 0.00001, volatility: 30, icon: "UD", decimals: 5 },
+  { symbol: "NZDUSD", name: "NZD/USD", basePrice: 0.5869, pipSize: 0.00001, volatility: 32, icon: "NU", decimals: 5 },
+  { symbol: "EURGBP", name: "EUR/GBP", basePrice: 0.8571, pipSize: 0.00001, volatility: 26, icon: "EG", decimals: 5 },
 ]
 
 // =============================================

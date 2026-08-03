@@ -41,6 +41,13 @@ const ASSET_UI: Record<string, Omit<AssetUIInfo, "symbol">> = {
   AUDUSD: { name: "AUD/USD", category: "forex", payout: 85, logo: "/images/assets/audusd-open.png", market: "open" },
   AUDJPY: { name: "AUD/JPY", category: "forex", payout: 85, logo: "/images/assets/audjpy-open.png", market: "open" },
   BTCUSD: { name: "BTC/USD", category: "crypto", payout: 85, logo: "/images/assets/btcusd-open.png", market: "open" },
+  // Majors reais adicionais (cotacao ao vivo do forex de verdade)
+  GBPUSD: { name: "GBP/USD", category: "forex", payout: 85, logo: "/images/assets/gbpusd-open.png", market: "open" },
+  USDJPY: { name: "USD/JPY", category: "forex", payout: 85, logo: "/images/assets/usdjpy-open.png", market: "open" },
+  USDCHF: { name: "USD/CHF", category: "forex", payout: 85, logo: "/images/assets/usdchf-open.png", market: "open" },
+  USDCAD: { name: "USD/CAD", category: "forex", payout: 85, logo: "/images/assets/usdcad-open.png", market: "open" },
+  NZDUSD: { name: "NZD/USD", category: "forex", payout: 85, logo: "/images/assets/nzdusd-open.png", market: "open" },
+  EURGBP: { name: "EUR/GBP", category: "forex", payout: 85, logo: "/images/assets/eurgbp-open.png", market: "open" },
 }
 
 const FALLBACK_LOGO = "/placeholder.svg"

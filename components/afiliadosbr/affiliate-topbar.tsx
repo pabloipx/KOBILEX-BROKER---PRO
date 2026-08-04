@@ -15,7 +15,7 @@ export function AffiliateTopbar({ userName, balance, nextPayment }: AffiliateTop
   return (
     <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6">
       <div className="flex items-center gap-6">
-        <AffiliateBrand className="h-7" />
+        <AffiliateBrand className="h-9" />
 
         <button
           type="button"

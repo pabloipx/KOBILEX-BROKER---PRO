@@ -268,12 +268,11 @@ export function OfferDetail({ offer, affiliate, onBack }: OfferDetailProps) {
           <aside className="flex flex-col gap-5">
             <div className="flex items-center justify-center rounded-xl border border-gray-200 p-8">
               <Image
-                src="/images/uryn-bear-logo.png"
+                src="/images/urynbroker-logo.png"
                 alt="URYN BROKER"
-                width={200}
-                height={66}
-                className="h-9 w-auto"
-                unoptimized
+                width={1500}
+                height={400}
+                className="h-10 w-auto"
               />
             </div>
 

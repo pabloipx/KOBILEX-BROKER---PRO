@@ -80,7 +80,7 @@ export default function AffiliateLoginPage() {
     <div className="min-h-screen w-full bg-[#fafafa] flex flex-col items-center justify-center px-4 py-10 font-sans">
       <div className="w-full max-w-[490px] bg-white rounded-xl shadow-[0_1px_3px_rgba(16,24,40,0.08)] px-8 py-10 sm:px-12">
         <div className="flex items-center justify-center">
-          <AffiliateBrand className="h-8" />
+          <AffiliateBrand className="h-12" />
         </div>
 
         <h1 className="mt-6 text-center text-[26px] font-bold text-gray-900 tracking-tight">Entrar no Afiliados</h1>

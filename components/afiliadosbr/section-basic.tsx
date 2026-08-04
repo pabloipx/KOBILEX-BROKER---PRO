@@ -2,9 +2,12 @@
 
 import { useState } from "react"
 import { Check, Copy, Send, Trophy } from "lucide-react"
-import { brl, type AffiliateInfo } from "./types"
+import type { AffiliateInfo } from "./types"
+import { useMoney } from "./currency-context"
 
 export function SectionCompetition({ affiliate }: { affiliate: AffiliateInfo }) {
+  const brl = useMoney()
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -199,6 +202,8 @@ export function SectionTelegramBot({ affiliate }: { affiliate: AffiliateInfo }) 
 }
 
 export function SectionAccount({ affiliate, email }: { affiliate: AffiliateInfo; email: string }) {
+  const brl = useMoney()
+
   return (
     <div className="flex flex-col gap-6">
       <div>

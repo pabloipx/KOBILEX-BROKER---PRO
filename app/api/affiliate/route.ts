@@ -142,6 +142,12 @@ export async function GET() {
       },
       referrals: referralsWithDeposits,
       withdrawals: withdrawals || [],
+      // Preferencias de exibicao controladas pelo admin
+      display: {
+        currency: settings.display_currency,
+        usd_rate: settings.usd_rate,
+        next_payment_date: settings.next_payment_date,
+      },
     })
   } catch (error) {
     console.log("[v0] Affiliate GET - Error:", error)

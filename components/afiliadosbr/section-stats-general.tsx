@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { Calendar, ChevronDown, Table2, X } from "lucide-react"
-import { brl, shortDate, type AffiliateReferral } from "./types"
+import { shortDate, type AffiliateReferral } from "./types"
+import { useMoney } from "./currency-context"
 
 interface SectionStatsGeneralProps {
   referrals: AffiliateReferral[]
@@ -17,6 +18,7 @@ const groupLabels: Record<GroupBy, string> = {
 }
 
 export function SectionStatsGeneral({ referrals }: SectionStatsGeneralProps) {
+  const brl = useMoney()
   const [groupBy, setGroupBy] = useState<GroupBy>("day")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")

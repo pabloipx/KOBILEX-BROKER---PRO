@@ -44,6 +44,11 @@ export interface AffiliateData {
   affiliate: AffiliateInfo | null
   referrals: AffiliateReferral[]
   withdrawals: AffiliateWithdrawal[]
+  display?: {
+    currency: "BRL" | "USD"
+    usd_rate: number
+    next_payment_date: string | null
+  }
 }
 
 export interface AffiliatePaymentMethod {
@@ -97,9 +102,6 @@ export const PAYMENT_METHOD_INFO = {
     note: "* - A retirada máxima diária para o PIX é de $5000",
   },
 } as const
-
-export const brl = (value: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0)
 
 export const shortDate = (value: string) =>
   new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })

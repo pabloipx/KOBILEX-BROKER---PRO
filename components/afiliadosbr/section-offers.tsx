@@ -3,13 +3,15 @@
 import { useState } from "react"
 import { ChevronRight, ChevronUp, Laptop, Smartphone, Tablet } from "lucide-react"
 import { OfferDetail, type OfferSummary } from "./offer-detail"
-import { brl, type AffiliateInfo } from "./types"
+import type { AffiliateInfo } from "./types"
+import { useMoney } from "./currency-context"
 
 interface SectionOffersProps {
   affiliate: AffiliateInfo
 }
 
 export function SectionOffers({ affiliate }: SectionOffersProps) {
+  const brl = useMoney()
   const [selected, setSelected] = useState<OfferSummary | null>(null)
 
   const model = affiliate.commission_model ?? "hybrid"

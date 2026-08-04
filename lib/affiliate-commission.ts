@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 export type CommissionModel = "revshare" | "cpa" | "hybrid"
 
+export type DisplayCurrency = "BRL" | "USD"
+
 export interface AffiliateGlobalSettings {
   default_revshare_percent: number
   default_cpa_amount: number
@@ -11,6 +13,12 @@ export interface AffiliateGlobalSettings {
   withdrawal_fee_percent: number
   program_enabled: boolean
   auto_approve_affiliates: boolean
+  /** Moeda em que os valores sao exibidos no painel do afiliado */
+  display_currency: DisplayCurrency
+  /** Cotacao usada para converter BRL em USD quando display_currency = USD */
+  usd_rate: number
+  /** Data exata do proximo pagamento; quando nula o painel usa a janela automatica */
+  next_payment_date: string | null
   updated_at: string | null
 }
 
@@ -23,6 +31,9 @@ export const FALLBACK_SETTINGS: AffiliateGlobalSettings = {
   withdrawal_fee_percent: 2,
   program_enabled: true,
   auto_approve_affiliates: true,
+  display_currency: "BRL",
+  usd_rate: 5.4,
+  next_payment_date: null,
   updated_at: null,
 }
 
@@ -46,6 +57,10 @@ export async function getAffiliateSettings(supabase: SupabaseClient): Promise<Af
     withdrawal_fee_percent: num(data.withdrawal_fee_percent, FALLBACK_SETTINGS.withdrawal_fee_percent),
     program_enabled: data.program_enabled !== false,
     auto_approve_affiliates: data.auto_approve_affiliates !== false,
+    display_currency: data.display_currency === "USD" ? "USD" : "BRL",
+    // Uma cotacao zerada ou invalida quebraria a conversao, entao cai no padrao
+    usd_rate: Math.max(num(data.usd_rate, FALLBACK_SETTINGS.usd_rate), 0.01),
+    next_payment_date: data.next_payment_date ?? null,
     updated_at: data.updated_at ?? null,
   }
 }

@@ -20,11 +20,24 @@ import {
 import { SectionSecurity } from "@/components/afiliadosbr/section-security"
 import { SectionProfile } from "@/components/afiliadosbr/section-profile"
 import type { AffiliateData, AffiliateSection } from "@/components/afiliadosbr/types"
+import { DisplayProvider, DEFAULT_DISPLAY, type DisplayPreferences } from "@/components/afiliadosbr/currency-context"
 
+/** Janela padrao usada quando o admin nao define uma data exata */
 function nextPaymentWindow() {
   const now = new Date()
   const month = now.toLocaleDateString("pt-BR", { month: "long" })
   return now.getDate() <= 10 ? `10-12 ${month}` : `25-27 ${month}`
+}
+
+/** Formata a data escolhida pelo admin, tratando-a como data local e nao UTC */
+function formatPaymentDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number)
+  if (!year || !month || !day) return value
+  return new Date(year, month - 1, day).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  })
 }
 
 export default function AffiliatePanelPage() {
@@ -50,6 +63,7 @@ export default function AffiliatePanelPage() {
         affiliate: json.affiliate ?? null,
         referrals: json.referrals ?? [],
         withdrawals: json.withdrawals ?? [],
+        display: json.display ?? undefined,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar dados")
@@ -95,7 +109,16 @@ export default function AffiliatePanelPage() {
     router.replace("/afiliadosbr")
   }
 
-  const nextPayment = useMemo(nextPaymentWindow, [])
+  const display: DisplayPreferences = useMemo(
+    () => ({ ...DEFAULT_DISPLAY, ...(data?.display ?? {}) }),
+    [data?.display],
+  )
+
+  // A data definida pelo admin tem prioridade sobre a janela calculada
+  const nextPayment = useMemo(
+    () => (display.next_payment_date ? formatPaymentDate(display.next_payment_date) : nextPaymentWindow()),
+    [display.next_payment_date],
+  )
 
   if (loading) {
     return (
@@ -141,6 +164,7 @@ export default function AffiliatePanelPage() {
   const affiliate = data.affiliate
 
   return (
+    <DisplayProvider value={display}>
     <div className="flex min-h-screen flex-col bg-[#fafafa] font-sans">
       <AffiliateTopbar userName={userName} balance={affiliate.balance} nextPayment={nextPayment} />
 
@@ -179,5 +203,6 @@ export default function AffiliatePanelPage() {
         </main>
       </div>
     </div>
+    </DisplayProvider>
   )
 }

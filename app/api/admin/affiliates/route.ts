@@ -540,6 +540,10 @@ export async function PATCH(request: Request) {
         withdrawal_fee_percent: Number(data.withdrawal_fee_percent),
         program_enabled: Boolean(data.program_enabled),
         auto_approve_affiliates: Boolean(data.auto_approve_affiliates),
+        display_currency: data.display_currency === "USD" ? "USD" : "BRL",
+        usd_rate: Number(data.usd_rate),
+        // Campo opcional: vazio limpa a data e o painel volta para a janela automatica
+        next_payment_date: data.next_payment_date ? String(data.next_payment_date) : null,
       }
 
       for (const [key, value] of Object.entries(payload)) {
@@ -549,6 +553,13 @@ export async function PATCH(request: Request) {
       }
       if (payload.default_revshare_percent > 100 || payload.withdrawal_fee_percent > 100) {
         return NextResponse.json({ error: "Percentuais devem estar entre 0 e 100" }, { status: 400 })
+      }
+      // Cotacao zerada dividiria por zero na conversao exibida ao afiliado
+      if (payload.usd_rate <= 0) {
+        return NextResponse.json({ error: "Informe uma cotacao do dolar maior que zero" }, { status: 400 })
+      }
+      if (payload.next_payment_date && Number.isNaN(Date.parse(payload.next_payment_date))) {
+        return NextResponse.json({ error: "Data do proximo pagamento invalida" }, { status: 400 })
       }
 
       const { error } = await supabase
@@ -561,7 +572,7 @@ export async function PATCH(request: Request) {
       await log({
         action: "update_settings",
         field: "global",
-        new_value: `rev ${payload.default_revshare_percent}% · cpa R$ ${payload.default_cpa_amount} · min saque R$ ${payload.min_withdrawal}`,
+        new_value: `rev ${payload.default_revshare_percent}% · cpa R$ ${payload.default_cpa_amount} · min saque R$ ${payload.min_withdrawal} · moeda ${payload.display_currency}${payload.display_currency === "USD" ? ` (${payload.usd_rate})` : ""} · pagamento ${payload.next_payment_date ?? "automatico"}`,
       })
 
       return NextResponse.json({ success: true })

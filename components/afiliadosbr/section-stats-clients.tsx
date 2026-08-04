@@ -2,13 +2,15 @@
 
 import { useMemo, useState } from "react"
 import { Search, Users } from "lucide-react"
-import { brl, shortDate, type AffiliateReferral } from "./types"
+import { shortDate, type AffiliateReferral } from "./types"
+import { useMoney } from "./currency-context"
 
 interface SectionStatsClientsProps {
   referrals: AffiliateReferral[]
 }
 
 export function SectionStatsClients({ referrals }: SectionStatsClientsProps) {
+  const brl = useMoney()
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<"all" | "active" | "registered">("all")
 

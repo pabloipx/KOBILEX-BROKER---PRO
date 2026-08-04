@@ -72,6 +72,9 @@ const EMPTY_SETTINGS: AdminSettings = {
   withdrawal_fee_percent: 2,
   program_enabled: true,
   auto_approve_affiliates: true,
+  display_currency: "BRL",
+  usd_rate: 5.4,
+  next_payment_date: null,
   updated_at: null,
 }
 
@@ -680,6 +683,75 @@ function SettingsPanel({ settings, onSaved }: { settings: AdminSettings; onSaved
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberField label="Saque mínimo (R$)" value={form.min_withdrawal} onChange={(v) => set("min_withdrawal", v)} />
           <NumberField label="Taxa de saque (%)" value={form.withdrawal_fee_percent} onChange={(v) => set("withdrawal_fee_percent", v)} />
+        </div>
+      </section>
+
+      <section className={`${cardClass} p-5`}>
+        <div className="mb-4 flex items-center gap-2">
+          <Wallet className="h-4 w-4 text-[#f97316]" />
+          <p className="text-sm font-semibold text-white">Exibição no painel do afiliado</p>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm text-white/70">Moeda exibida</span>
+              <select
+                className={`${inputClass} w-full`}
+                value={form.display_currency}
+                onChange={(e) => set("display_currency", e.target.value === "USD" ? "USD" : "BRL")}
+              >
+                <option value="BRL">Real (R$)</option>
+                <option value="USD">Dólar ($)</option>
+              </select>
+              <span className="text-[11px] text-white/30">Afeta todos os valores do painel do afiliado</span>
+            </label>
+            <NumberField
+              label="Cotação do dólar (1 USD em R$)"
+              value={form.usd_rate}
+              onChange={(v) => set("usd_rate", v)}
+              hint={
+                form.display_currency === "USD"
+                  ? "Os valores em real são divididos por esta cotação"
+                  : "Usada apenas quando a moeda é dólar"
+              }
+            />
+          </div>
+
+          {form.display_currency === "USD" && (
+            <p className="rounded-lg bg-[#0a0e17] px-3 py-2.5 text-[11px] text-white/40">
+              {"Exemplo: um saldo de R$ 1.000,00 aparece como " +
+                (form.usd_rate > 0
+                  ? "$ " +
+                    (1000 / form.usd_rate).toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  : "—") +
+                " para o afiliado."}
+            </p>
+          )}
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm text-white/70">Data do próximo pagamento</span>
+            <input
+              type="date"
+              className={`${inputClass} w-full [color-scheme:dark]`}
+              value={form.next_payment_date ?? ""}
+              onChange={(e) => set("next_payment_date", e.target.value || null)}
+            />
+            <span className="text-[11px] text-white/30">
+              Deixe em branco para o painel calcular automaticamente a próxima janela (dias 10-12 e 25-27).
+            </span>
+          </label>
+          {form.next_payment_date && (
+            <button
+              type="button"
+              onClick={() => set("next_payment_date", null)}
+              className="self-start text-[11px] text-[#f97316] hover:underline"
+            >
+              Limpar data e voltar ao cálculo automático
+            </button>
+          )}
         </div>
       </section>
 

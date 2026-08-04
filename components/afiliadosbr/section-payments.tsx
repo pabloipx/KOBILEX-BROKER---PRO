@@ -5,13 +5,13 @@ import type React from "react"
 import { useCallback, useEffect, useState } from "react"
 import { CalendarDays, CheckCircle2, CircleDashed, Download, Loader2, Plus, Trash2 } from "lucide-react"
 import {
-  brl,
   shortDate,
   PAYMENT_METHOD_INFO,
   type AffiliateInfo,
   type AffiliatePaymentMethod,
   type AffiliateWithdrawal,
 } from "./types"
+import { useMoney } from "./currency-context"
 import { PaymentMethodDrawer } from "./payment-method-drawer"
 
 interface SectionPaymentsProps {
@@ -22,6 +22,7 @@ interface SectionPaymentsProps {
 }
 
 export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh }: SectionPaymentsProps) {
+  const brl = useMoney()
   const MIN_WITHDRAWAL = affiliate.min_withdrawal ?? 250
   const FEE_PERCENT = affiliate.withdrawal_fee_percent ?? 2
 

@@ -3,7 +3,8 @@
 import Image from "next/image"
 import { useMemo, useState } from "react"
 import { Check, ChevronLeft, Copy, HelpCircle, Info, Laptop, Smartphone, Tablet } from "lucide-react"
-import { brl, type AffiliateInfo } from "./types"
+import type { AffiliateInfo } from "./types"
+import { useMoney } from "./currency-context"
 
 export interface OfferSummary {
   id: string
@@ -73,6 +74,7 @@ const RULE_SECTIONS = [
 ]
 
 export function OfferDetail({ offer, affiliate, onBack }: OfferDetailProps) {
+  const brl = useMoney()
   const [tab, setTab] = useState<Tab>("Links")
   const [afftrack, setAfftrack] = useState("")
   const [copied, setCopied] = useState(false)

@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { ChevronDown } from "lucide-react"
-import { brl } from "./types"
+import { useMoney } from "./currency-context"
 import { AffiliateBrand } from "./affiliate-brand"
 
 interface AffiliateTopbarProps {
@@ -12,6 +12,8 @@ interface AffiliateTopbarProps {
 }
 
 export function AffiliateTopbar({ userName, balance, nextPayment }: AffiliateTopbarProps) {
+  const brl = useMoney()
+
   return (
     <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6">
       <div className="flex items-center gap-6">

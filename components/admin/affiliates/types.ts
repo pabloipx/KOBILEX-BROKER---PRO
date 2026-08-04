@@ -86,6 +86,12 @@ export interface AdminSettings {
   withdrawal_fee_percent: number
   program_enabled: boolean
   auto_approve_affiliates: boolean
+  /** Moeda exibida no painel do afiliado */
+  display_currency: "BRL" | "USD"
+  /** Cotacao usada para converter os valores quando a moeda e USD */
+  usd_rate: number
+  /** Data exata do proximo pagamento (YYYY-MM-DD); nula usa a janela automatica */
+  next_payment_date: string | null
   updated_at: string | null
 }
 

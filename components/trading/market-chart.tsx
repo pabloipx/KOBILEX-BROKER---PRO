@@ -1398,11 +1398,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       <div
         className="absolute inset-0 z-0 pointer-events-none"
         style={{
-          backgroundImage: "url(/images/kodilex-watermark.png)",
+          backgroundImage: "url(/images/urynbroker-watermark.png)",
           backgroundRepeat: "no-repeat",
           backgroundPosition: "center 45%",
           backgroundSize: "55% auto",
-          opacity: 0.09,
+          opacity: 0.1,
         }}
       />
       {/* Vinheta sutil para dar profundidade */}

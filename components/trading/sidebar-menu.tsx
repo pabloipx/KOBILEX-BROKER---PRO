@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import {
   X,
@@ -14,7 +14,6 @@ import {
   TrendingUp,
   Shield,
   Wallet,
-  Users,
 } from "lucide-react"
 
 interface SidebarMenuProps {
@@ -36,32 +35,6 @@ export function SidebarMenu({
   historyRefresh,
 }: SidebarMenuProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const [isAffiliate, setIsAffiliate] = useState(false)
-
-  useEffect(() => {
-    if (!userId || !isOpen) return
-
-    const fetchUserData = async () => {
-      try {
-        const supabase = createClient()
-
-        // Fetch affiliate status
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("is_affiliate")
-          .eq("id", userId)
-          .single()
-
-        if (profile) {
-          setIsAffiliate(profile.is_affiliate || false)
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error)
-      }
-    }
-
-    fetchUserData()
-  }, [userId, isOpen])
 
   const handleNavigation = (href: string) => {
     onClose()
@@ -83,7 +56,6 @@ export function SidebarMenu({
   const mainMenuItems = [
     { icon: History, label: "Historico", href: "/transactions" },
     { icon: User, label: "Perfil", href: "/profile" },
-    ...(isAffiliate ? [{ icon: Users, label: "Afiliados", href: "/afiliados" }] : []),
   ]
 
   const financeMenuItems = [

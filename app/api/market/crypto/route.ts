@@ -185,8 +185,12 @@ function buildMinuteCandles(
   for (const c of yahoo) yahooClose.set(Math.floor(c.time / 60) * 60, c.close)
 
   const sorted = Array.from(minutes).sort((a, b) => a - b)
-  const first = sorted[0]
   const last = sorted[sorted.length - 1]
+
+  // Janela limitada aos minutos que o grafico realmente mostra. Sem isso, um historico de
+  // ticks antigo (ex.: da sexta) faria a serie varrer todo o fim de semana minuto a minuto,
+  // enchendo o grafico de velas planas de mercado fechado.
+  const first = Math.max(sorted[0], last - 239 * 60)
 
   const out: RealCandle[] = []
   let prevClose = byBucket.get(first)?.open ?? yahooClose.get(first) ?? 0
@@ -219,19 +223,27 @@ function buildMinuteCandles(
 }
 
 /**
- * Preenche periodos ausentes na serie. O Yahoo devolve null nos periodos sem negociacao e
- * esses buracos aparecem no grafico como vaos. O periodo vazio vira uma vela de continuidade
- * no ultimo fechamento real: nao houve preco novo, entao nao houve movimento.
- * O OHLC real das velas existentes e preservado.
+ * Preenche buracos CURTOS na serie. O Yahoo devolve null em periodos sem negociacao e isso
+ * aparece no grafico como vao. Um periodo vago vira vela de continuidade no ultimo fechamento
+ * real: nao houve preco novo, logo nao houve movimento. O OHLC real e sempre preservado.
+ *
+ * Buracos longos NAO sao preenchidos de proposito: o fim de semana do forex e uma parada real
+ * de mercado, e enche-lo de velas planas inventaria dezenas de horas de "mercado parado" e
+ * ainda pesaria no grafico. O limite separa a falha pontual da fonte do mercado fechado.
  */
+const MAX_GAP_FILL = 3
+
 function fillGaps(candles: RealCandle[], tf: number): RealCandle[] {
   if (candles.length < 2) return candles
 
   const out: RealCandle[] = [candles[0]]
   for (let i = 1; i < candles.length; i++) {
     const prev = candles[i - 1]
-    for (let t = prev.time + tf; t < candles[i].time; t += tf) {
-      out.push({ time: t, open: prev.close, high: prev.close, low: prev.close, close: prev.close })
+    const missing = Math.round((candles[i].time - prev.time) / tf) - 1
+    if (missing > 0 && missing <= MAX_GAP_FILL) {
+      for (let t = prev.time + tf; t < candles[i].time; t += tf) {
+        out.push({ time: t, open: prev.close, high: prev.close, low: prev.close, close: prev.close })
+      }
     }
     out.push(candles[i])
   }

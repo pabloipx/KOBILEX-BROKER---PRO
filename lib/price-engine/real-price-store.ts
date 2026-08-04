@@ -72,6 +72,18 @@ export function setRealPrice(symbol: string, price: number): void {
 
 export function setRealCandles(symbol: string, tf: number, candles: RealCandle[]): void {
   const e = ensure(symbol)
+
+  // O historico recarrega a cada 15s, enquanto o preco ao vivo chega a cada 1,5s. Substituir a
+  // lista inteira jogaria fora a vela em formacao (e a maxima/minima ja acumuladas nela), que
+  // a fonte publica ainda nao consolidou. Por isso as velas mais recentes que o historico sao
+  // preservadas.
+  const prev = e.candles.get(tf)
+  if (prev?.length && candles.length) {
+    const lastServer = candles[candles.length - 1].time
+    const live = prev.filter(c => c.time > lastServer)
+    if (live.length) candles = [...candles, ...live]
+  }
+
   e.candles.set(tf, candles)
   e.revision++
 }
@@ -92,6 +104,17 @@ export function pushRealTick(symbol: string, tf: number, price: number, decimals
   const last = arr[arr.length - 1]
   if (!last || last.time < bucket) {
     const open = last ? last.close : r(price)
+
+    // O historico do servidor pode terminar alguns periodos atras (a fonte publica atrasa
+    // alguns minutos). Sem preencher esse intervalo, a vela nova nasceria distante da ultima
+    // e o grafico abriria um vao. Cada periodo vago vira uma vela de continuidade no ultimo
+    // fechamento real conhecido: nao houve preco novo ali, logo nao houve movimento.
+    if (last) {
+      for (let t = last.time + tf; t < bucket; t += tf) {
+        arr.push({ time: t, open: last.close, high: last.close, low: last.close, close: last.close })
+      }
+    }
+
     arr.push({ time: bucket, open, high: Math.max(open, r(price)), low: Math.min(open, r(price)), close: r(price) })
     while (arr.length > MAX_REAL_CANDLES) arr.shift()
   } else if (last.time === bucket) {

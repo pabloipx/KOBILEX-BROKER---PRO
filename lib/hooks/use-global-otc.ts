@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { multiAssetEngine, OTC_ASSETS, type OTCCandle } from "@/lib/price-engine/multi-asset-engine"
 import { ensureRealFeed } from "@/lib/price-engine/real-price-feed"
-import { hasRealPrice, getRealRevision, isRealSymbol } from "@/lib/price-engine/real-price-store"
+import { hasRealPrice, getRealRevision, isRealSymbol, getRealCandles } from "@/lib/price-engine/real-price-store"
 import { ensureManipulationSync } from "@/lib/price-engine/manipulation-sync"
 
 /**
@@ -161,6 +161,11 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
     // true quando o simbolo usa feed real E o preco real ja chegou (usado para recarregar o
     // grafico com o historico real assim que ele fica disponivel).
     realReady: isRealSymbol(validSymbol) && hasRealPrice(validSymbol),
+    // true quando o HISTORICO real ja chegou. Sinal separado do preco de proposito: o preco
+    // chega em ~80ms e o historico em ~300ms, entao recarregar o grafico apenas com realReady
+    // o redesenhava antes de existir historico, deixando-o praticamente vazio.
+    realHistoryReady:
+      isRealSymbol(validSymbol) && (getRealCandles(validSymbol, timeframe)?.length ?? 0) >= 2,
     error: null as string | null,
   }
 }

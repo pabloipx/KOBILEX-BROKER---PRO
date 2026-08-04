@@ -102,17 +102,22 @@ export function pushRealTick(symbol: string, tf: number, price: number, decimals
   const bucket = Math.floor(Date.now() / 1000 / tf) * tf
   const r = (n: number) => Number(n.toFixed(decimals))
   const last = arr[arr.length - 1]
-  if (!last || last.time < bucket) {
-    const open = last ? last.close : r(price)
+
+  // Sem historico ainda: NAO cria uma vela solta. O preco chega em ~80ms e o historico em
+  // ~300ms; semear uma vela aqui deixava a serie com um unico ponto, e o grafico desenhava
+  // essa vela sozinha encostada na borda esquerda em vez do historico. A vela em formacao
+  // ja e exibida por getCurrentCandle enquanto o historico nao chega.
+  if (!last) return
+
+  if (last.time < bucket) {
+    const open = last.close
 
     // O historico do servidor pode terminar alguns periodos atras (a fonte publica atrasa
     // alguns minutos). Sem preencher esse intervalo, a vela nova nasceria distante da ultima
     // e o grafico abriria um vao. Cada periodo vago vira uma vela de continuidade no ultimo
     // fechamento real conhecido: nao houve preco novo ali, logo nao houve movimento.
-    if (last) {
-      for (let t = last.time + tf; t < bucket; t += tf) {
-        arr.push({ time: t, open: last.close, high: last.close, low: last.close, close: last.close })
-      }
+    for (let t = last.time + tf; t < bucket; t += tf) {
+      arr.push({ time: t, open: last.close, high: last.close, low: last.close, close: last.close })
     }
 
     arr.push({ time: bucket, open, high: Math.max(open, r(price)), low: Math.min(open, r(price)), close: r(price) })

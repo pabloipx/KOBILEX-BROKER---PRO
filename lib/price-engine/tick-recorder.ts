@@ -24,6 +24,28 @@ function bucketOf(tsMs: number): number {
 const MIN_WRITE_INTERVAL_MS = 2000
 const lastWrite = new Map<string, number>()
 
+// Retencao: o grafico usa no maximo algumas horas de 1m, mas guardamos alguns dias para
+// cobrir fim de semana e reinicios. Sem isso a tabela cresceria ~17 mil linhas por dia.
+const RETENTION_DAYS = 7
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000 // no maximo uma limpeza por hora
+let lastPrune = 0
+
+/** Remove velas antigas. Roda no maximo uma vez por hora e nunca bloqueia a resposta. */
+function maybePrune(): void {
+  const now = Date.now()
+  if (now - lastPrune < PRUNE_INTERVAL_MS) return
+  lastPrune = now
+
+  const cutoff = Math.floor(now / 1000) - RETENTION_DAYS * 86400
+  void createAdminClient()
+    .from("market_candles_1m")
+    .delete()
+    .lt("bucket_time", cutoff)
+    .then(({ error }) => {
+      if (error) console.log("[v0] limpeza de velas falhou:", error.message)
+    })
+}
+
 /**
  * Registra um preco real na vela do minuto corrente. Nao lanca excecao e nao deve ser
  * aguardado no caminho da resposta: a cotacao do usuario nunca pode ficar mais lenta (ou
@@ -38,6 +60,7 @@ export function recordTick(symbol: string, price: number): void {
   lastWrite.set(symbol, now)
 
   const bucket = bucketOf(now)
+  maybePrune()
 
   // A funcao record_market_tick faz um upsert atomico (greatest/least no proprio SQL),
   // entao gravacoes simultaneas de instancias diferentes nao perdem o high/low.

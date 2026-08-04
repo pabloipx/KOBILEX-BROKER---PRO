@@ -11,7 +11,7 @@ import {
   type AffiliatePaymentMethod,
   type AffiliateWithdrawal,
 } from "./types"
-import { useMoney } from "./currency-context"
+import { useMoney, useCurrencyConverter } from "./currency-context"
 import { PaymentMethodDrawer } from "./payment-method-drawer"
 
 interface SectionPaymentsProps {
@@ -23,6 +23,7 @@ interface SectionPaymentsProps {
 
 export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh }: SectionPaymentsProps) {
   const brl = useMoney()
+  const { toBRL, fromBRL, symbol } = useCurrencyConverter()
   const MIN_WITHDRAWAL = affiliate.min_withdrawal ?? 250
   const FEE_PERCENT = affiliate.withdrawal_fee_percent ?? 2
 
@@ -73,7 +74,8 @@ export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh
     e.preventDefault()
     if (submitting) return
 
-    const value = Number(amount)
+    // O afiliado digita na moeda exibida, mas a API sempre trabalha em reais
+    const value = toBRL(Number(amount))
     if (!value || value < MIN_WITHDRAWAL) {
       setMessage({ type: "error", text: `O valor mínimo para saque é ${brl(MIN_WITHDRAWAL)}` })
       return
@@ -208,12 +210,13 @@ export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh
             <div className="mt-5 grid gap-4 md:grid-cols-3">
               <div className="flex flex-col gap-2">
                 <label htmlFor="pay-amount" className="text-[15px] text-gray-700">
-                  Valor
+                  Valor ({symbol})
                 </label>
                 <input
                   id="pay-amount"
                   type="number"
-                  min={MIN_WITHDRAWAL}
+                  // O campo e digitado na moeda exibida, entao o minimo tambem e convertido
+                  min={fromBRL(MIN_WITHDRAWAL).toFixed(2)}
                   step="0.01"
                   placeholder="0,00"
                   value={amount}

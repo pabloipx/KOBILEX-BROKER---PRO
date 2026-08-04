@@ -10,7 +10,7 @@
  * Deterministic: same timestamp always produces the same price.
  */
 
-import { hasRealPrice, getRealPrice, getRealCandles } from "./real-price-store"
+import { hasRealPrice, getRealPrice, getRealCandles, type RealCandle } from "./real-price-store"
 
 export interface OTCCandle {
   time: number
@@ -243,77 +243,29 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
 }
 
 // =============================================
-// PRECO ANCORADO NO MERCADO REAL (mercado aberto)
+// PRECO REAL DE MERCADO (mercado aberto)
 // =============================================
-// A cotacao real de forex e uma taxa de referencia LENTA: muda apenas na 6a/7a casa decimal e
-// costuma ficar identica por dezenas de segundos. Arredondada para as casas exibidas
-// (ex.: USD/JPY 157.195) ela nao muda, o que deixava as velas TRAVADAS e sem resultado.
+// Os ativos de mercado aberto refletem o mercado de verdade: preco e velas vem do feed real
+// (Yahoo Finance, a mesma cotacao que o TradingView exibe) e sao usados exatamente como vem.
 //
-// Solucao: o preco real e a ANCORA (nivel, tendencia e direcao vem do mercado de verdade) e
-// sobre ela aplicamos um micro-movimento deterministico de poucos pips, para o grafico ticar
-// como uma plataforma real. A manipulacao do admin tambem passa a valer aqui.
+// Nada e sintetizado aqui: sem micro-movimento, sem pavios inventados e sem a manipulacao do
+// admin, que continua valendo apenas nos ativos OTC — sinteticos por natureza. Assim o que
+// acontece no mercado aparece igual na plataforma.
 
-// Amplitude do micro-movimento (fracao do preco): ~0.03% a 0.09% -> poucos pips, realista.
-function realBandPct(asset: OTCAsset): number {
-  return 0.0003 + (asset.volatility / 100) * 0.0008
-}
-
-// Apenas as oitavas CURTAS: a tendencia longa quem dita e o proprio mercado real.
-const FAST_OCTAVES = PRICE_OCTAVES.slice(3)
-const FAST_OCTAVE_TOTAL = FAST_OCTAVES.reduce((s, o) => s + o.amp, 0)
-
-function realWiggle(asset: OTCAsset, timestamp: number): number {
-  const symSeed = asset.basePrice * 13.37
-  let dev = 0
-  for (let i = 0; i < FAST_OCTAVES.length; i++) {
-    const { period, amp } = FAST_OCTAVES[i]
-    dev += valueNoise(timestamp / period + i * 137.5 + symSeed, symSeed + i) * amp
-  }
-  return dev / FAST_OCTAVE_TOTAL
-}
-
-/** Preco efetivo de um ativo de mercado aberto: ancora real + micro-movimento + manipulacao. */
-function getRealAnchoredPrice(asset: OTCAsset, anchor: number, timestamp: number): number {
-  let price = anchor * (1 + realWiggle(asset, timestamp) * realBandPct(asset))
-  const drift = manipulationDrift(asset, timestamp)
-  if (drift !== 0) {
-    price += drift
-    if (price < asset.pipSize) price = asset.pipSize
-  }
+/** Preco de um ativo de mercado aberto: o valor real, apenas arredondado para exibicao. */
+function realMarketPrice(asset: OTCAsset, price: number): number {
   return Number(price.toFixed(asset.decimals))
 }
 
-/** Monta o OHLC de uma vela ancorada, interpolando a ancora real do inicio ao fim do periodo. */
-function buildAnchoredCandle(
-  asset: OTCAsset,
-  anchorOpen: number,
-  anchorClose: number,
-  startTime: number,
-  duration: number,
-  samples = 10,
-): OTCCandle {
-  const prices: number[] = []
-  for (let i = 0; i <= samples; i++) {
-    const f = i / samples
-    const anchor = anchorOpen + (anchorClose - anchorOpen) * f
-    prices.push(getRealAnchoredPrice(asset, anchor, startTime + f * duration))
-  }
+/** Converte uma vela real do feed em vela do motor, preservando o OHLC original. */
+function toEngineCandle(asset: OTCAsset, rc: RealCandle): OTCCandle {
   const prec = asset.decimals
-  const open = prices[0]
-  const close = prices[prices.length - 1]
-  let high = Math.max(...prices)
-  let low = Math.min(...prices)
-  // Pavios realistas (mesmo criterio das velas sinteticas)
-  const sd = startTime * 7777
-  const body = Math.abs(close - open) || asset.pipSize * 5
-  if (srand(sd * 3) > 0.35) high = Math.max(high, Math.max(open, close) + body * (0.2 + srand(sd * 5) * 1.0))
-  if (srand(sd * 7) > 0.35) low = Math.min(low, Math.min(open, close) - body * (0.2 + srand(sd * 9) * 1.0))
   return {
-    time: startTime,
-    open: Number(open.toFixed(prec)),
-    high: Number(high.toFixed(prec)),
-    low: Number(low.toFixed(prec)),
-    close: Number(close.toFixed(prec)),
+    time: rc.time,
+    open: Number(rc.open.toFixed(prec)),
+    high: Number(rc.high.toFixed(prec)),
+    low: Number(rc.low.toFixed(prec)),
+    close: Number(rc.close.toFixed(prec)),
   }
 }
 
@@ -368,27 +320,16 @@ class MultiAssetEngine {
   getCurrentPrice(symbol: string): number {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return 0
-    // Mercado aberto: ancora no preco REAL + micro-movimento (a cotacao real e lenta demais
-    // para ticar sozinha) + manipulacao. Senao, preco 100% sintetico.
+    // Mercado aberto: preco REAL de mercado, sem ajustes. Senao, preco 100% sintetico.
     if (hasRealPrice(symbol)) {
-      return getRealAnchoredPrice(asset, getRealPrice(symbol), Date.now() / 1000)
+      return realMarketPrice(asset, getRealPrice(symbol))
     }
     return getLivePrice(asset, Date.now() / 1000)
   }
 
-  /** Converte as velas de ancora real em velas com OHLC vivo (corpo e pavios realistas). */
-  private anchoredCandles(
-    asset: OTCAsset,
-    real: { time: number; open: number; close: number }[],
-    timeframe: number,
-  ): OTCCandle[] {
-    const out: OTCCandle[] = []
-    for (let k = 0; k < real.length; k++) {
-      const rc = real[k]
-      const anchorOpen = k > 0 ? real[k - 1].close : rc.open
-      out.push(buildAnchoredCandle(asset, anchorOpen, rc.close, rc.time, timeframe))
-    }
-    return out
+  /** Repassa as velas reais preservando o OHLC de mercado. */
+  private anchoredCandles(asset: OTCAsset, real: RealCandle[]): OTCCandle[] {
+    return real.map(rc => toEngineCandle(asset, rc))
   }
 
   getCandles(symbol: string, timeframe: 60 | 300 | 600): OTCCandle[] {
@@ -396,7 +337,7 @@ class MultiAssetEngine {
     if (!asset) return []
     const real = getRealCandles(symbol, timeframe)
     if (real && real.length) {
-      return this.anchoredCandles(asset, real.slice(-this.maxCandles), timeframe)
+      return this.anchoredCandles(asset, real.slice(-this.maxCandles))
     }
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
@@ -412,7 +353,7 @@ class MultiAssetEngine {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
     const real = getRealCandles(symbol, timeframe)
-    if (real && real.length) return this.anchoredCandles(asset, real, timeframe)
+    if (real && real.length) return this.anchoredCandles(asset, real)
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const count = Math.min(1440, Math.ceil((24 * 60 * 60) / timeframe))
@@ -428,19 +369,25 @@ class MultiAssetEngine {
     if (!asset) return null
     const prec = asset.decimals
 
-    // Vela viva do mercado aberto: a ancora vai da abertura real do periodo ate o ultimo preco
-    // real recebido, e o micro-movimento gera o corpo/pavios que se formam ao vivo.
+    // Vela viva do mercado aberto: e a propria vela real em formacao, que o feed mantem
+    // atualizada com o ultimo preco de mercado recebido.
     if (hasRealPrice(symbol)) {
-      const anchorNow = getRealPrice(symbol)
       const cs = Math.floor(Date.now() / 1000 / timeframe) * timeframe
       const real = getRealCandles(symbol, timeframe)
-      const idx = real ? real.findIndex(c => c.time === cs) : -1
-      let anchorOpen = anchorNow
-      if (real && idx > 0) anchorOpen = real[idx - 1].close
-      else if (real && idx === 0) anchorOpen = real[0].open
-      const now = Date.now() / 1000
-      const elapsed = Math.max(1, now - cs)
-      return buildAnchoredCandle(asset, anchorOpen, anchorNow, cs, elapsed, 6)
+      const current = real?.find(c => c.time === cs)
+      if (current) return toEngineCandle(asset, current)
+
+      // O periodo atual ainda nao tem vela real (feed acabou de subir): abre no ultimo
+      // fechamento real conhecido e fecha no preco real atual.
+      const price = realMarketPrice(asset, getRealPrice(symbol))
+      const open = real?.length ? Number(real[real.length - 1].close.toFixed(prec)) : price
+      return {
+        time: cs,
+        open,
+        high: Math.max(open, price),
+        low: Math.min(open, price),
+        close: price,
+      }
     }
 
     const now = Date.now() / 1000

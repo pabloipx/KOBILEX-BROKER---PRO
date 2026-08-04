@@ -21,9 +21,10 @@ interface SectionPaymentsProps {
   onRefresh: () => void
 }
 
-const MIN_WITHDRAWAL = 50
-
 export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh }: SectionPaymentsProps) {
+  const MIN_WITHDRAWAL = affiliate.min_withdrawal ?? 250
+  const FEE_PERCENT = affiliate.withdrawal_fee_percent ?? 2
+
   const [tab, setTab] = useState<"payments" | "history" | "settings">("payments")
   const [amount, setAmount] = useState("")
   const [pixKeyType, setPixKeyType] = useState("cpf")
@@ -199,7 +200,9 @@ export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh
 
           <form onSubmit={requestWithdrawal} className="rounded-xl border border-gray-200 bg-white p-6">
             <p className="text-[17px] font-medium text-gray-900">Solicitar pagamento via PIX</p>
-            <p className="mt-1 text-[15px] text-gray-600">Taxa de 2% sobre o valor solicitado</p>
+            <p className="mt-1 text-[15px] text-gray-600">
+            Taxa de {FEE_PERCENT}% sobre o valor solicitado
+          </p>
 
             <div className="mt-5 grid gap-4 md:grid-cols-3">
               <div className="flex flex-col gap-2">
@@ -432,8 +435,26 @@ export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh
             <p className="text-[17px] font-medium text-gray-900">Condições da sua conta</p>
             <dl className="mt-5 grid gap-4 md:grid-cols-3">
               <div className="rounded-lg border border-gray-200 p-4">
-                <dt className="text-sm text-gray-500">Comissão</dt>
+                <dt className="text-sm text-gray-500">Modelo</dt>
+                <dd className="mt-1 text-[17px] font-semibold text-gray-900">
+                  {affiliate.commission_model === "cpa"
+                    ? "CPA"
+                    : affiliate.commission_model === "revshare"
+                      ? "RevShare"
+                      : "Híbrido"}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-4">
+                <dt className="text-sm text-gray-500">RevShare</dt>
                 <dd className="mt-1 text-[17px] font-semibold text-gray-900">{affiliate.commission_rate}%</dd>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-4">
+                <dt className="text-sm text-gray-500">CPA por indicação</dt>
+                <dd className="mt-1 text-[17px] font-semibold text-gray-900">{brl(affiliate.cpa_amount ?? 0)}</dd>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-4">
+                <dt className="text-sm text-gray-500">Depósito mínimo do CPA</dt>
+                <dd className="mt-1 text-[17px] font-semibold text-gray-900">{brl(affiliate.cpa_min_deposit ?? 0)}</dd>
               </div>
               <div className="rounded-lg border border-gray-200 p-4">
                 <dt className="text-sm text-gray-500">Saque mínimo</dt>
@@ -441,7 +462,7 @@ export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh
               </div>
               <div className="rounded-lg border border-gray-200 p-4">
                 <dt className="text-sm text-gray-500">Taxa de saque</dt>
-                <dd className="mt-1 text-[17px] font-semibold text-gray-900">2%</dd>
+                <dd className="mt-1 text-[17px] font-semibold text-gray-900">{FEE_PERCENT}%</dd>
               </div>
             </dl>
           </section>

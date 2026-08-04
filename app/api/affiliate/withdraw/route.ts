@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getAffiliateSettings, round2 } from "@/lib/affiliate-commission"
 
 export async function POST(request: Request) {
   try {
@@ -14,15 +15,19 @@ export async function POST(request: Request) {
 
     const { amount, pixKey, pixKeyType } = await request.json()
 
-    if (!amount || amount < 50) {
-      return NextResponse.json({ error: "Valor minimo para saque e R$ 50,00" }, { status: 400 })
-    }
-
     if (!pixKey || !pixKeyType) {
       return NextResponse.json({ error: "Chave PIX e obrigatoria" }, { status: 400 })
     }
 
     const admin = createAdminClient()
+    const settings = await getAffiliateSettings(admin)
+
+    if (!Number.isFinite(Number(amount)) || Number(amount) < settings.min_withdrawal) {
+      return NextResponse.json(
+        { error: `Valor minimo para saque e R$ ${settings.min_withdrawal.toFixed(2)}` },
+        { status: 400 },
+      )
+    }
 
     // Buscar dados do perfil/afiliado via admin
     const { data: profile, error: profileError } = await admin
@@ -45,15 +50,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Saldo insuficiente" }, { status: 400 })
     }
 
-    // Taxa de saque de 2% (afiliado recebe 98% do valor solicitado)
-    const fee = Math.round(amount * 0.02 * 100) / 100
-    const netAmount = Math.round((amount - fee) * 100) / 100
+    // Taxa de saque definida nas configuracoes do programa
+    const fee = round2(amount * (settings.withdrawal_fee_percent / 100))
+    const netAmount = round2(amount - fee)
 
     // Criar solicitacao de saque via admin
     const { data: withdrawal, error: withdrawalError } = await admin
       .from("affiliate_withdrawals")
       .insert({
-        user_id: user.id,
+        affiliate_id: user.id,
         amount,
         fee,
         net_amount: netAmount,

@@ -12,22 +12,30 @@ interface SectionOffersProps {
 export function SectionOffers({ affiliate }: SectionOffersProps) {
   const [selected, setSelected] = useState<OfferSummary | null>(null)
 
-  const offers: OfferSummary[] = [
-    {
+  const model = affiliate.commission_model ?? "hybrid"
+  const cpaAmount = affiliate.cpa_amount ?? 100
+
+  const offers: OfferSummary[] = []
+
+  if (model === "revshare" || model === "hybrid") {
+    offers.push({
       id: "revenue",
       model: "revenue",
       title: `URYN · ${affiliate.commission_rate}% · Revenue`,
       rate: `${affiliate.commission_rate}%`,
       payout: `${affiliate.commission_rate}%`,
-    },
-    {
+    })
+  }
+
+  if (model === "cpa" || model === "hybrid") {
+    offers.push({
       id: "cpa",
       model: "cpa",
-      title: "URYN · R$ 100 · CPA",
-      rate: brl(100),
-      payout: brl(100),
-    },
-  ]
+      title: `URYN · ${brl(cpaAmount)} · CPA`,
+      rate: brl(cpaAmount),
+      payout: brl(cpaAmount),
+    })
+  }
 
   if (selected) {
     return <OfferDetail offer={selected} affiliate={affiliate} onBack={() => setSelected(null)} />

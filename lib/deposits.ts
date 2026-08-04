@@ -1,4 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import {
+  calculateCommission,
+  getAffiliateSettings,
+  isFirstCpaForReferral,
+  resolveTerms,
+  round2,
+} from "@/lib/affiliate-commission"
 
 /**
  * Aprova um deposito de forma idempotente: marca como "approved", credita o saldo do usuario,
@@ -76,39 +83,50 @@ export async function approveDeposit(
     if (userProfile?.referred_by) {
       const { data: affiliate } = await supabaseAdmin
         .from("profiles")
-        .select("id, affiliate_commission_percent, affiliate_balance, affiliate_total_earned")
+        .select(
+          "id, affiliate_commission_percent, affiliate_cpa_amount, affiliate_commission_model, affiliate_cpa_min_deposit, affiliate_sub_percent, affiliate_balance, affiliate_total_earned",
+        )
         .eq("affiliate_code", userProfile.referred_by)
         .eq("is_affiliate", true)
         .eq("affiliate_status", "active")
         .single()
 
       if (affiliate) {
-        const commissionPercent = affiliate.affiliate_commission_percent || 77
-        const commissionAmount = deposit.amount * (commissionPercent / 100)
-
         const { data: existingCommission } = await supabaseAdmin
           .from("affiliate_commissions")
           .select("id")
           .eq("deposit_id", deposit.id)
-          .single()
+          .maybeSingle()
 
         if (!existingCommission) {
-          await supabaseAdmin.from("affiliate_commissions").insert({
-            affiliate_id: affiliate.id,
-            referred_user_id: deposit.user_id,
-            deposit_id: deposit.id,
-            deposit_amount: deposit.amount,
-            commission_percent: commissionPercent,
-            commission_amount: commissionAmount,
-          })
+          const settings = await getAffiliateSettings(supabaseAdmin)
 
-          await supabaseAdmin
-            .from("profiles")
-            .update({
-              affiliate_balance: (affiliate.affiliate_balance || 0) + commissionAmount,
-              affiliate_total_earned: (affiliate.affiliate_total_earned || 0) + commissionAmount,
-            })
-            .eq("id", affiliate.id)
+          if (settings.program_enabled) {
+            const terms = resolveTerms(affiliate, settings)
+            const isFirstQualifiedDeposit = await isFirstCpaForReferral(supabaseAdmin, affiliate.id, deposit.user_id)
+            const breakdown = calculateCommission(deposit.amount, terms, { isFirstQualifiedDeposit })
+
+            if (breakdown.total > 0) {
+              await supabaseAdmin.from("affiliate_commissions").insert({
+                affiliate_id: affiliate.id,
+                referred_user_id: deposit.user_id,
+                deposit_id: deposit.id,
+                deposit_amount: deposit.amount,
+                commission_percent: terms.revsharePercent,
+                commission_amount: breakdown.total,
+                commission_model: breakdown.appliedModel,
+                cpa_amount: breakdown.cpaAmount,
+              })
+
+              await supabaseAdmin
+                .from("profiles")
+                .update({
+                  affiliate_balance: round2((affiliate.affiliate_balance || 0) + breakdown.total),
+                  affiliate_total_earned: round2((affiliate.affiliate_total_earned || 0) + breakdown.total),
+                })
+                .eq("id", affiliate.id)
+            }
+          }
         }
       }
     }

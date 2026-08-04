@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getAffiliateSettings, resolveTerms } from "@/lib/affiliate-commission"
 
 // GET - Obter dados do afiliado
 export async function GET() {
@@ -53,6 +54,8 @@ export async function GET() {
       return NextResponse.json({ affiliate: null })
     }
 
+    const settings = await getAffiliateSettings(admin)
+
     // Buscar referidos via admin (cross-user query)
     const { data: referredUsers } = await admin
       .from("profiles")
@@ -95,16 +98,24 @@ export async function GET() {
     const { data: withdrawals } = await admin
       .from("affiliate_withdrawals")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("affiliate_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20)
+
+    const terms = resolveTerms(profile, settings)
 
     return NextResponse.json({
       affiliate: {
         id: user.id,
         user_id: user.id,
         code: profile.affiliate_code,
-        commission_rate: profile.affiliate_commission_percent || 77,
+        commission_rate: terms.revsharePercent,
+        commission_model: terms.model,
+        cpa_amount: terms.cpaAmount,
+        cpa_min_deposit: terms.cpaMinDeposit,
+        sub_percent: terms.subPercent,
+        min_withdrawal: settings.min_withdrawal,
+        withdrawal_fee_percent: settings.withdrawal_fee_percent,
         balance: profile.affiliate_balance || 0,
         status: profile.affiliate_status || "active",
         total_earned: profile.affiliate_total_earned || totalEarned,
@@ -199,14 +210,23 @@ export async function POST() {
       attempts++
     }
 
+    const settings = await getAffiliateSettings(admin)
+
+    if (!settings.program_enabled) {
+      return NextResponse.json({ error: "O programa de afiliados esta temporariamente fechado" }, { status: 403 })
+    }
+
     // Atualizar perfil para ser afiliado (via admin to bypass RLS)
     const { data: updatedProfile, error } = await admin
       .from("profiles")
       .update({
         is_affiliate: true,
         affiliate_code: code,
-        affiliate_status: "active",
-        affiliate_commission_percent: 77.0,
+        affiliate_status: settings.auto_approve_affiliates ? "active" : "pending",
+        affiliate_commission_percent: settings.default_revshare_percent,
+        affiliate_cpa_amount: settings.default_cpa_amount,
+        affiliate_cpa_min_deposit: settings.cpa_min_deposit,
+        affiliate_sub_percent: settings.sub_affiliate_percent,
         affiliate_balance: 0,
         affiliate_total_earned: 0,
         affiliate_total_referrals: 0,

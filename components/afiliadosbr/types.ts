@@ -3,6 +3,12 @@ export interface AffiliateInfo {
   user_id: string
   code: string
   commission_rate: number
+  commission_model?: "revshare" | "cpa" | "hybrid"
+  cpa_amount?: number
+  cpa_min_deposit?: number
+  sub_percent?: number
+  min_withdrawal?: number
+  withdrawal_fee_percent?: number
   balance: number
   status: string
   total_earned: number

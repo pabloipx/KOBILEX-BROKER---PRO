@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { recordTick, getRecordedCandles } from "@/lib/price-engine/tick-recorder"
 
 // Proxy para dados REAIS de mercado. Roda no servidor para evitar CORS e o bloqueio
 // geografico que afeta algumas exchanges (ex.: Binance) a partir da Vercel.
@@ -21,6 +22,15 @@ interface SymbolInfo {
   tv: string
   /** Mercado do scanner do TradingView */
   tvScan: "forex" | "crypto"
+}
+
+/**
+ * O Yahoo so tem OHLC real de 1m para cripto. Para forex ele devolve o minuto achatado
+ * (open=high=low=close), entao nesses pares as velas de 1m sao montadas com os ticks
+ * reais que a plataforma acumula.
+ */
+function hasRealYahoo1m(info: SymbolInfo): boolean {
+  return info.tvScan === "crypto"
 }
 
 // Mapeia o simbolo interno do motor -> simbolos das fontes reais.
@@ -178,11 +188,27 @@ export async function GET(req: Request) {
         }
       }
       if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido")
+
+      // Alimenta o historico de 1m com este preco real. Nao usa await de proposito:
+      // a cotacao do usuario nao pode esperar (nem falhar por causa da) gravacao.
+      recordTick(symbol, price)
+
       return NextResponse.json({ price })
     }
 
     // type === "candles"
     const tf = Math.max(60, Number(searchParams.get("tf") || 60))
+
+    // Forex em 1m: usa as velas construidas com os ticks reais acumulados, ja que o
+    // Yahoo devolve o minuto sem corpo. Enquanto o historico proprio ainda e curto,
+    // o Yahoo entra como reserva para o grafico nao abrir vazio.
+    if (tf === 60 && !hasRealYahoo1m(info)) {
+      const recorded = await getRecordedCandles(symbol)
+      if (recorded.length >= 2) {
+        return NextResponse.json({ candles: recorded, source: "ticks" })
+      }
+    }
+
     const { interval, seconds } = sourceIntervalFor(tf)
     const result = await fetchYahooChart(info.yahoo, interval, rangeFor(interval))
     let candles = parseCandles(result)

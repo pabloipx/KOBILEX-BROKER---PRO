@@ -1,13 +1,13 @@
 "use client"
 
 /**
- * Feed CLIENT-SIDE de precos reais. Faz polling do proxy /api/market/crypto (que busca do
- * Yahoo Finance no servidor) e escreve os valores no real-price-store, de onde o motor de
- * precos le de forma sincrona. Ref-counted por simbolo para nao duplicar timers.
+ * Feed CLIENT-SIDE de precos reais. Faz polling do proxy /api/market/crypto e escreve os
+ * valores no real-price-store, de onde o motor de precos le de forma sincrona. Ref-counted
+ * por simbolo para nao duplicar timers.
  *
- * Duas frequencias: o preco ao vivo (1,5s) mantem a vela em formacao acompanhando o mercado,
- * e o historico de velas (15s) traz o OHLC real consolidado. Cripto e forex usam o mesmo
- * caminho, porque ambos tem velas reais no Yahoo.
+ * Duas frequencias: o preco ao vivo (1,5s) e a cotacao do TradingView e mantem a vela em
+ * formacao acompanhando o mercado; o historico de velas (15s) traz o OHLC real consolidado.
+ * Cada chamada de preco tambem alimenta, no servidor, o historico proprio de 1 minuto.
  */
 
 import { REAL_FEED_SYMBOLS, setRealPrice, setRealCandles, pushRealTick } from "./real-price-store"

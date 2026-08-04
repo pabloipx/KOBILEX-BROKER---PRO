@@ -77,7 +77,7 @@ const EMPTY_SETTINGS: AdminSettings = {
 
 const cardClass = "rounded-xl bg-[#121826] border border-[#1F2933]"
 const inputClass =
-  "h-10 w-full rounded-lg bg-[#0a0e17] border border-[#1F2933] px-3 text-sm text-white outline-none focus:border-[#f97316]"
+  "h-10 rounded-lg bg-[#0a0e17] border border-[#1F2933] px-3 text-sm text-white outline-none focus:border-[#f97316]"
 const thClass = "px-3 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-white/40"
 
 type SortKey = "recent" | "earned" | "referrals" | "deposits" | "balance"
@@ -309,25 +309,25 @@ export function AdminAffiliates() {
             <div className="relative min-w-[220px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
               <input
-                className={`${inputClass} pl-9`}
+                className={`${inputClass} w-full pl-9`}
                 placeholder="Buscar por nome, email ou código"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <select className={`${inputClass} w-auto`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filtrar por status">
+            <select className={inputClass} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filtrar por status">
               <option value="all">Todos os status</option>
               <option value="active">Ativos</option>
               <option value="pending">Pendentes</option>
               <option value="blocked">Bloqueados</option>
             </select>
-            <select className={`${inputClass} w-auto`} value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} aria-label="Filtrar por modelo">
+            <select className={inputClass} value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} aria-label="Filtrar por modelo">
               <option value="all">Todos os modelos</option>
               <option value="revshare">RevShare</option>
               <option value="cpa">CPA</option>
               <option value="hybrid">Híbrido</option>
             </select>
-            <select className={`${inputClass} w-auto`} value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} aria-label="Ordenar">
+            <select className={inputClass} value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} aria-label="Ordenar">
               <option value="earned">Maior comissão</option>
               <option value="referrals">Mais referidos</option>
               <option value="deposits">Maior depósito</option>
@@ -745,7 +745,7 @@ function NumberField({
     <label className="flex flex-col gap-1.5">
       <span className="text-sm text-white/70">{label}</span>
       <input
-        className={inputClass}
+        className={`${inputClass} w-full`}
         value={String(value)}
         onChange={(e) => onChange(Number(e.target.value))}
         inputMode="decimal"

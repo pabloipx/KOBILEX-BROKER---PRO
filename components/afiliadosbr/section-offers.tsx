@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Check, ChevronUp, Copy, Laptop, Smartphone, Tablet } from "lucide-react"
+import { ChevronRight, ChevronUp, Laptop, Smartphone, Tablet } from "lucide-react"
+import { OfferDetail, type OfferSummary } from "./offer-detail"
 import { brl, type AffiliateInfo } from "./types"
 
 interface SectionOffersProps {
@@ -9,36 +10,28 @@ interface SectionOffersProps {
 }
 
 export function SectionOffers({ affiliate }: SectionOffersProps) {
-  const [copied, setCopied] = useState<string | null>(null)
+  const [selected, setSelected] = useState<OfferSummary | null>(null)
 
-  const origin = typeof window !== "undefined" ? window.location.origin : ""
-  const revenueLink = `${origin}/?ref=${affiliate.code}`
-  const cpaLink = `${origin}/auth/sign-up?ref=${affiliate.code}`
-
-  const copy = async (id: string, link: string) => {
-    try {
-      await navigator.clipboard.writeText(link)
-      setCopied(id)
-      setTimeout(() => setCopied(null), 2000)
-    } catch {
-      setCopied(null)
-    }
-  }
-
-  const offers = [
+  const offers: OfferSummary[] = [
     {
       id: "revenue",
-      title: `URYN · ${affiliate.commission_rate}% · Revenue Share`,
+      model: "revenue",
+      title: `URYN · ${affiliate.commission_rate}% · Revenue`,
       rate: `${affiliate.commission_rate}%`,
-      link: revenueLink,
+      payout: `${affiliate.commission_rate}%`,
     },
     {
       id: "cpa",
+      model: "cpa",
       title: "URYN · R$ 100 · CPA",
       rate: brl(100),
-      link: cpaLink,
+      payout: brl(100),
     },
   ]
+
+  if (selected) {
+    return <OfferDetail offer={selected} affiliate={affiliate} onBack={() => setSelected(null)} />
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -65,11 +58,11 @@ export function SectionOffers({ affiliate }: SectionOffersProps) {
 
             <button
               type="button"
-              onClick={() => copy(offer.id, offer.link)}
+              onClick={() => setSelected(offer)}
               className="flex h-11 items-center gap-2 rounded-lg bg-emerald-400 px-5 text-[15px] font-medium text-gray-900 transition-colors hover:bg-emerald-500"
             >
-              {copied === offer.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copied === offer.id ? "Link copiado" : "Obtenha um link"}
+              Obtenha um link
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
@@ -100,11 +93,6 @@ export function SectionOffers({ affiliate }: SectionOffersProps) {
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 px-6 py-4">
-            <code className="flex-1 truncate rounded-lg bg-gray-50 px-4 py-2.5 text-sm text-gray-700">
-              {offer.link}
-            </code>
-          </div>
         </section>
       ))}
     </div>

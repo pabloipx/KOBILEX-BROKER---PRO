@@ -31,8 +31,6 @@ export function SidebarMenu({
   onClose,
   userName,
   balance,
-  userId,
-  historyRefresh,
 }: SidebarMenuProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
 

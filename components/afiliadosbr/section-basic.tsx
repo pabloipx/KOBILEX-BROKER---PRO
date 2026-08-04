@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Copy, Trophy } from "lucide-react"
+import { Check, Copy, Send, Trophy } from "lucide-react"
 import { brl, type AffiliateInfo } from "./types"
 
 export function SectionCompetition({ affiliate }: { affiliate: AffiliateInfo }) {
@@ -128,6 +128,71 @@ export function SectionPostbacks({ affiliate }: { affiliate: AffiliateInfo }) {
             ))}
           </tbody>
         </table>
+      </section>
+    </div>
+  )
+}
+
+export function SectionTelegramBot({ affiliate }: { affiliate: AffiliateInfo }) {
+  const [copied, setCopied] = useState(false)
+  const command = `/vincular ${affiliate.code}`
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="flex max-w-[760px] flex-col gap-6">
+      <div>
+        <h1 className="text-[28px] font-semibold tracking-tight text-gray-900">Bot do Telegram</h1>
+        <p className="mt-1 text-[15px] text-gray-600">
+          Receba notificações de registros, depósitos e comissões diretamente no Telegram
+        </p>
+      </div>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="flex items-center gap-4">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-50">
+            <Send className="h-5 w-5 text-sky-600" />
+          </span>
+          <div>
+            <p className="text-[17px] font-medium text-gray-900">Não vinculado</p>
+            <p className="text-[15px] text-gray-600">Vincule sua conta em dois passos</p>
+          </div>
+        </div>
+
+        <ol className="mt-6 flex flex-col gap-4 text-[15px] text-gray-800">
+          <li className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-medium text-gray-700">
+              1
+            </span>
+            Abra o bot <span className="font-medium">@URYNAfiliadosBot</span> no Telegram e inicie a conversa.
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-medium text-gray-700">
+              2
+            </span>
+            Envie o comando abaixo para vincular sua conta de afiliado.
+          </li>
+        </ol>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <code className="flex-1 truncate rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">{command}</code>
+          <button
+            type="button"
+            onClick={copy}
+            className="flex h-11 items-center gap-2 rounded-lg bg-emerald-400 px-5 text-[15px] font-medium text-gray-900 transition-colors hover:bg-emerald-500"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? "Copiado" : "Copiar comando"}
+          </button>
+        </div>
       </section>
     </div>
   )

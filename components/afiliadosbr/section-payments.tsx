@@ -2,9 +2,17 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { CalendarDays, CheckCircle2, CircleDashed, Download, Loader2 } from "lucide-react"
-import { brl, shortDate, type AffiliateInfo, type AffiliateWithdrawal } from "./types"
+import { useCallback, useEffect, useState } from "react"
+import { CalendarDays, CheckCircle2, CircleDashed, Download, Loader2, Plus, Trash2 } from "lucide-react"
+import {
+  brl,
+  shortDate,
+  PAYMENT_METHOD_INFO,
+  type AffiliateInfo,
+  type AffiliatePaymentMethod,
+  type AffiliateWithdrawal,
+} from "./types"
+import { PaymentMethodDrawer } from "./payment-method-drawer"
 
 interface SectionPaymentsProps {
   affiliate: AffiliateInfo
@@ -22,8 +30,42 @@ export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh
   const [pixKey, setPixKey] = useState("")
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [savedMethods, setSavedMethods] = useState<AffiliatePaymentMethod[]>([])
+  const [loadingMethods, setLoadingMethods] = useState(true)
+  const [methodsError, setMethodsError] = useState<string | null>(null)
 
   const canWithdraw = affiliate.balance >= MIN_WITHDRAWAL
+
+  const loadMethods = useCallback(async () => {
+    setMethodsError(null)
+    try {
+      const res = await fetch("/api/affiliate/payment-methods")
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Erro ao carregar métodos de pagamento")
+      setSavedMethods(json.methods ?? [])
+    } catch (err) {
+      setMethodsError(err instanceof Error ? err.message : "Erro ao carregar métodos de pagamento")
+    } finally {
+      setLoadingMethods(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadMethods()
+  }, [loadMethods])
+
+  const removeMethod = async (id: string) => {
+    setMethodsError(null)
+    try {
+      const res = await fetch(`/api/affiliate/payment-methods?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Erro ao remover método de pagamento")
+      await loadMethods()
+    } catch (err) {
+      setMethodsError(err instanceof Error ? err.message : "Erro ao remover método de pagamento")
+    }
+  }
 
   const requestWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -281,28 +323,132 @@ export function SectionPayments({ affiliate, withdrawals, nextPayment, onRefresh
       )}
 
       {tab === "settings" && (
-        <section className="rounded-xl border border-gray-200 bg-white p-6">
-          <p className="text-[17px] font-medium text-gray-900">Método de pagamento</p>
-          <p className="mt-1 text-[15px] text-gray-600">
-            Os pagamentos são realizados via PIX. A chave é informada em cada solicitação de saque.
-          </p>
+        <div className="flex flex-col gap-8">
+          <section>
+            <h2 className="text-[19px] font-medium text-gray-900">Meus métodos de pagamento</h2>
+            <p className="mt-1 text-[15px] text-gray-600">Adicionar métodos de pagamento alternativos</p>
 
-          <dl className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-lg border border-gray-200 p-4">
-              <dt className="text-sm text-gray-500">Comissão</dt>
-              <dd className="mt-1 text-[17px] font-semibold text-gray-900">{affiliate.commission_rate}%</dd>
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className="mt-4 flex h-12 items-center gap-2 rounded-lg bg-emerald-400 px-6 text-[15px] font-medium text-gray-900 transition-colors hover:bg-emerald-500"
+            >
+              Adicionar novo método
+              <Plus className="h-4 w-4" />
+            </button>
+
+            {loadingMethods ? (
+              <p className="mt-4 flex items-center gap-2 text-[15px] text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando métodos
+              </p>
+            ) : (
+              savedMethods.length > 0 && (
+                <ul className="mt-5 flex flex-col gap-3">
+                  {savedMethods.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white px-5 py-4"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-medium text-gray-900">
+                          {PAYMENT_METHOD_INFO[item.method].label}
+                          {item.is_default && (
+                            <span className="ml-2 rounded-md bg-emerald-50 px-2 py-0.5 text-sm font-medium text-emerald-700">
+                              Padrão
+                            </span>
+                          )}
+                        </p>
+                        <p className="truncate text-sm text-gray-600">
+                          {item.method === "usdt" ? item.wallet_address : `${item.pix_key_type} · ${item.pix_key}`}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeMethod(item.id)}
+                        aria-label={`Remover método ${PAYMENT_METHOD_INFO[item.method].label}`}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+
+            {methodsError && (
+              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
+                {methodsError}
+              </p>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-[19px] font-medium text-gray-900">Métodos disponíveis</h2>
+            <p className="mt-1 text-[15px] text-gray-600">
+              As taxas e o valor mínimo de retirada podem ser diferentes para cada método de pagamento.
+            </p>
+
+            <div className="mt-5 grid gap-6 md:grid-cols-2">
+              {(Object.keys(PAYMENT_METHOD_INFO) as Array<keyof typeof PAYMENT_METHOD_INFO>).map((key) => {
+                const info = PAYMENT_METHOD_INFO[key]
+                return (
+                  <article key={key} className="rounded-xl bg-gray-50 p-6">
+                    <span className="flex h-12 w-[88px] items-center justify-center rounded-lg bg-white px-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={key === "usdt" ? "/logos/tether.svg" : "/logos/pix.svg"}
+                        alt={info.label}
+                        className="h-5 w-auto"
+                      />
+                    </span>
+
+                    <p className="mt-5 text-[15px] text-gray-600">Este método de pagamento tem as seguintes taxas:</p>
+
+                    <dl className="mt-4 flex flex-col gap-4">
+                      <div>
+                        <dt className="text-[15px] text-gray-500">Retirada regular mínima</dt>
+                        <dd className="text-[17px] font-medium text-gray-900">${info.minRegular}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[15px] text-gray-500">Retirada mínima solicitada</dt>
+                        <dd className="text-[17px] font-medium text-gray-900">${info.minRequested}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[15px] text-gray-500">Taxa de transferência</dt>
+                        <dd className="text-[17px] font-medium text-gray-900">{info.fee}</dd>
+                      </div>
+                    </dl>
+
+                    {info.note && <p className="mt-4 text-sm text-gray-500">{info.note}</p>}
+                  </article>
+                )
+              })}
             </div>
-            <div className="rounded-lg border border-gray-200 p-4">
-              <dt className="text-sm text-gray-500">Saque mínimo</dt>
-              <dd className="mt-1 text-[17px] font-semibold text-gray-900">{brl(MIN_WITHDRAWAL)}</dd>
-            </div>
-            <div className="rounded-lg border border-gray-200 p-4">
-              <dt className="text-sm text-gray-500">Taxa de saque</dt>
-              <dd className="mt-1 text-[17px] font-semibold text-gray-900">2%</dd>
-            </div>
-          </dl>
-        </section>
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-6">
+            <p className="text-[17px] font-medium text-gray-900">Condições da sua conta</p>
+            <dl className="mt-5 grid gap-4 md:grid-cols-3">
+              <div className="rounded-lg border border-gray-200 p-4">
+                <dt className="text-sm text-gray-500">Comissão</dt>
+                <dd className="mt-1 text-[17px] font-semibold text-gray-900">{affiliate.commission_rate}%</dd>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-4">
+                <dt className="text-sm text-gray-500">Saque mínimo</dt>
+                <dd className="mt-1 text-[17px] font-semibold text-gray-900">{brl(MIN_WITHDRAWAL)}</dd>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-4">
+                <dt className="text-sm text-gray-500">Taxa de saque</dt>
+                <dd className="mt-1 text-[17px] font-semibold text-gray-900">2%</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
       )}
+
+      <PaymentMethodDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} onSaved={loadMethods} />
     </div>
   )
 }

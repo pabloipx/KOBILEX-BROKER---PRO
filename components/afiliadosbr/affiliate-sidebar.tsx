@@ -89,10 +89,7 @@ export function AffiliateSidebar({ active, onChange, onSignOut }: AffiliateSideb
 
         <button
           type="button"
-          onClick={() => {
-            setPostbacksOpen((v) => !v)
-            onChange("postbacks")
-          }}
+          onClick={() => setPostbacksOpen((v) => !v)}
           className={itemClass(active === "postbacks")}
         >
           <Code2 className="h-5 w-5 text-gray-500" />
@@ -104,14 +101,26 @@ export function AffiliateSidebar({ active, onChange, onSignOut }: AffiliateSideb
           )}
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setAccountOpen((v) => !v)
-            onChange("account")
-          }}
-          className={itemClass(active === "account")}
-        >
+        {postbacksOpen && (
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => onChange("postbacks-general")}
+              className={`${itemClass(active === "postbacks-general")} pl-12`}
+            >
+              Geral
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange("postbacks-telegram")}
+              className={`${itemClass(active === "postbacks-telegram")} pl-12`}
+            >
+              Bot do Telegram
+            </button>
+          </div>
+        )}
+
+        <button type="button" onClick={() => setAccountOpen((v) => !v)} className={itemClass(active === "account")}>
           <UserCircle className="h-5 w-5 text-gray-500" />
           <span className="flex-1 text-left">Configurações da conta</span>
           {accountOpen ? (
@@ -120,6 +129,25 @@ export function AffiliateSidebar({ active, onChange, onSignOut }: AffiliateSideb
             <ChevronDown className="h-4 w-4 text-gray-400" />
           )}
         </button>
+
+        {accountOpen && (
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => onChange("account-security")}
+              className={`${itemClass(active === "account-security")} pl-12`}
+            >
+              Segurança
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange("account-profile")}
+              className={`${itemClass(active === "account-profile")} pl-12`}
+            >
+              Informações do perfil
+            </button>
+          </div>
+        )}
       </nav>
 
       <div className="px-3">

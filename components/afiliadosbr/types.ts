@@ -40,6 +40,27 @@ export interface AffiliateData {
   withdrawals: AffiliateWithdrawal[]
 }
 
+export interface AffiliatePaymentMethod {
+  id: string
+  method: "usdt" | "pix"
+  wallet_address: string | null
+  pix_key: string | null
+  pix_key_type: string | null
+  is_default: boolean
+  created_at: string
+}
+
+export interface AffiliateProfile {
+  email: string
+  email_confirmed: boolean
+  account_type: string
+  first_name: string
+  last_name: string
+  nickname: string
+  country: string
+  birth_date: string
+}
+
 export type AffiliateSection =
   | "stats-general"
   | "stats-clients"
@@ -48,7 +69,28 @@ export type AffiliateSection =
   | "competition"
   | "sub-affiliate"
   | "postbacks"
+  | "postbacks-general"
+  | "postbacks-telegram"
   | "account"
+  | "account-security"
+  | "account-profile"
+
+export const PAYMENT_METHOD_INFO = {
+  usdt: {
+    label: "USDT",
+    minRegular: 250,
+    minRequested: 1000,
+    fee: "Nenhuma taxa",
+    note: null as string | null,
+  },
+  pix: {
+    label: "PIX",
+    minRegular: 250,
+    minRequested: 250,
+    fee: "Nenhuma taxa",
+    note: "* - A retirada máxima diária para o PIX é de $5000",
+  },
+} as const
 
 export const brl = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0)

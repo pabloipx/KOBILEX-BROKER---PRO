@@ -267,13 +267,30 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
 // E uma funcao PURA do tempo (mesmas oitavas deterministicas do resto do motor), o que garante
 // duas propriedades essenciais: o historico nao se redesenha a cada recarga da pagina, e o
 // servidor pode recalcular exatamente o mesmo valor de um instante passado ao liquidar.
+// As oitavas LENTAS (varios minutos) sao as que dao ao grafico a forma de mercado: sao elas que
+// produzem a ondulacao de ~15 pips ao longo de 30 min vista no TradingView. A fonte publica nao
+// tem essa estrutura (seus fechamentos variam ~1 pip em 30 min, praticamente uma linha reta),
+// entao sem elas o grafico ficava achatado. As oitavas rapidas apenas preenchem o interior da
+// vela e mantem o preco ticando entre frames.
 const MICRO_OCTAVES = [
-  { period: 55, amp: 1.0 }, // ~1 min: define o corpo da vela
-  { period: 21, amp: 0.55 }, // ~20 s: swing interno
-  { period: 8, amp: 0.3 }, // ~8 s: pavios
-  { period: 3, amp: 0.16 }, // ~3 s
-  { period: 1.2, amp: 0.08 }, // ~1 s
-  { period: 0.45, amp: 0.05 }, // tick a tick: mantem o preco vivo entre frames
+  // Amplitude proporcional a RAIZ do periodo (escalonamento browniano). E assim que um preco de
+  // mercado se comporta, e e o que reproduz a proporcao certa entre a escala do grafico e o
+  // tamanho da vela: no TradingView o eixo de 30 min mede ~17 pips enquanto cada vela mede 1 a 3.
+  // Tentativas anteriores com poucas ondas erravam essa proporcao por 4x -- ou o eixo ficava
+  // achatado, ou cada vela virava um bloco de 5 pips.
+  { period: 2400, amp: 1.0 }, // ~40 min: tendencia
+  { period: 1200, amp: 0.707 },
+  { period: 600, amp: 0.5 },
+  { period: 300, amp: 0.354 },
+  { period: 150, amp: 0.25 },
+  { period: 75, amp: 0.177 }, // ~1 min: define o corpo da vela
+  { period: 37, amp: 0.125 },
+  { period: 18, amp: 0.088 },
+  { period: 9, amp: 0.0625 }, // pavios
+  { period: 4.5, amp: 0.044 },
+  { period: 2, amp: 0.03 },
+  { period: 1, amp: 0.02 },
+  { period: 0.45, amp: 0.014 }, // tick a tick: mantem o preco vivo entre frames
 ]
 const MICRO_OCTAVE_TOTAL = MICRO_OCTAVES.reduce((s, o) => s + o.amp, 0)
 
@@ -289,16 +306,42 @@ function microDev(asset: OTCAsset, tSec: number): number {
 }
 
 /**
- * Amplitude da oscilacao, na escala do proprio ativo. Calibrada para a variacao tipica de um
- * minuto: ~3 pips no EUR/USD e proporcionalmente mais nos ativos volateis (cripto).
+ * Amplitude da oscilacao, MEDIDA a partir do proprio dado real: a mediana do movimento de
+ * fechamento a fechamento dos ultimos periodos.
+ *
+ * Antes isto era uma constante multiplicada por `asset.volatility`, e o resultado ficou ~10x
+ * maior que o mercado (velas de 29 pips no EUR/USD, contra 1 a 3 pips reais) porque
+ * `volatility` esta numa escala de 0 a 160, nao em porcentagem. Derivar do dado real elimina a
+ * constante: em mercado calmo as velas ficam pequenas como no TradingView, e em mercado agitado
+ * crescem sozinhas, sem calibragem por ativo.
+ *
+ * Usa mediana, e nao media, para um unico salto de dado nao inflar a escala do grafico inteiro.
  */
-function microBand(asset: OTCAsset, price: number): number {
-  return price * (0.0003 + (asset.volatility / 100) * 0.001)
+function measuredBand(asset: OTCAsset, real: RealCandle[], price: number): number {
+  const moves: number[] = []
+  for (let i = Math.max(1, real.length - 40); i < real.length; i++) {
+    const d = Math.abs(real[i].close - real[i - 1].close)
+    if (d > 0) moves.push(d)
+  }
+
+  // Piso por ativo: a amplitude intradiaria tipica da classe, escalada pela volatilidade do
+  // catalogo (0-160). E o que sustenta a forma do grafico quando a fonte vem quase congelada,
+  // como acontece no EUR/USD. Teto: limita o efeito de dados anomalos da fonte.
+  const floor = price * (asset.volatility / 100) * 0.0052
+  const ceil = price * 0.004
+
+  if (!moves.length) return floor
+  moves.sort((a, b) => a - b)
+  const median = moves[Math.floor(moves.length / 2)]
+
+  // Se a fonte tiver movimento proprio maior que o piso, ele manda: em mercado agitado as velas
+  // crescem sozinhas, sem depender da constante.
+  return Math.min(ceil, Math.max(floor, median * 1.5))
 }
 
 /** Preco exibido: ancora real + oscilacao intraminuto. */
-function realDisplayPrice(asset: OTCAsset, anchor: number, tSec: number): number {
-  const p = anchor + microDev(asset, tSec) * microBand(asset, anchor)
+function realDisplayPrice(asset: OTCAsset, anchor: number, tSec: number, band: number): number {
+  const p = anchor + microDev(asset, tSec) * band
   return Number(p.toFixed(asset.decimals))
 }
 
@@ -308,26 +351,43 @@ function realDisplayPrice(asset: OTCAsset, anchor: number, tSec: number): number
  * a fonte nao informa corpo algum. `endSec` limita a amostragem na vela em formacao, para ela
  * crescer com o tempo em vez de ja nascer com o corpo inteiro.
  */
-function toEngineCandle(asset: OTCAsset, rc: RealCandle, tf?: number, endSec?: number): OTCCandle {
+function toEngineCandle(
+  asset: OTCAsset,
+  rc: RealCandle,
+  tf?: number,
+  endSec?: number,
+  band?: number,
+  prevClose?: number,
+): OTCCandle {
   const prec = asset.decimals
-  const open = Number(rc.open.toFixed(prec))
-  const close = Number(rc.close.toFixed(prec))
 
-  if (!tf) {
-    return { time: rc.time, open, high: Number(rc.high.toFixed(prec)), low: Number(rc.low.toFixed(prec)), close }
+  if (!tf || !band) {
+    return {
+      time: rc.time,
+      open: Number(rc.open.toFixed(prec)),
+      high: Number(rc.high.toFixed(prec)),
+      low: Number(rc.low.toFixed(prec)),
+      close: Number(rc.close.toFixed(prec)),
+    }
   }
 
   const end = Math.min(endSec ?? rc.time + tf, rc.time + tf)
   const span = Math.max(1, end - rc.time)
   const samples = 12
-  const band = microBand(asset, close)
 
-  let high = Math.max(open, close)
-  let low = Math.min(open, close)
+  // O nivel real do periodo e a ancora; a oscilacao move o preco em volta dela. A oscilacao
+  // entra no CORPO (abertura/fechamento), e nao so nos pavios: aplicada apenas as extremidades,
+  // o corpo ficava colado no nivel achatado da fonte e os pavios flutuavam soltos.
+  const closePrice = rc.close + microDev(asset, end) * band
+  // Abertura = fechamento da vela anterior, para a serie nao abrir vaos entre velas.
+  const openPrice = prevClose ?? rc.open + microDev(asset, rc.time) * band
+
+  let high = Math.max(openPrice, closePrice)
+  let low = Math.min(openPrice, closePrice)
   for (let i = 0; i <= samples; i++) {
     const t = rc.time + (i * span) / samples
-    // Caminho: interpola a reta open->close (movimento real) e soma a oscilacao.
-    const base = open + (close - open) * (i / samples)
+    // Base: a reta ancora_abertura -> ancora_fechamento (o movimento real do periodo).
+    const base = rc.open + (rc.close - rc.open) * (i / samples)
     const p = base + microDev(asset, t) * band
     if (p > high) high = p
     if (p < low) low = p
@@ -338,8 +398,8 @@ function toEngineCandle(asset: OTCAsset, rc: RealCandle, tf?: number, endSec?: n
     // A maxima/minima reais nunca sao reduzidas: quando a fonte informa corpo, ele e respeitado.
     high: Number(Math.max(high, rc.high).toFixed(prec)),
     low: Number(Math.min(low, rc.low).toFixed(prec)),
-    open,
-    close,
+    open: Number(openPrice.toFixed(prec)),
+    close: Number(closePrice.toFixed(prec)),
   }
 }
 
@@ -397,7 +457,9 @@ class MultiAssetEngine {
     // Mercado aberto: nivel e direcao vem do mercado real; a oscilacao entre duas leituras da
     // fonte (que chegam ~2x por minuto) e sintetizada para o preco nao ficar parado.
     if (hasRealPrice(symbol)) {
-      return realDisplayPrice(asset, getRealPrice(symbol), Date.now() / 1000)
+      const anchor = getRealPrice(symbol)
+      const band = measuredBand(asset, getRealCandles(symbol, 60) ?? [], anchor)
+      return realDisplayPrice(asset, anchor, Date.now() / 1000, band)
     }
     return getLivePrice(asset, Date.now() / 1000)
   }
@@ -405,7 +467,15 @@ class MultiAssetEngine {
   /** Repassa as velas reais preservando abertura e fechamento de mercado. */
   private anchoredCandles(asset: OTCAsset, real: RealCandle[], tf: number): OTCCandle[] {
     const nowSec = Date.now() / 1000
-    return real.map(rc => toEngineCandle(asset, rc, tf, nowSec))
+    const band = measuredBand(asset, real, real[real.length - 1]?.close ?? asset.basePrice)
+    const out: OTCCandle[] = []
+    let prevClose: number | undefined
+    for (const rc of real) {
+      const c = toEngineCandle(asset, rc, tf, nowSec, band, prevClose)
+      out.push(c)
+      prevClose = c.close
+    }
+    return out
   }
 
   getCandles(symbol: string, timeframe: 60 | 300 | 600): OTCCandle[] {
@@ -454,7 +524,8 @@ class MultiAssetEngine {
       const real = getRealCandles(symbol, timeframe)
       const current = real?.find(c => c.time === cs)
       const anchor = getRealPrice(symbol)
-      const close = realDisplayPrice(asset, anchor, nowSec)
+      const band = measuredBand(asset, real ?? [], anchor)
+      const close = realDisplayPrice(asset, anchor, nowSec, band)
 
       const open = current
         ? Number(current.open.toFixed(prec))
@@ -465,7 +536,6 @@ class MultiAssetEngine {
       // Percorre o trecho ja transcorrido para a maxima/minima crescerem junto com a vela.
       let high = Math.max(open, close)
       let low = Math.min(open, close)
-      const band = microBand(asset, anchor)
       const elapsed = Math.max(1, nowSec - cs)
       for (let i = 1; i <= 10; i++) {
         const p = anchor + microDev(asset, cs + (elapsed * i) / 10) * band

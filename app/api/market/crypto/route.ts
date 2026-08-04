@@ -3,26 +3,41 @@ import { NextResponse } from "next/server"
 // Proxy para dados REAIS de mercado. Roda no servidor para evitar CORS e o bloqueio
 // geografico que afeta algumas exchanges (ex.: Binance) a partir da Vercel.
 //
-// Fonte: Yahoo Finance. Escolhida porque devolve o OHLC real de mercado (o mesmo que
-// o TradingView exibe) para forex e cripto. A Coinbase era usada antes, mas nos pares
-// de forex ela retorna a taxa de conversao dela e nao a cotacao de mercado, alem de
-// nao ter historico de velas de forex.
+// Duas fontes, cada uma no que faz melhor:
+//
+// 1) PRECO AO VIVO -> scanner do proprio TradingView. E a cotacao que o TradingView
+//    exibe, com 5 casas decimais e em modo "streaming". Testado: o Yahoo entrega o
+//    forex arredondado em 4 casas (ex.: 1.1535 no lugar de 1.15322) e congelado por
+//    minutos, o que travava as velas e empatava as operacoes curtas.
+//
+// 2) HISTORICO DE VELAS -> Yahoo Finance, que devolve o OHLC real por periodo.
+//    O scanner do TradingView so expoe o snapshot atual, sem historico.
 export const dynamic = "force-dynamic"
 
-// Mapeia o simbolo interno do motor -> simbolo do Yahoo Finance
-const YAHOO_SYMBOLS: Record<string, string> = {
-  BTCUSD: "BTC-USD",
-  EURUSD: "EURUSD=X",
-  GBPJPY: "GBPJPY=X",
-  EURJPY: "EURJPY=X",
-  AUDUSD: "AUDUSD=X",
-  AUDJPY: "AUDJPY=X",
-  GBPUSD: "GBPUSD=X",
-  USDJPY: "USDJPY=X",
-  USDCHF: "USDCHF=X",
-  USDCAD: "USDCAD=X",
-  NZDUSD: "NZDUSD=X",
-  EURGBP: "EURGBP=X",
+interface SymbolInfo {
+  /** Simbolo no Yahoo Finance, usado no historico de velas */
+  yahoo: string
+  /** Ticker no TradingView, usado no preco ao vivo */
+  tv: string
+  /** Mercado do scanner do TradingView */
+  tvScan: "forex" | "crypto"
+}
+
+// Mapeia o simbolo interno do motor -> simbolos das fontes reais.
+// FX_IDC e a fonte de forex que o TradingView usa por padrao nos graficos publicos.
+const SYMBOLS: Record<string, SymbolInfo> = {
+  BTCUSD: { yahoo: "BTC-USD", tv: "COINBASE:BTCUSD", tvScan: "crypto" },
+  EURUSD: { yahoo: "EURUSD=X", tv: "FX_IDC:EURUSD", tvScan: "forex" },
+  GBPJPY: { yahoo: "GBPJPY=X", tv: "FX_IDC:GBPJPY", tvScan: "forex" },
+  EURJPY: { yahoo: "EURJPY=X", tv: "FX_IDC:EURJPY", tvScan: "forex" },
+  AUDUSD: { yahoo: "AUDUSD=X", tv: "FX_IDC:AUDUSD", tvScan: "forex" },
+  AUDJPY: { yahoo: "AUDJPY=X", tv: "FX_IDC:AUDJPY", tvScan: "forex" },
+  GBPUSD: { yahoo: "GBPUSD=X", tv: "FX_IDC:GBPUSD", tvScan: "forex" },
+  USDJPY: { yahoo: "USDJPY=X", tv: "FX_IDC:USDJPY", tvScan: "forex" },
+  USDCHF: { yahoo: "USDCHF=X", tv: "FX_IDC:USDCHF", tvScan: "forex" },
+  USDCAD: { yahoo: "USDCAD=X", tv: "FX_IDC:USDCAD", tvScan: "forex" },
+  NZDUSD: { yahoo: "NZDUSD=X", tv: "FX_IDC:NZDUSD", tvScan: "forex" },
+  EURGBP: { yahoo: "EURGBP=X", tv: "FX_IDC:EURGBP", tvScan: "forex" },
 }
 
 export interface RealCandle {
@@ -33,17 +48,46 @@ export interface RealCandle {
   close: number
 }
 
-// O Yahoo aceita 1m, 2m, 5m, 15m, 30m, 60m. Para 10m buscamos 5m e agregamos pares.
-function intervalFor(tf: number): string {
-  if (tf === 60) return "1m"
-  if (tf === 300) return "5m"
-  if (tf === 600) return "5m"
-  return "1m"
+// =============================================
+// PRECO AO VIVO (TradingView)
+// =============================================
+
+async function fetchTradingViewPrice(info: SymbolInfo): Promise<number> {
+  const r = await fetch(`https://scanner.tradingview.com/${info.tvScan}/scan`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
+    body: JSON.stringify({
+      symbols: { tickers: [info.tv], query: { types: [] } },
+      columns: ["close"],
+    }),
+  })
+  if (!r.ok) throw new Error(`tradingview ${r.status}`)
+
+  const j = await r.json()
+  const price = Number(j?.data?.[0]?.d?.[0])
+  if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido no tradingview")
+  return price
 }
 
-// Velas de 1m so ficam disponiveis nos ultimos dias; o range acompanha o timeframe.
+// =============================================
+// HISTORICO DE VELAS (Yahoo Finance)
+// =============================================
+
+/**
+ * O Yahoo aceita 1m, 2m, 5m, 15m, 30m, 60m. Buscamos o maior intervalo que divide o
+ * timeframe pedido e agregamos, para que 10m (que o Yahoo nao tem) seja montado a
+ * partir de velas reais de 5m em vez de cair silenciosamente em 1m.
+ */
+function sourceIntervalFor(tf: number): { interval: string; seconds: number } {
+  if (tf % 900 === 0) return { interval: "15m", seconds: 900 }
+  if (tf % 300 === 0) return { interval: "5m", seconds: 300 }
+  return { interval: "1m", seconds: 60 }
+}
+
+// Velas de 1m so ficam disponiveis nos ultimos dias; o range acompanha o intervalo.
 function rangeFor(interval: string): string {
-  return interval === "1m" ? "1d" : "5d"
+  return interval === "1m" ? "1d" : "1mo"
 }
 
 async function fetchYahooChart(symbol: string, interval: string, range: string) {
@@ -90,18 +134,19 @@ function parseCandles(result: any): RealCandle[] {
   return candles
 }
 
-/** Agrega velas de 5m em 10m, alinhadas a limites de 600s */
-function aggregateTo10m(candles: RealCandle[]): RealCandle[] {
+/** Agrupa velas menores no timeframe pedido, preservando o OHLC real do periodo */
+function aggregate(candles: RealCandle[], tf: number): RealCandle[] {
   const byBucket = new Map<number, RealCandle>()
+  // As velas vem em ordem crescente, entao o ultimo close do bucket e o fechamento
   for (const c of candles) {
-    const bucket = Math.floor(c.time / 600) * 600
+    const bucket = Math.floor(c.time / tf) * tf
     const existing = byBucket.get(bucket)
     if (!existing) {
       byBucket.set(bucket, { time: bucket, open: c.open, high: c.high, low: c.low, close: c.close })
     } else {
       existing.high = Math.max(existing.high, c.high)
       existing.low = Math.min(existing.low, c.low)
-      existing.close = c.close // as velas estao em ordem crescente
+      existing.close = c.close
     }
   }
   return Array.from(byBucket.values()).sort((a, b) => a.time - b.time)
@@ -110,33 +155,38 @@ function aggregateTo10m(candles: RealCandle[]): RealCandle[] {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const symbol = searchParams.get("symbol") || "BTCUSD"
-  const yahooSymbol = YAHOO_SYMBOLS[symbol]
+  const info = SYMBOLS[symbol]
   const type = searchParams.get("type") || "price"
 
-  if (!yahooSymbol) {
+  if (!info) {
     return NextResponse.json({ error: "symbol_unsupported" }, { status: 400 })
   }
 
   try {
     if (type === "price") {
-      const result = await fetchYahooChart(yahooSymbol, "1m", "1d")
-      // O preco de mercado vem no meta; o ultimo close serve de reserva
-      const meta = result?.meta
-      let price = Number(meta?.regularMarketPrice)
-      if (!Number.isFinite(price)) {
-        const candles = parseCandles(result)
-        price = candles.length ? candles[candles.length - 1].close : Number.NaN
+      let price: number
+      try {
+        price = await fetchTradingViewPrice(info)
+      } catch {
+        // Reserva: o meta do Yahoo. Menos preciso, mas mantem o ativo negociavel
+        // se o scanner do TradingView estiver fora do ar.
+        const result = await fetchYahooChart(info.yahoo, "1m", "1d")
+        price = Number(result?.meta?.regularMarketPrice)
+        if (!Number.isFinite(price)) {
+          const candles = parseCandles(result)
+          price = candles.length ? candles[candles.length - 1].close : Number.NaN
+        }
       }
-      if (!Number.isFinite(price)) throw new Error("preco invalido")
+      if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido")
       return NextResponse.json({ price })
     }
 
     // type === "candles"
-    const tf = Number(searchParams.get("tf") || 60)
-    const interval = intervalFor(tf)
-    const result = await fetchYahooChart(yahooSymbol, interval, rangeFor(interval))
+    const tf = Math.max(60, Number(searchParams.get("tf") || 60))
+    const { interval, seconds } = sourceIntervalFor(tf)
+    const result = await fetchYahooChart(info.yahoo, interval, rangeFor(interval))
     let candles = parseCandles(result)
-    if (tf === 600) candles = aggregateTo10m(candles)
+    if (tf !== seconds) candles = aggregate(candles, tf)
 
     if (!candles.length) throw new Error("sem velas")
     return NextResponse.json({ candles })

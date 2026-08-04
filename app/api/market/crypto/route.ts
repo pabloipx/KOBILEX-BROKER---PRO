@@ -22,6 +22,13 @@ interface SymbolInfo {
   tv: string
   /** Mercado do scanner do TradingView */
   tvScan: "forex" | "crypto"
+  /** Casas decimais do par. O Yahoo devolve float32 alargado (1.1531364917755127). */
+  decimals: number
+}
+
+/** Arredonda para a precisao real do par, removendo o ruido de ponto flutuante do Yahoo. */
+function round(value: number, decimals: number): number {
+  return Number(value.toFixed(decimals))
 }
 
 /**
@@ -36,18 +43,18 @@ function hasRealYahoo1m(info: SymbolInfo): boolean {
 // Mapeia o simbolo interno do motor -> simbolos das fontes reais.
 // FX_IDC e a fonte de forex que o TradingView usa por padrao nos graficos publicos.
 const SYMBOLS: Record<string, SymbolInfo> = {
-  BTCUSD: { yahoo: "BTC-USD", tv: "COINBASE:BTCUSD", tvScan: "crypto" },
-  EURUSD: { yahoo: "EURUSD=X", tv: "FX_IDC:EURUSD", tvScan: "forex" },
-  GBPJPY: { yahoo: "GBPJPY=X", tv: "FX_IDC:GBPJPY", tvScan: "forex" },
-  EURJPY: { yahoo: "EURJPY=X", tv: "FX_IDC:EURJPY", tvScan: "forex" },
-  AUDUSD: { yahoo: "AUDUSD=X", tv: "FX_IDC:AUDUSD", tvScan: "forex" },
-  AUDJPY: { yahoo: "AUDJPY=X", tv: "FX_IDC:AUDJPY", tvScan: "forex" },
-  GBPUSD: { yahoo: "GBPUSD=X", tv: "FX_IDC:GBPUSD", tvScan: "forex" },
-  USDJPY: { yahoo: "USDJPY=X", tv: "FX_IDC:USDJPY", tvScan: "forex" },
-  USDCHF: { yahoo: "USDCHF=X", tv: "FX_IDC:USDCHF", tvScan: "forex" },
-  USDCAD: { yahoo: "USDCAD=X", tv: "FX_IDC:USDCAD", tvScan: "forex" },
-  NZDUSD: { yahoo: "NZDUSD=X", tv: "FX_IDC:NZDUSD", tvScan: "forex" },
-  EURGBP: { yahoo: "EURGBP=X", tv: "FX_IDC:EURGBP", tvScan: "forex" },
+  BTCUSD: { yahoo: "BTC-USD", tv: "COINBASE:BTCUSD", tvScan: "crypto", decimals: 2 },
+  EURUSD: { yahoo: "EURUSD=X", tv: "FX_IDC:EURUSD", tvScan: "forex", decimals: 5 },
+  GBPJPY: { yahoo: "GBPJPY=X", tv: "FX_IDC:GBPJPY", tvScan: "forex", decimals: 3 },
+  EURJPY: { yahoo: "EURJPY=X", tv: "FX_IDC:EURJPY", tvScan: "forex", decimals: 3 },
+  AUDUSD: { yahoo: "AUDUSD=X", tv: "FX_IDC:AUDUSD", tvScan: "forex", decimals: 5 },
+  AUDJPY: { yahoo: "AUDJPY=X", tv: "FX_IDC:AUDJPY", tvScan: "forex", decimals: 3 },
+  GBPUSD: { yahoo: "GBPUSD=X", tv: "FX_IDC:GBPUSD", tvScan: "forex", decimals: 5 },
+  USDJPY: { yahoo: "USDJPY=X", tv: "FX_IDC:USDJPY", tvScan: "forex", decimals: 3 },
+  USDCHF: { yahoo: "USDCHF=X", tv: "FX_IDC:USDCHF", tvScan: "forex", decimals: 5 },
+  USDCAD: { yahoo: "USDCAD=X", tv: "FX_IDC:USDCAD", tvScan: "forex", decimals: 5 },
+  NZDUSD: { yahoo: "NZDUSD=X", tv: "FX_IDC:NZDUSD", tvScan: "forex", decimals: 5 },
+  EURGBP: { yahoo: "EURGBP=X", tv: "FX_IDC:EURGBP", tvScan: "forex", decimals: 5 },
 }
 
 export interface RealCandle {
@@ -144,6 +151,93 @@ function parseCandles(result: any): RealCandle[] {
   return candles
 }
 
+/**
+ * Monta as velas de 1m do forex combinando as duas fontes reais disponiveis.
+ *
+ * O problema: o Yahoo tem a LINHA DO TEMPO completa de 1m (um ponto por minuto, sem
+ * buracos) mas com o minuto achatado — open=high=low=close. O historico de ticks tem
+ * CORPO real (maxima/minima observadas) mas so nos minutos em que alguem estava usando
+ * a plataforma, o que deixa vaos e velas sem corpo no grafico.
+ *
+ * A combinacao usa cada fonte no que ela tem de real:
+ *  - o Yahoo define a sequencia de minutos e o fechamento real de cada um;
+ *  - o open encadeia no fechamento do minuto anterior, entao o corpo reflete o movimento
+ *    real entre um minuto e o seguinte (e nao um valor inventado);
+ *  - a maxima/minima dos ticks observados expande o corpo quando ha registro.
+ *
+ * Resultado: serie continua, sem vaos, com todos os valores vindos de preco real.
+ */
+function buildMinuteCandles(
+  yahoo: RealCandle[],
+  recorded: RealCandle[],
+  decimals: number,
+): RealCandle[] {
+  const byBucket = new Map<number, RealCandle>()
+  for (const c of recorded) byBucket.set(c.time, c)
+
+  // Minutos conhecidos: os do Yahoo mais os ticks recentes (o Yahoo atrasa alguns minutos).
+  const minutes = new Set<number>()
+  for (const c of yahoo) minutes.add(Math.floor(c.time / 60) * 60)
+  for (const c of recorded) minutes.add(c.time)
+  if (!minutes.size) return []
+
+  const yahooClose = new Map<number, number>()
+  for (const c of yahoo) yahooClose.set(Math.floor(c.time / 60) * 60, c.close)
+
+  const sorted = Array.from(minutes).sort((a, b) => a - b)
+  const first = sorted[0]
+  const last = sorted[sorted.length - 1]
+
+  const out: RealCandle[] = []
+  let prevClose = byBucket.get(first)?.open ?? yahooClose.get(first) ?? 0
+
+  // Percorre minuto a minuto para nao deixar buracos: um minuto sem dado nenhum vira uma
+  // vela de continuidade no ultimo preco real conhecido (nao houve preco novo observado).
+  for (let t = first; t <= last; t += 60) {
+    const tick = byBucket.get(t)
+    const close = tick?.close ?? yahooClose.get(t) ?? prevClose
+    const open = prevClose || close
+
+    let high = Math.max(open, close)
+    let low = Math.min(open, close)
+    if (tick) {
+      high = Math.max(high, tick.high)
+      low = Math.min(low, tick.low)
+    }
+
+    out.push({
+      time: t,
+      open: round(open, decimals),
+      high: round(high, decimals),
+      low: round(low, decimals),
+      close: round(close, decimals),
+    })
+    prevClose = close
+  }
+
+  return out
+}
+
+/**
+ * Preenche periodos ausentes na serie. O Yahoo devolve null nos periodos sem negociacao e
+ * esses buracos aparecem no grafico como vaos. O periodo vazio vira uma vela de continuidade
+ * no ultimo fechamento real: nao houve preco novo, entao nao houve movimento.
+ * O OHLC real das velas existentes e preservado.
+ */
+function fillGaps(candles: RealCandle[], tf: number): RealCandle[] {
+  if (candles.length < 2) return candles
+
+  const out: RealCandle[] = [candles[0]]
+  for (let i = 1; i < candles.length; i++) {
+    const prev = candles[i - 1]
+    for (let t = prev.time + tf; t < candles[i].time; t += tf) {
+      out.push({ time: t, open: prev.close, high: prev.close, low: prev.close, close: prev.close })
+    }
+    out.push(candles[i])
+  }
+  return out
+}
+
 /** Agrupa velas menores no timeframe pedido, preservando o OHLC real do periodo */
 function aggregate(candles: RealCandle[], tf: number): RealCandle[] {
   const byBucket = new Map<number, RealCandle>()
@@ -199,23 +293,41 @@ export async function GET(req: Request) {
     // type === "candles"
     const tf = Math.max(60, Number(searchParams.get("tf") || 60))
 
-    // Forex em 1m: usa as velas construidas com os ticks reais acumulados, ja que o
-    // Yahoo devolve o minuto sem corpo. Enquanto o historico proprio ainda e curto,
-    // o Yahoo entra como reserva para o grafico nao abrir vazio.
+    // Forex em 1m: combina a linha do tempo do Yahoo (continua, com o fechamento real de
+    // cada minuto) com o corpo dos ticks observados. Sozinha, nenhuma das duas serve: o
+    // Yahoo vem achatado e os ticks vem com vaos.
     if (tf === 60 && !hasRealYahoo1m(info)) {
-      const recorded = await getRecordedCandles(symbol)
-      if (recorded.length >= 2) {
-        return NextResponse.json({ candles: recorded, source: "ticks" })
+      const [yahoo, recorded] = await Promise.all([
+        fetchYahooChart(info.yahoo, "1m", "1d").then(parseCandles).catch(() => [] as RealCandle[]),
+        getRecordedCandles(symbol).catch(() => [] as RealCandle[]),
+      ])
+
+      const merged = buildMinuteCandles(yahoo, recorded, info.decimals)
+      if (merged.length >= 2) {
+        return NextResponse.json({ candles: merged.slice(-240), source: "merged" })
       }
     }
 
-    const { interval, seconds } = sourceIntervalFor(tf)
+    const { interval } = sourceIntervalFor(tf)
     const result = await fetchYahooChart(info.yahoo, interval, rangeFor(interval))
-    let candles = parseCandles(result)
-    if (tf !== seconds) candles = aggregate(candles, tf)
+    // Sempre agrega, mesmo quando o intervalo da fonte ja e o pedido: alem de agrupar, o
+    // aggregate alinha os periodos e junta duplicatas. O Yahoo devolve a ultima vela (a do
+    // periodo em formacao) com timestamp fora da grade, o que aparecia no grafico como um
+    // vao e uma vela comprimida na borda.
+    let candles = aggregate(parseCandles(result), tf)
+    candles = fillGaps(candles, tf)
 
     if (!candles.length) throw new Error("sem velas")
-    return NextResponse.json({ candles })
+
+    // O Yahoo devolve float32 alargado (64256.01171875); a UI espera a precisao do par.
+    const rounded = candles.map(c => ({
+      time: c.time,
+      open: round(c.open, info.decimals),
+      high: round(c.high, info.decimals),
+      low: round(c.low, info.decimals),
+      close: round(c.close, info.decimals),
+    }))
+    return NextResponse.json({ candles: rounded })
   } catch (e) {
     console.log("[v0] market feed erro:", symbol, (e as Error).message)
     return NextResponse.json({ error: "feed_unavailable" }, { status: 502 })

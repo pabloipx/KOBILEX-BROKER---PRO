@@ -19,6 +19,8 @@ interface AdminDepositsProps {
   onUpdate: () => void
 }
 
+const ADMIN_TOKEN = "Admin123!"
+
 export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
   const [deposits, setDeposits] = useState<Deposit[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,9 +70,15 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
     }
   }
 
+  const normalizeStatus = (status: string) => {
+    if (status === "approved" || status === "completed") return "completed"
+    if (status === "rejected" || status === "cancelled") return "rejected"
+    return "pending"
+  }
+
   const filteredDeposits = deposits.filter((deposit) => {
     const matchesSearch = deposit.user_email?.toLowerCase().includes(search.toLowerCase())
-    const matchesFilter = filter === "all" || deposit.status === filter
+    const matchesFilter = filter === "all" || normalizeStatus(deposit.status) === filter
     return matchesSearch && matchesFilter
   })
 
@@ -82,7 +90,7 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
   }
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (normalizeStatus(status)) {
       case "completed":
         return (
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
@@ -200,7 +208,7 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
                       {new Date(deposit.created_at).toLocaleString("pt-BR")}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {deposit.status === "pending" && (
+                      {normalizeStatus(deposit.status) === "pending" && (
                         <div className="flex justify-end gap-2">
                           <Button
                             onClick={() =>

@@ -1,6 +1,6 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
-import { getAffiliateSettings, resolveTerms } from "@/lib/affiliate-commission"
+import { getAffiliateSettings, resolveTerms, calculateCommission, round2 } from "@/lib/affiliate-commission"
 
 // GET - Obter dados do afiliado
 export async function GET() {
@@ -63,24 +63,44 @@ export async function GET() {
       .eq("referred_by", profile.affiliate_code)
       .order("created_at", { ascending: false })
 
-    // Para cada referido, buscar total de depositos aprovados
+    const terms = resolveTerms(profile, settings)
+
+    // Para cada referido, buscar depositos aprovados e aplicar o modelo de comissao vigente
     const referralsWithDeposits = await Promise.all(
       (referredUsers || []).map(async (referredUser) => {
         const { data: deposits } = await admin
           .from("deposits")
-          .select("amount")
+          .select("amount, created_at")
           .eq("user_id", referredUser.id)
           .in("status", ["approved", "completed"])
+          .order("created_at", { ascending: true })
 
-        const totalDeposits = deposits?.reduce((sum, d) => sum + Number(d.amount), 0) || 0
-        const commission = totalDeposits * ((profile.affiliate_commission_percent || 77) / 100)
+        const rows = deposits || []
+        const totalDeposits = rows.reduce((sum, d) => sum + Number(d.amount), 0)
+
+        // O CPA e pago uma unica vez, no primeiro deposito que atinge o minimo
+        let cpaConsumed = false
+        let commission = 0
+        let revshareTotal = 0
+        let cpaTotal = 0
+
+        for (const deposit of rows) {
+          const isFirstQualifiedDeposit = !cpaConsumed && Number(deposit.amount) >= terms.cpaMinDeposit
+          const breakdown = calculateCommission(Number(deposit.amount), terms, { isFirstQualifiedDeposit })
+          if (breakdown.cpaAmount > 0) cpaConsumed = true
+          commission += breakdown.total
+          revshareTotal += breakdown.revshareAmount
+          cpaTotal += breakdown.cpaAmount
+        }
 
         return {
           id: referredUser.id,
           referred_user_id: referredUser.id,
           status: totalDeposits > 0 ? "active" : "registered",
           total_deposits: totalDeposits,
-          total_commission: commission,
+          total_commission: round2(commission),
+          revshare_commission: round2(revshareTotal),
+          cpa_commission: round2(cpaTotal),
           created_at: referredUser.created_at,
           profiles: {
             full_name: referredUser.full_name,
@@ -101,8 +121,6 @@ export async function GET() {
       .eq("affiliate_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20)
-
-    const terms = resolveTerms(profile, settings)
 
     return NextResponse.json({
       affiliate: {

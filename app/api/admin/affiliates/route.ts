@@ -383,14 +383,20 @@ export async function PATCH(request: Request) {
 
       if (error) throw error
 
-      await log({
-        affiliate_id: affiliateId,
-        action: "update_terms",
-        field: "cpa/revshare",
-        old_value: `${current?.affiliate_commission_model ?? "hybrid"} · rev ${current?.affiliate_commission_percent ?? "-"}% · cpa ${current?.affiliate_cpa_amount ?? "-"}`,
-        new_value: `${model} · rev ${revshare}% · cpa ${cpa}`,
-        note: data.reason || null,
-      })
+      const oldValue = `${current?.affiliate_commission_model ?? "hybrid"} · rev ${Number(current?.affiliate_commission_percent ?? 0)}% · cpa ${Number(current?.affiliate_cpa_amount ?? 0)}`
+      const newValue = `${model} · rev ${revshare}% · cpa ${cpa}`
+
+      // Registra a auditoria somente quando os termos realmente mudam
+      if (oldValue !== newValue) {
+        await log({
+          affiliate_id: affiliateId,
+          action: "update_terms",
+          field: "cpa/revshare",
+          old_value: oldValue,
+          new_value: newValue,
+          note: data.reason || null,
+        })
+      }
 
       return NextResponse.json({ success: true })
     }

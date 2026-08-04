@@ -218,7 +218,13 @@ export function SectionAccount({ affiliate, email }: { affiliate: AffiliateInfo;
           </div>
           <div>
             <dt className="text-sm text-gray-500">Comissão</dt>
-            <dd className="mt-1 text-[15px] text-gray-900">{affiliate.commission_rate}%</dd>
+            <dd className="mt-1 text-[15px] text-gray-900">
+              {affiliate.commission_model === "cpa"
+                ? brl(affiliate.cpa_amount ?? 0) + " por indicação (CPA)"
+                : affiliate.commission_model === "hybrid"
+                  ? affiliate.commission_rate + "% + " + brl(affiliate.cpa_amount ?? 0) + " CPA"
+                  : affiliate.commission_rate + "% (RevShare)"}
+            </dd>
           </div>
           <div>
             <dt className="text-sm text-gray-500">Status</dt>

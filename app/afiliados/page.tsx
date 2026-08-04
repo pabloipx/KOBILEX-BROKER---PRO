@@ -28,6 +28,12 @@ interface Affiliate {
   user_id: string
   code: string
   commission_rate: number
+  commission_model: "revshare" | "cpa" | "hybrid"
+  cpa_amount: number
+  cpa_min_deposit: number
+  sub_percent: number
+  min_withdrawal: number
+  withdrawal_fee_percent: number
   balance: number
   total_earned: number
   total_referrals: number
@@ -42,6 +48,8 @@ interface Referral {
   status: string
   total_deposits: number
   total_commission: number
+  revshare_commission?: number
+  cpa_commission?: number
   created_at: string
   profiles: {
     full_name: string
@@ -61,6 +69,33 @@ interface Withdrawal {
 }
 
 type TabType = "dashboard" | "referrals" | "operations" | "withdraw" | "history"
+
+const brl = (value: number) =>
+  "R$ " + Number(value || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/** Descreve os termos de comissao vigentes conforme o modelo definido pelo admin */
+function termsSummary(a: Affiliate) {
+  if (a.commission_model === "cpa") {
+    return brl(a.cpa_amount) + " por indicado que depositar " + brl(a.cpa_min_deposit) + " ou mais"
+  }
+  if (a.commission_model === "hybrid") {
+    return (
+      brl(a.cpa_amount) +
+      " no primeiro depósito de " +
+      brl(a.cpa_min_deposit) +
+      " ou mais, somado a " +
+      a.commission_rate +
+      "% de todos os depósitos"
+    )
+  }
+  return a.commission_rate + "% sobre todos os depósitos dos seus indicados"
+}
+
+const MODEL_LABEL: Record<Affiliate["commission_model"], string> = {
+  revshare: "RevShare",
+  cpa: "CPA",
+  hybrid: "Híbrido",
+}
 
 export default function AffiliatePage() {
   const router = useRouter()
@@ -157,8 +192,9 @@ export default function AffiliatePage() {
     setWithdrawError("")
     setWithdrawSuccess(false)
     const amount = Number.parseFloat(withdrawAmount)
-    if (!amount || amount < 50) {
-      setWithdrawError("Valor minimo para saque e R$ 50,00")
+    const minWithdrawal = affiliate?.min_withdrawal ?? 0
+    if (!amount || amount < minWithdrawal) {
+      setWithdrawError("Valor mínimo para saque é " + brl(minWithdrawal))
       return
     }
     if (amount > (affiliate?.balance || 0)) {
@@ -270,9 +306,12 @@ export default function AffiliatePage() {
             <p className="text-white text-3xl font-bold mb-1">
               {"R$ " + affiliate.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </p>
-            <p className="text-white/30 text-xs mb-4">
-              {"Comissão de " + affiliate.commission_rate + "% sobre depósitos dos indicados"}
-            </p>
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className="rounded-md bg-[#f97316]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#f97316]">
+                {MODEL_LABEL[affiliate.commission_model]}
+              </span>
+              <p className="text-white/30 text-xs">{termsSummary(affiliate)}</p>
+            </div>
 
             <div className="grid grid-cols-2 gap-2.5">
             <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
@@ -399,9 +438,29 @@ export default function AffiliatePage() {
                   <span className="text-[#26a69a] font-bold">{affiliate.referrals_with_deposit || 0}</span>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-[#1F2933]">
-                  <span className="text-white/50 text-sm">Sua comissao</span>
-                  <span className="text-[#f97316] font-bold">{affiliate.commission_rate + "%"}</span>
+                  <span className="text-white/50 text-sm">Modelo de comissão</span>
+                  <span className="text-[#f97316] font-bold">{MODEL_LABEL[affiliate.commission_model]}</span>
                 </div>
+                {affiliate.commission_model !== "cpa" && (
+                  <div className="flex items-center justify-between py-2 border-b border-[#1F2933]">
+                    <span className="text-white/50 text-sm">RevShare por depósito</span>
+                    <span className="text-[#f97316] font-bold">{affiliate.commission_rate + "%"}</span>
+                  </div>
+                )}
+                {affiliate.commission_model !== "revshare" && (
+                  <div className="flex items-center justify-between py-2 border-b border-[#1F2933]">
+                    <span className="text-white/50 text-sm">
+                      {"CPA por indicado (mín. " + brl(affiliate.cpa_min_deposit) + ")"}
+                    </span>
+                    <span className="text-[#f97316] font-bold">{brl(affiliate.cpa_amount)}</span>
+                  </div>
+                )}
+                {affiliate.sub_percent > 0 && (
+                  <div className="flex items-center justify-between py-2 border-b border-[#1F2933]">
+                    <span className="text-white/50 text-sm">Sub-afiliado</span>
+                    <span className="text-white font-bold">{affiliate.sub_percent + "%"}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between py-2">
                   <span className="text-white/50 text-sm">Status</span>
                   <span className={
@@ -420,8 +479,8 @@ export default function AffiliatePage() {
                 {[
                   "Compartilhe seu codigo ou link de convite",
                   "Seu amigo se cadastra usando seu codigo",
-                  "Sempre que ele depositar, voce ganha " + affiliate.commission_rate + "% de comissao",
-                  "Saque suas comissoes via PIX quando quiser (minimo R$ 50)",
+                  "Sua comissão: " + termsSummary(affiliate),
+                  "Saque suas comissões via PIX quando quiser (mínimo " + brl(affiliate.min_withdrawal) + ")",
                 ].map((text, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <div className="w-6 h-6 rounded-full bg-[#f97316]/20 flex items-center justify-center flex-shrink-0">
@@ -517,7 +576,7 @@ export default function AffiliatePage() {
                 />
               </div>
               <p className="text-white/40 text-xs mt-2">
-                {"Minimo: R$ 50,00 | Disponivel: R$ " + affiliate.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {"Mínimo: " + brl(affiliate.min_withdrawal) + " | Disponível: " + brl(affiliate.balance)}
               </p>
             </div>
 
@@ -563,20 +622,23 @@ export default function AffiliatePage() {
               <div className="p-4 rounded-xl bg-[#121826] border border-[#1F2933] space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-white/60">Valor solicitado</span>
-                  <span className="text-white">
-                    {"R$ " + Number.parseFloat(withdrawAmount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  </span>
+                  <span className="text-white">{brl(Number.parseFloat(withdrawAmount))}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-white/60">Taxa de saque (2%)</span>
+                  <span className="text-white/60">
+                    {"Taxa de saque (" + affiliate.withdrawal_fee_percent + "%)"}
+                  </span>
                   <span className="text-red-400">
-                    {"- R$ " + (Number.parseFloat(withdrawAmount) * 0.02).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    {"- " + brl((Number.parseFloat(withdrawAmount) * affiliate.withdrawal_fee_percent) / 100)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t border-[#1F2933]">
-                  <span className="text-white/80 font-medium">Voce recebe</span>
+                  <span className="text-white/80 font-medium">Você recebe</span>
                   <span className="text-[#00E676] font-bold">
-                    {"R$ " + (Number.parseFloat(withdrawAmount) * 0.98).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    {brl(
+                      Number.parseFloat(withdrawAmount) *
+                        (1 - affiliate.withdrawal_fee_percent / 100),
+                    )}
                   </span>
                 </div>
               </div>
@@ -662,10 +724,10 @@ export default function AffiliatePage() {
                   <div className="mt-2 pt-2 border-t border-[#1F2933] space-y-1">
                     {withdrawal.net_amount != null && (
                       <p className="text-white/40 text-xs">
-                        {"Liquido recebido (taxa 2%): "}
-                        <span className="text-[#00E676]">
-                          {"R$ " + withdrawal.net_amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </span>
+                        {withdrawal.fee != null
+                          ? "Líquido recebido (taxa " + brl(withdrawal.fee) + "): "
+                          : "Líquido recebido: "}
+                        <span className="text-[#00E676]">{brl(withdrawal.net_amount)}</span>
                       </p>
                     )}
                     <p className="text-white/40 text-xs">

@@ -185,17 +185,21 @@ export function AffiliateDrawer({
           ))}
         </nav>
 
-        <div className="flex-1 overflow-y-auto p-5">
-          {(error || ok) && (
-            <p
-              className={`mb-4 rounded-lg px-3 py-2.5 text-sm ${
-                error ? "bg-red-500/10 text-red-400" : "bg-[#22c55e]/10 text-[#22c55e]"
-              }`}
-            >
-              {error || ok}
-            </p>
-          )}
+        {(error || ok) && (
+          <p
+            role="status"
+            aria-live="polite"
+            className={`border-b px-5 py-3 text-sm ${
+              error
+                ? "border-red-500/20 bg-red-500/10 text-red-400"
+                : "border-[#22c55e]/20 bg-[#22c55e]/10 text-[#22c55e]"
+            }`}
+          >
+            {error || ok}
+          </p>
+        )}
 
+        <div className="flex-1 overflow-y-auto p-5">
           {loading && tab !== "termos" ? (
             <p className="flex items-center gap-2 text-sm text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" /> Carregando dados

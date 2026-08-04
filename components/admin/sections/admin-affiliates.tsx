@@ -649,6 +649,8 @@ function SettingsPanel({ settings, onSaved }: { settings: AdminSettings; onSaved
     <div className="flex max-w-[720px] flex-col gap-5">
       {message && (
         <p
+          role="status"
+          aria-live="polite"
           className={`rounded-lg px-3 py-2.5 text-sm ${
             message.type === "ok" ? "bg-[#22c55e]/10 text-[#22c55e]" : "bg-red-500/10 text-red-400"
           }`}

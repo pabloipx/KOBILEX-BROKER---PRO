@@ -89,20 +89,33 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600) {
       }
 
       const target = multiAssetEngine.getCurrentPrice(validSymbol)
-      // Suavizacao leve (o motor ja e continuo, isto so remove micro-degraus entre frames).
-      if (smoothRef.current <= 0) smoothRef.current = target
-      else smoothRef.current += (target - smoothRef.current) * 0.25
+      const real = isRealSymbol(validSymbol)
+
+      if (real) {
+        // Mercado aberto: o preco e o ultimo tick real, usado como veio. Suavizar aqui criava
+        // um valor intermediario que nunca foi negociado e que era empurrado para dentro da
+        // vela, inflando maxima/minima a cada frame.
+        if (target > 0) smoothRef.current = target
+      } else {
+        // OTC: suavizacao leve entre frames (motor sintetico continuo). Inalterado.
+        if (smoothRef.current <= 0) smoothRef.current = target
+        else smoothRef.current += (target - smoothRef.current) * 0.25
+      }
 
       const price = Number(smoothRef.current.toFixed(asset.decimals))
       const cc = multiAssetEngine.getCurrentCandle(validSymbol, timeframe)
       if (cc) {
-        liveCandleRef.current = {
-          time: cc.time,
-          open: cc.open,
-          close: price,
-          high: Math.max(cc.high, price),
-          low: Math.min(cc.low, price),
-        }
+        // Mercado aberto: o OHLC do motor JA e o acumulado dos ticks reais do periodo — usado
+        // exatamente como veio. Nos OTC a vela segue fechando no preco suavizado.
+        liveCandleRef.current = real
+          ? cc
+          : {
+              time: cc.time,
+              open: cc.open,
+              close: price,
+              high: Math.max(cc.high, price),
+              low: Math.min(cc.low, price),
+            }
       }
 
       const p = performance.now()

@@ -72,6 +72,50 @@ export function recordTick(symbol: string, price: number): void {
 }
 
 /**
+ * Ultimo preco real conhecido de cada simbolo, lido do historico de ticks gravado.
+ *
+ * Existe porque o feed de precos roda no NAVEGADOR: no servidor o real-price-store esta
+ * sempre vazio, e ate agora as rotas de servidor caiam no gerador sintetico para os ativos de
+ * mercado aberto (numeros diferentes dos do grafico). Lendo do historico gravado, o servidor
+ * responde com o mesmo preco real que todos os usuarios estao vendo.
+ *
+ * Retorna tambem o primeiro fechamento da janela, para a variacao percentual sair de dado
+ * real em vez do basePrice de catalogo.
+ */
+export async function getRecordedSnapshots(
+  symbols: string[],
+  windowMinutes = 240,
+): Promise<Map<string, { price: number; first: number }>> {
+  const out = new Map<string, { price: number; first: number }>()
+  if (!symbols.length) return out
+
+  const since = Math.floor(Date.now() / 1000) - windowMinutes * BUCKET
+  const { data, error } = await createAdminClient()
+    .from("market_candles_1m")
+    .select("symbol, bucket_time, close")
+    .in("symbol", symbols)
+    .gte("bucket_time", since)
+    .order("bucket_time", { ascending: true })
+
+  if (error) {
+    console.log("[v0] getRecordedSnapshots falhou:", error.message)
+    return out
+  }
+
+  // Ordem crescente: a primeira linha de cada simbolo e a mais antiga da janela e a ultima
+  // sobrescreve o preco, ficando com a mais recente.
+  for (const row of data ?? []) {
+    const close = Number(row.close)
+    if (!Number.isFinite(close) || close <= 0) continue
+    const prev = out.get(row.symbol as string)
+    if (prev) prev.price = close
+    else out.set(row.symbol as string, { price: close, first: close })
+  }
+
+  return out
+}
+
+/**
  * Le as velas de 1m acumuladas para um simbolo. Retorna vazio quando ainda nao ha
  * historico suficiente, para que quem chama possa recorrer a outra fonte.
  */

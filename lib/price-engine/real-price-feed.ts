@@ -62,11 +62,16 @@ export function ensureRealFeed(symbol: string, tf: number): () => void {
       if (st) pollCandles(symbol, st.tf)
     }, 15000)
 
+    // Cadencia dos ticks. Cada leitura e um preco real e alimenta a vela em formacao, entao a
+    // resolucao do tick define diretamente a suavidade do grafico e a fidelidade do high/low:
+    // a 1,5s uma vela de 1m tinha ~40 amostras e o preco andava em degraus visiveis. A 600ms
+    // sao ~100 amostras por minuto, proximo do streaming que o TradingView exibe, e o movimento
+    // fica continuo sem que nada precise ser interpolado ou inventado no cliente.
     pollPrice(symbol, tf)
     s.priceTimer = setInterval(() => {
       const st = feeds.get(symbol)
       if (st) pollPrice(symbol, st.tf)
-    }, 1500)
+    }, 600)
   }
 
   // Timeframe mudou: recarrega as velas do novo tf imediatamente

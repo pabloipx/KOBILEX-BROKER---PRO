@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
+import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 
 // Mapa central de casas decimais por simbolo (fonte unica: engine de precos)
 const SYMBOL_DECIMALS: Record<string, number> = Object.fromEntries(
@@ -1048,6 +1049,58 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         } catch {
           target = latest.current.currentPrice
         }
+
+        // ===== MERCADO ABERTO: renderiza a vela de ticks, sem reconstrui-la =====
+        // Nos ativos reais o OHLC vem pronto do motor, formado tick a tick pelo feed. O caminho
+        // abaixo (suavizacao exponencial + high/low recalculados no cliente) e do motor OTC: ao
+        // aplica-lo aos ativos reais, cada frame empurrava um preco interpolado para dentro da
+        // vela e os extremos cresciam a cada frame, criando pavios que o mercado nao teve.
+        // Aqui apenas atualizamos a vela existente, sem redesenhar a serie.
+        if (isRealSymbol(sym)) {
+          const live = multiAssetEngine.getCurrentCandle(sym as any, tf)
+          if (!live) return
+
+          const f = formingRef.current
+          if (!f || live.time > f.time) {
+            // Novo periodo: a vela nasce com o dado real do motor (Open = fechamento anterior).
+            formingRef.current = { ...live }
+          } else if (live.time === f.time) {
+            // Mesmo periodo: atualizacao continua dos extremos e do fechamento.
+            f.open = live.open
+            f.high = live.high
+            f.low = live.low
+            f.close = live.close
+          }
+
+          const cur = formingRef.current!
+          if (cur.close > prevTargetRef.current) dirRef.current = "up"
+          else if (cur.close < prevTargetRef.current) dirRef.current = "down"
+          prevTargetRef.current = cur.close
+          smoothPriceRef.current = cur.close
+
+          const arr = candleArrayRef.current
+          if (arr.length && arr[arr.length - 1].time === cur.time) {
+            arr[arr.length - 1] = { ...cur }
+          } else {
+            arr.push({ ...cur })
+            if (arr.length > 600) arr.shift()
+          }
+
+          try {
+            seriesRef.current.update({
+              time: cur.time as any,
+              open: cur.open,
+              high: cur.high,
+              low: cur.low,
+              close: cur.close,
+            })
+          } catch {}
+          updateHeader(cur, cur.close)
+          updateCountdown(cur.close)
+          lastFrameAt = Date.now()
+          return
+        }
+
         if (target > 0 && formingRef.current) {
           if (smoothPriceRef.current === 0) smoothPriceRef.current = target
           // Suavizacao relativa a escala do preco: funciona para qualquer magnitude

@@ -10,7 +10,13 @@
  * Deterministic: same timestamp always produces the same price.
  */
 
-import { hasRealPrice, getRealPrice, getRealCandles, type RealCandle } from "./real-price-store"
+import {
+  hasRealPrice,
+  getRealPrice,
+  getRealCandles,
+  isRealSymbol,
+  type RealCandle,
+} from "./real-price-store"
 
 export interface OTCCandle {
   time: number
@@ -397,163 +403,47 @@ function getLivePrice(asset: OTCAsset, timestamp: number): number {
 }
 
 // =============================================
-// PRECO REAL DE MERCADO (mercado aberto)
+// MERCADO ABERTO — MOTOR BASEADO EM TICKS
 // =============================================
-// Os ativos de mercado aberto refletem o mercado de verdade: preco e velas vem do feed real
-// (Yahoo Finance, a mesma cotacao que o TradingView exibe) e sao usados exatamente como vem.
+// Os ativos de mercado aberto NAO possuem geracao de precos. Foi removido daqui tudo que
+// inventava mercado: as oitavas de micro-movimento (MICRO_OCTAVES/microDev), a amplitude
+// calibrada por ativo (measuredBand), o preco de exibicao com oscilacao somada
+// (realDisplayPrice) e a amostragem que inflava maxima/minima. Era essa camada que produzia
+// pavios enormes e repetitivos, corpos artificiais e um desenho diferente do TradingView —
+// no EUR/USD ela somava ~20 pips de ruido a velas cujo movimento real e de 1 a 3 pips.
 //
-// Nada e sintetizado aqui: sem micro-movimento, sem pavios inventados e sem a manipulacao do
-// admin, que continua valendo apenas nos ativos OTC — sinteticos por natureza. Assim o que
-// acontece no mercado aparece igual na plataforma.
-
-/** Preco de um ativo de mercado aberto: o valor real, apenas arredondado para exibicao. */
-// =============================================
-// MOVIMENTO INTRAMINUTO (ancorado no preco real)
-// =============================================
-// A fonte publica de precos entrega ~2 atualizacoes por MINUTO, com precisao de 1 pip, e as
-// velas de 1m vem sem corpo (high == low em 100% delas). Isso deixava o grafico praticamente
-// parado, diferente do TradingView, que recebe streaming tick a tick.
+// O que existe agora e o comportamento de uma corretora de verdade, tick a tick:
+//   - o servidor recebe o preco real do mercado e o grava na vela do periodo corrente;
+//   - cada tick apenas ATUALIZA a vela em formacao: high sobe, low desce, close = ultimo preco;
+//   - a vela nunca e recriada nem entregue "pronta";
+//   - Open = fechamento da vela anterior, entao a serie nao abre vaos;
+//   - pavio e o que sobrar entre o corpo e os extremos realmente negociados. Nada e adicionado.
 //
-// Estas oitavas rapidas geram o movimento DENTRO do periodo, somado ao preco real (a ancora).
-// A media da oscilacao e ~zero, entao o preco continua girando em torno do valor real de
-// mercado: a direcao e o nivel sao reais, apenas o caminho entre duas leituras e sintetizado.
-//
-// E uma funcao PURA do tempo (mesmas oitavas deterministicas do resto do motor), o que garante
-// duas propriedades essenciais: o historico nao se redesenha a cada recarga da pagina, e o
-// servidor pode recalcular exatamente o mesmo valor de um instante passado ao liquidar.
-// As oitavas LENTAS (varios minutos) sao as que dao ao grafico a forma de mercado: sao elas que
-// produzem a ondulacao de ~15 pips ao longo de 30 min vista no TradingView. A fonte publica nao
-// tem essa estrutura (seus fechamentos variam ~1 pip em 30 min, praticamente uma linha reta),
-// entao sem elas o grafico ficava achatado. As oitavas rapidas apenas preenchem o interior da
-// vela e mantem o preco ticando entre frames.
-const MICRO_OCTAVES = [
-  // Amplitude proporcional a RAIZ do periodo (escalonamento browniano). E assim que um preco de
-  // mercado se comporta, e e o que reproduz a proporcao certa entre a escala do grafico e o
-  // tamanho da vela: no TradingView o eixo de 30 min mede ~17 pips enquanto cada vela mede 1 a 3.
-  // Tentativas anteriores com poucas ondas erravam essa proporcao por 4x -- ou o eixo ficava
-  // achatado, ou cada vela virava um bloco de 5 pips.
-  { period: 2400, amp: 1.0 }, // ~40 min: tendencia
-  { period: 1200, amp: 0.707 },
-  { period: 600, amp: 0.5 },
-  { period: 300, amp: 0.354 },
-  { period: 150, amp: 0.25 },
-  { period: 75, amp: 0.12 }, // ~1 min: define o corpo da vela (reduzido p/ velas menores)
-  { period: 37, amp: 0.09 },
-  { period: 18, amp: 0.088 },
-  { period: 9, amp: 0.0625 }, // pavios
-  { period: 4.5, amp: 0.044 },
-  { period: 2, amp: 0.03 },
-  { period: 1, amp: 0.02 },
-  { period: 0.45, amp: 0.014 }, // tick a tick: mantem o preco vivo entre frames
-]
-const MICRO_OCTAVE_TOTAL = MICRO_OCTAVES.reduce((s, o) => s + o.amp, 0)
-
-/** Desvio intraminuto normalizado em [-1, 1], deterministico no tempo. */
-function microDev(asset: OTCAsset, tSec: number): number {
-  const symSeed = asset.basePrice * 91.7 + asset.volatility
-  let dev = 0
-  for (let i = 0; i < MICRO_OCTAVES.length; i++) {
-    const { period, amp } = MICRO_OCTAVES[i]
-    dev += valueNoise(tSec / period + i * 51.3 + symSeed, symSeed + i * 7) * amp
-  }
-  return dev / MICRO_OCTAVE_TOTAL
-}
+// Os ativos OTC continuam usando getLivePrice/buildCandle acima — sinteticos de proposito e
+// deliberadamente INTOCADOS por esta mudanca.
 
 /**
- * Amplitude da oscilacao, MEDIDA a partir do proprio dado real: a mediana do movimento de
- * fechamento a fechamento dos ultimos periodos.
- *
- * Antes isto era uma constante multiplicada por `asset.volatility`, e o resultado ficou ~10x
- * maior que o mercado (velas de 29 pips no EUR/USD, contra 1 a 3 pips reais) porque
- * `volatility` esta numa escala de 0 a 160, nao em porcentagem. Derivar do dado real elimina a
- * constante: em mercado calmo as velas ficam pequenas como no TradingView, e em mercado agitado
- * crescem sozinhas, sem calibragem por ativo.
- *
- * Usa mediana, e nao media, para um unico salto de dado nao inflar a escala do grafico inteiro.
+ * Converte uma vela REAL do feed em vela do motor. E uma conversao pura: apenas arredonda para
+ * a precisao do par e encadeia a abertura no fechamento anterior. Nenhum valor e sintetizado.
  */
-function measuredBand(asset: OTCAsset, real: RealCandle[], price: number): number {
-  const moves: number[] = []
-  for (let i = Math.max(1, real.length - 40); i < real.length; i++) {
-    const d = Math.abs(real[i].close - real[i - 1].close)
-    if (d > 0) moves.push(d)
-  }
-
-  // Piso por ativo: a amplitude intradiaria tipica da classe, escalada pela volatilidade do
-  // catalogo (0-160). E o que sustenta a forma do grafico quando a fonte vem quase congelada,
-  // como acontece no EUR/USD. Teto: limita o efeito de dados anomalos da fonte.
-  const floor = price * (asset.volatility / 100) * 0.0052
-  const ceil = price * 0.004
-
-  if (!moves.length) return floor
-  moves.sort((a, b) => a - b)
-  const median = moves[Math.floor(moves.length / 2)]
-
-  // Se a fonte tiver movimento proprio maior que o piso, ele manda: em mercado agitado as velas
-  // crescem sozinhas, sem depender da constante.
-  return Math.min(ceil, Math.max(floor, median * 1.5))
-}
-
-/** Preco exibido: ancora real + oscilacao intraminuto. */
-function realDisplayPrice(asset: OTCAsset, anchor: number, tSec: number, band: number): number {
-  const p = anchor + microDev(asset, tSec) * band
-  return Number(p.toFixed(asset.decimals))
-}
-
-/**
- * Converte uma vela real do feed em vela do motor. A abertura e o fechamento reais sao sempre
- * preservados (sao o dado de mercado); a maxima e a minima recebem o caminho intraminuto quando
- * a fonte nao informa corpo algum. `endSec` limita a amostragem na vela em formacao, para ela
- * crescer com o tempo em vez de ja nascer com o corpo inteiro.
- */
-function toEngineCandle(
-  asset: OTCAsset,
-  rc: RealCandle,
-  tf?: number,
-  endSec?: number,
-  band?: number,
-  prevClose?: number,
-): OTCCandle {
+function toEngineCandle(asset: OTCAsset, rc: RealCandle, prevClose?: number): OTCCandle {
   const prec = asset.decimals
+  const r = (n: number) => Number(n.toFixed(prec))
 
-  if (!tf || !band) {
-    return {
-      time: rc.time,
-      open: Number(rc.open.toFixed(prec)),
-      high: Number(rc.high.toFixed(prec)),
-      low: Number(rc.low.toFixed(prec)),
-      close: Number(rc.close.toFixed(prec)),
-    }
-  }
+  // Open = fechamento da vela anterior (regra de formacao de vela em mercado continuo). Na
+  // primeira vela da serie nao existe anterior, entao vale a abertura informada pela fonte.
+  const open = r(prevClose ?? rc.open)
+  const close = r(rc.close)
 
-  const end = Math.min(endSec ?? rc.time + tf, rc.time + tf)
-  const span = Math.max(1, end - rc.time)
-  const samples = 12
-
-  // O nivel real do periodo e a ancora; a oscilacao move o preco em volta dela. A oscilacao
-  // entra no CORPO (abertura/fechamento), e nao so nos pavios: aplicada apenas as extremidades,
-  // o corpo ficava colado no nivel achatado da fonte e os pavios flutuavam soltos.
-  const closePrice = rc.close + microDev(asset, end) * band
-  // Abertura = fechamento da vela anterior, para a serie nao abrir vaos entre velas.
-  const openPrice = prevClose ?? rc.open + microDev(asset, rc.time) * band
-
-  let high = Math.max(openPrice, closePrice)
-  let low = Math.min(openPrice, closePrice)
-  for (let i = 0; i <= samples; i++) {
-    const t = rc.time + (i * span) / samples
-    // Base: a reta ancora_abertura -> ancora_fechamento (o movimento real do periodo).
-    const base = rc.open + (rc.close - rc.open) * (i / samples)
-    const p = base + microDev(asset, t) * band
-    if (p > high) high = p
-    if (p < low) low = p
-  }
-
+  // High/Low sao os extremos REAIS do periodo. O encadeamento da abertura pode colocar o corpo
+  // ligeiramente fora do range informado pela fonte; nesse caso o range e esticado o minimo
+  // necessario para conter o corpo. Nunca e reduzido e nunca recebe pavio artificial.
   return {
     time: rc.time,
-    // A maxima/minima reais nunca sao reduzidas: quando a fonte informa corpo, ele e respeitado.
-    high: Number(Math.max(high, rc.high).toFixed(prec)),
-    low: Number(Math.min(low, rc.low).toFixed(prec)),
-    open: Number(openPrice.toFixed(prec)),
-    close: Number(closePrice.toFixed(prec)),
+    open,
+    high: r(Math.max(rc.high, open, close)),
+    low: r(Math.min(rc.low, open, close)),
+    close,
   }
 }
 
@@ -608,24 +498,26 @@ class MultiAssetEngine {
   getCurrentPrice(symbol: string): number {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return 0
-    // Mercado aberto: nivel e direcao vem do mercado real; a oscilacao entre duas leituras da
-    // fonte (que chegam ~2x por minuto) e sintetizada para o preco nao ficar parado.
-    if (hasRealPrice(symbol)) {
-      const anchor = getRealPrice(symbol)
-      const band = measuredBand(asset, getRealCandles(symbol, 60) ?? [], anchor)
-      return realDisplayPrice(asset, anchor, Date.now() / 1000, band)
+
+    // Mercado aberto: o preco exibido E o ultimo tick real recebido. Sem oscilacao somada.
+    if (isRealSymbol(symbol)) {
+      if (hasRealPrice(symbol)) return Number(getRealPrice(symbol).toFixed(asset.decimals))
+      // Nenhum tick fresco (feed ainda carregando ou fora do ar): usa o ultimo fechamento real
+      // conhecido em vez de gerar um preco. Zero sinaliza "sem cotacao" a quem chama.
+      const real = getRealCandles(symbol, 60)
+      const last = real?.[real.length - 1]
+      return last ? Number(last.close.toFixed(asset.decimals)) : 0
     }
+
     return getLivePrice(asset, Date.now() / 1000)
   }
 
-  /** Repassa as velas reais preservando abertura e fechamento de mercado. */
-  private anchoredCandles(asset: OTCAsset, real: RealCandle[], tf: number): OTCCandle[] {
-    const nowSec = Date.now() / 1000
-    const band = measuredBand(asset, real, real[real.length - 1]?.close ?? asset.basePrice)
+  /** Repassa as velas reais encadeando as aberturas. Sem nenhum valor sintetizado. */
+  private anchoredCandles(asset: OTCAsset, real: RealCandle[]): OTCCandle[] {
     const out: OTCCandle[] = []
     let prevClose: number | undefined
     for (const rc of real) {
-      const c = toEngineCandle(asset, rc, tf, nowSec, band, prevClose)
+      const c = toEngineCandle(asset, rc, prevClose)
       out.push(c)
       prevClose = c.close
     }
@@ -637,8 +529,11 @@ class MultiAssetEngine {
     if (!asset) return []
     const real = getRealCandles(symbol, timeframe)
     if (real && real.length) {
-      return this.anchoredCandles(asset, real.slice(-this.maxCandles), timeframe)
+      return this.anchoredCandles(asset, real.slice(-this.maxCandles))
     }
+    // Mercado aberto sem historico real ainda: devolve vazio. Antes caia em buildCandle, que
+    // desenhava velas inventadas nos primeiros instantes e depois eram substituidas.
+    if (isRealSymbol(symbol)) return []
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const candles: OTCCandle[] = []
@@ -653,7 +548,8 @@ class MultiAssetEngine {
     const asset = OTC_ASSETS.find(a => a.symbol === symbol)
     if (!asset) return []
     const real = getRealCandles(symbol, timeframe)
-    if (real && real.length) return this.anchoredCandles(asset, real, timeframe)
+    if (real && real.length) return this.anchoredCandles(asset, real)
+    if (isRealSymbol(symbol)) return []
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const count = Math.min(1440, Math.ceil((24 * 60 * 60) / timeframe))
@@ -669,46 +565,34 @@ class MultiAssetEngine {
     if (!asset) return null
     const prec = asset.decimals
 
-    // Vela viva do mercado aberto: abre no valor real do periodo e fecha no preco exibido
-    // agora, que oscila a cada frame em torno da ancora real. Sem isso a vela ficava parada
-    // por ~30 s, ate a fonte publica enviar a proxima leitura.
-    if (hasRealPrice(symbol)) {
+    // ===== Vela em formacao do mercado aberto (tick a tick) =====
+    // Nao ha nada gerado aqui. A vela e o acumulado dos ticks reais do periodo corrente:
+    //   Open  = fechamento da vela anterior
+    //   High  = maior preco realmente recebido no periodo
+    //   Low   = menor preco realmente recebido no periodo
+    //   Close = ultimo preco recebido
+    // A vela nao e recriada a cada leitura: ela e atualizada continuamente.
+    if (isRealSymbol(symbol)) {
       const nowSec = Date.now() / 1000
       const cs = Math.floor(nowSec / timeframe) * timeframe
       const real = getRealCandles(symbol, timeframe)
-      const current = real?.find(c => c.time === cs)
-      const anchor = getRealPrice(symbol)
-      const band = measuredBand(asset, real ?? [], anchor)
-      const close = realDisplayPrice(asset, anchor, nowSec, band)
+      if (!real?.length) return null
 
-      const open = current
-        ? Number(current.open.toFixed(prec))
-        : real?.length
-          ? Number(real[real.length - 1].close.toFixed(prec))
-          : close
+      // Vela do periodo corrente, acumulada pelo store a cada tick (pushRealTick).
+      const current = real.find(c => c.time === cs)
+      const prev = real[real.length - 1]
+      const last = hasRealPrice(symbol) ? getRealPrice(symbol) : (current?.close ?? prev.close)
 
-      // Percorre o trecho ja transcorrido para a maxima/minima crescerem junto com a vela.
-      let high = Math.max(open, close)
-      let low = Math.min(open, close)
-      const elapsed = Math.max(1, nowSec - cs)
-      for (let i = 1; i <= 10; i++) {
-        const p = anchor + microDev(asset, cs + (elapsed * i) / 10) * band
-        if (p > high) high = p
-        if (p < low) low = p
-      }
-      if (current) {
-        // A maxima/minima reais informadas pela fonte nunca sao reduzidas.
-        high = Math.max(high, current.high)
-        low = Math.min(low, current.low)
-      }
+      // Open encadeado: se a vela do periodo ja existe, sua abertura ja veio encadeada; senao
+      // o periodo esta comecando agora e abre no fechamento real do periodo anterior.
+      const open = Number((current?.open ?? prev.close).toFixed(prec))
+      const close = Number(last.toFixed(prec))
 
-      return {
-        time: cs,
-        open,
-        high: Number(high.toFixed(prec)),
-        low: Number(low.toFixed(prec)),
-        close,
-      }
+      // Extremos: os ja observados no periodo, estendidos pelo tick atual. Nunca reduzidos.
+      const high = Number(Math.max(current?.high ?? open, open, close).toFixed(prec))
+      const low = Number(Math.min(current?.low ?? open, open, close).toFixed(prec))
+
+      return { time: cs, open, high, low, close }
     }
 
     const now = Date.now() / 1000

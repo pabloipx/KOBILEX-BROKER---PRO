@@ -5,7 +5,9 @@ import {
   round,
   getLivePrice,
   fetchTradingViewPrice,
+  fetchTwelveDataCandles,
   type SymbolInfo as RealSymbolInfo,
+  type RealCandle,
 } from "@/lib/price-engine/real-quote"
 
 // Proxy para dados REAIS de mercado. Roda no servidor para evitar CORS e o bloqueio
@@ -36,13 +38,9 @@ function hasRealYahoo1m(info: SymbolInfo): boolean {
   return info.tvScan === "crypto"
 }
 
-export interface RealCandle {
-  time: number
-  open: number
-  high: number
-  low: number
-  close: number
-}
+// RealCandle vive em lib/price-engine/real-quote e e reexportado para nao quebrar quem importa
+// o tipo desta rota.
+export type { RealCandle }
 
 // =============================================
 // HISTORICO DE VELAS (Yahoo Finance)
@@ -283,6 +281,21 @@ export async function GET(req: Request) {
 
     // type === "candles"
     const tf = Math.max(60, Number(searchParams.get("tf") || 60))
+
+    // FONTE PRIMARIA: OHLC real da Twelve Data.
+    //
+    // O Yahoo (usado abaixo como reserva) devolve o forex de 1m com open=high=low=close em 100%
+    // das velas — medido: 1242 de 1242. Sem maxima e minima do intervalo nao existe pavio nem
+    // corpo, e era essa a razao de o grafico nao ficar igual ao do mercado real mesmo com o
+    // preco ao vivo correto. A Twelve Data entrega o intervalo agregado de verdade.
+    const td = await fetchTwelveDataCandles(symbol, tf)
+    if (td) {
+      // O 10m nao existe na fonte: vem em 5min e e agregado aqui, preservando o OHLC do periodo.
+      const candles = aggregate(td, tf)
+      if (candles.length >= 2) {
+        return NextResponse.json({ candles: candles.slice(-240), source: "twelvedata" })
+      }
+    }
 
     // Forex em 1m: combina a linha do tempo do Yahoo (continua, com o fechamento real de
     // cada minuto) com o corpo dos ticks observados. Sozinha, nenhuma das duas serve: o

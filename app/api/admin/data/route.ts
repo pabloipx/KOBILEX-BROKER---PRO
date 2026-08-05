@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { cancelActiveBonus, getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -404,7 +405,47 @@ export async function POST(req: NextRequest) {
       const withdrawalId = payload.withdrawalId
       const userId = payload.userId
       const amount = payload.amount
-      
+
+      // TRAVA DE ROLLOVER. Esta e a ultima etapa antes do dinheiro sair, por isso a validacao fica
+      // aqui e nao apenas na tela: mesmo um pedido criado direto pelo navegador passa por este ponto.
+      const activeBonus = await getActiveBonus(supabase, userId)
+
+      if (activeBonus) {
+        const { data: balanceRow } = await supabase
+          .from("user_balances")
+          .select("balance_real")
+          .eq("user_id", userId)
+          .maybeSingle()
+
+        const locked = Number(activeBonus.bonus_amount || 0)
+        const available = Math.max(0, Number(balanceRow?.balance_real || 0) - locked)
+
+        // O saque so passa se couber no saldo LIVRE (fora do valor travado pelo bonus).
+        if (Number(amount) > available) {
+          if (await shouldCancelBonusOnWithdrawal(supabase)) {
+            // Politica configurada: o saque cancela o bonus e devolve o valor travado.
+            const cancelResult = await cancelActiveBonus(
+              supabase,
+              userId,
+              "saque aprovado antes de cumprir o rollover",
+            )
+            console.log(
+              `[v0] Bonus cancelado no saque ${withdrawalId}: R$ ${cancelResult.removedAmount || 0} removidos`,
+            )
+          } else {
+            const remaining = Math.max(0, Number(activeBonus.rollover_required) - Number(activeBonus.rollover_progress))
+            return NextResponse.json(
+              {
+                error:
+                  `Rollover em andamento. Saldo livre: R$ ${available.toFixed(2)} ` +
+                  `(R$ ${locked.toFixed(2)} travados). Faltam R$ ${remaining.toFixed(2)} de volume.`,
+              },
+              { status: 409 },
+            )
+          }
+        }
+      }
+
       const { error: withdrawalError } = await supabase
         .from("withdrawals")
         .update({ status: "completed", updated_at: new Date().toISOString() })

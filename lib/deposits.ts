@@ -6,6 +6,7 @@ import {
   resolveTerms,
   round2,
 } from "@/lib/affiliate-commission"
+import { grantDepositBonus } from "@/lib/promo-codes"
 
 /**
  * Aprova um deposito de forma idempotente: marca como "approved", credita o saldo do usuario,
@@ -64,15 +65,49 @@ export async function approveDeposit(
   }
 
   // 3. Registrar transacao
-  await supabaseAdmin.from("transactions").insert({
+  // A tabela `transactions` nao tem coluna `status`. Enquanto ela era enviada aqui, o Postgres
+  // recusava o insert inteiro (PGRST204) e, como o erro nunca era verificado, NENHUM deposito
+  // aparecia no extrato — a tabela ficava vazia em silencio. As colunas corretas sao
+  // balance_after, account_type e reference_id.
+  const { error: txError } = await supabaseAdmin.from("transactions").insert({
     user_id: deposit.user_id,
     type: "deposit",
     amount: deposit.amount,
-    status: "completed",
+    balance_after: newBalance,
+    account_type: "real",
+    reference_id: deposit.id,
     description: "Deposito via PIX",
   })
 
-  // 4. Processar comissao do afiliado
+  if (txError) {
+    // Nao interrompe o deposito: o saldo ja foi creditado e o extrato e secundario.
+    console.error("[v0] Erro ao registrar transacao do deposito:", txError.message)
+  }
+
+  // 4. Conceder bonus de codigo promocional, se houver.
+  // Feito aqui porque este e o unico ponto de servidor por onde o deposito e creditado (webhook e
+  // polling passam os dois por aqui). A funcao nunca lanca excecao e o UNIQUE em
+  // user_bonuses.deposit_id garante que um webhook reenviado nao credite o bonus duas vezes.
+  try {
+    const { data: depositRow } = await supabaseAdmin
+      .from("deposits")
+      .select("promo_code")
+      .eq("id", deposit.id)
+      .maybeSingle()
+
+    if (depositRow?.promo_code) {
+      await grantDepositBonus(supabaseAdmin, {
+        id: deposit.id,
+        user_id: deposit.user_id,
+        amount: deposit.amount,
+        promo_code: depositRow.promo_code,
+      })
+    }
+  } catch (bonusError) {
+    console.error("[v0] Erro ao conceder bonus do deposito:", bonusError)
+  }
+
+  // 5. Processar comissao do afiliado
   try {
     const { data: userProfile } = await supabaseAdmin
       .from("profiles")

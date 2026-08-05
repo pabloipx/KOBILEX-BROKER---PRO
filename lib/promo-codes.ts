@@ -234,11 +234,15 @@ export async function grantDepositBonus(
       throw new Error(balanceError.message)
     }
 
+    // A tabela `transactions` nao tem coluna `status` — as colunas reais sao balance_after,
+    // account_type e reference_id. Usar campo inexistente faria o insert ser recusado inteiro.
     await supabaseAdmin.from("transactions").insert({
       user_id: deposit.user_id,
       type: "bonus",
       amount: bonusAmount,
-      status: "completed",
+      balance_after: newBalance,
+      account_type: "real",
+      reference_id: deposit.id,
       description: `Bônus do código ${promo.code}`,
     })
 
@@ -325,7 +329,9 @@ export async function cancelActiveBonus(
       user_id: userId,
       type: "bonus_cancelled",
       amount: -removed,
-      status: "completed",
+      balance_after: round2(current - removed),
+      account_type: "real",
+      reference_id: bonus.id,
       description: `Bônus ${bonus.code} cancelado: ${reason}`,
     })
   }

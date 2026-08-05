@@ -178,13 +178,16 @@ export class TradeManager {
         profit = -trade.amount
       }
 
+      // `exit_time` nao existe na tabela `trades`; o nome correto e `closed_at`. Com o nome errado
+      // o Postgres recusava o update inteiro (PGRST204) e a operacao nunca era encerrada.
       await supabase
         .from("trades")
         .update({
           exit_price: exitPrice,
           result,
           profit,
-          exit_time: new Date().toISOString(),
+          closed_at: new Date().toISOString(),
+          status: "closed",
         })
         .eq("id", tradeId)
 

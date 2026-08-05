@@ -51,26 +51,36 @@ export interface Manipulation {
   style?: ManipulationStyle
 }
 
-// Perfis de comportamento. A manipulacao NAO e mais uma rampa: ela e um CAMINHO com pernas
+// A ESCALA e o que fazia a manipulacao parecer falsa. Ela era medida em "bandas naturais" —
+// a banda e a faixa que o preco percorre em ~50 minutos, entao uma janela de 5 min deslocava
+// o equivalente a 20 velas de uma vez e desenhava um candle vertical no grafico.
+//
+// Medindo o motor natural, a vela de 1 minuto tem range mediano de ~6,8% da banda. Agora tudo
+// e expresso NESSA unidade (a vela normal do ativo), o que mantem a manipulacao no mesmo
+// tamanho visual do resto do grafico em qualquer ativo.
+const NATURAL_CANDLE = 0.068
+
+// Perfis de comportamento. A manipulacao NAO e uma rampa: e um CAMINHO com pernas
 // (avanco -> pullback -> avanco -> ...), como uma tendencia de verdade. Os parametros definem
 // o "temperamento" desse caminho:
-// - amp:      deslocamento total ao final da janela, em bandas naturais do ativo.
+// - pace:     velocidade da tendencia, em velas normais de deslocamento liquido por MINUTO.
+//             0.5 = ao fim de cada minuto o preco avancou meia vela na direcao forcada.
 // - retrace:  profundidade dos pullbacks como fracao da perna anterior (0.9 = devolve quase tudo).
 // - fake:     probabilidade de comecar com um movimento CONTRA a direcao (armadilha inicial).
 // - legs:     quantas pernas de avanco o caminho tem (mais pernas = mais zigue-zague).
-// - wick:     ruido rapido sobreposto -> pavios e candles de cor mista.
+// - wick:     ruido rapido sobreposto, em fracao da vela normal -> pavios e candles de cor mista.
 const STYLE_PROFILES: Record<
   ManipulationStyle,
-  { amp: number; retrace: number; fake: number; minLegs: number; maxLegs: number; wick: number }
+  { pace: number; retrace: number; fake: number; minLegs: number; maxLegs: number; wick: number }
 > = {
   // sobe/desce de forma limpa, com respiros curtos
-  suave: { amp: 0.9, retrace: 0.45, fake: 0.2, minLegs: 3, maxLegs: 4, wick: 0.1 },
+  suave: { pace: 0.34, retrace: 0.45, fake: 0.2, minLegs: 3, maxLegs: 4, wick: 0.12 },
   // tendencia com pullbacks de verdade e armadilha inicial frequente (padrao)
-  natural: { amp: 1.25, retrace: 0.72, fake: 0.55, minLegs: 4, maxLegs: 5, wick: 0.17 },
+  natural: { pace: 0.46, retrace: 0.72, fake: 0.55, minLegs: 4, maxLegs: 5, wick: 0.22 },
   // direcional firme: pullbacks rasos, chegada decidida
-  forte: { amp: 1.8, retrace: 0.5, fake: 0.35, minLegs: 3, maxLegs: 5, wick: 0.12 },
+  forte: { pace: 0.72, retrace: 0.5, fake: 0.35, minLegs: 3, maxLegs: 5, wick: 0.15 },
   // chicoteia muito antes de entregar a direcao
-  volatil: { amp: 1.35, retrace: 0.9, fake: 0.72, minLegs: 5, maxLegs: 7, wick: 0.3 },
+  volatil: { pace: 0.5, retrace: 0.9, fake: 0.72, minLegs: 5, maxLegs: 7, wick: 0.38 },
 }
 
 let activeManipulations: Manipulation[] = []
@@ -170,16 +180,30 @@ function shapeAt(path: ManipPath, p: number): number {
   return vs[vs.length - 1]
 }
 
+// Parte LENTA do movimento natural (oitavas de 2,5 min ou mais). Ela concentra ~90% da amplitude
+// do preco e pode andar mais de 180 pips em 5 minutos — o suficiente para anular a manipulacao e
+// fazer a operacao perder mesmo com a direcao forcada. Durante a janela essa parte fica
+// neutralizada, entao quem decide o rumo e apenas o caminho controlado.
+// As oitavas rapidas continuam intactas: sao elas que produzem quase todo o range da vela de 1
+// minuto (54 dos 60 pips medianos), ou seja, a textura do grafico nao muda.
+function slowNaturalDev(symSeed: number, timestamp: number): number {
+  let dev = 0
+  for (let i = 0; i < PRICE_OCTAVES.length; i++) {
+    const { period, amp } = PRICE_OCTAVES[i]
+    if (period < 150) continue
+    dev += valueNoise(timestamp / period + i * 137.5 + symSeed, symSeed + i) * amp
+  }
+  return dev / PRICE_OCTAVE_TOTAL
+}
+
 // Retorna o deslocamento de preco a aplicar para um ativo em um dado timestamp.
 // = caminho direcional (pernas + pullbacks) + ruido rapido (pavios/cor mista).
-function manipulationDrift(asset: OTCAsset, timestamp: number, bandOverride?: number): number {
+function manipulationDrift(asset: OTCAsset, timestamp: number): number {
   if (!activeManipulations.length) return 0
 
   // Mesma "banda" natural usada em getLivePrice, para o movimento ficar na escala do ativo.
-  // Nos ativos de mercado aberto a banda natural e muito menor (o preco vem do mercado real),
-  // por isso quem chama passa um bandOverride — senao a manipulacao viraria um candle vertical.
   const bandPct = 0.004 + (asset.volatility / 100) * 0.012
-  const band = bandOverride ?? asset.basePrice * bandPct
+  const band = asset.basePrice * bandPct
   const symSeed = asset.basePrice * 13.37
 
   let drift = 0
@@ -190,7 +214,11 @@ function manipulationDrift(asset: OTCAsset, timestamp: number, bandOverride?: nu
     const duration = Math.max(1, m.endTime - m.startTime)
     // Cauda de liberacao: ao terminar, o deslocamento se dissolve aos poucos em vez de o preco
     // dar um salto de volta ao normal (o salto era a pista mais obvia de manipulacao).
-    const release = Math.min(60, Math.max(8, duration * 0.25))
+    // A liberacao dura o MESMO tempo que a manipulacao, para o preco voltar ao normal na mesma
+    // velocidade com que subiu — parece um pullback comum. Com uma cauda curta (o que havia
+    // antes), todo o deslocamento era devolvido em um minuto e criava justamente o candle
+    // gigante que denunciava a manipulacao.
+    const release = Math.min(900, Math.max(90, duration))
     if (timestamp < m.startTime || timestamp > m.endTime + release) continue
 
     const dir = m.direction === "up" ? 1 : -1
@@ -206,27 +234,46 @@ function manipulationDrift(asset: OTCAsset, timestamp: number, bandOverride?: nu
     }
 
     const p = Math.min(1, (timestamp - m.startTime) / duration)
-    // O deslocamento total acompanha o tamanho da janela (referencia: ~6 min = 100%), com teto.
-    // Assim uma janela curta nao vira um salto vertical e uma janela longa nao anda de lado.
-    const span = Math.min(1.35, Math.sqrt(duration / 360))
-    const total = band * prof.amp * (0.45 + 1.05 * strength) * span
-    let value = shapeAt(path, p)
 
-    // Depois do fim da janela o valor fica em 1 e desaparece suavemente.
+    // O deslocamento total nasce de uma VELOCIDADE (velas por minuto) multiplicada pela duracao,
+    // em vez de um tamanho fixo. E isso que garante que os candles manipulados tenham o mesmo
+    // porte dos naturais: uma janela de 1 min anda ~meia vela, uma de 15 min anda ~7 velas.
+    const unit = band * NATURAL_CANDLE
+    const minutes = duration / 60
+    // Teto: nem a tendencia mais forte pode arrastar o preco alem de ~10 velas normais, senao
+    // o grafico sai da escala e a manipulacao volta a ficar visivel.
+    // Piso de 1,6 vela: numa janela de 1 minuto o deslocamento seria menor que o proprio ruido
+    // do minuto e a direcao forcada podia nao se confirmar.
+    const total = Math.min(unit * 10, Math.max(unit * 1.6, unit * prof.pace * (0.4 + 1.2 * strength) * minutes))
+    const value = shapeAt(path, p)
+
+    // Depois do fim da janela tudo se dissolve junto, na mesma proporcao, para o preco nao dar
+    // nenhum salto ao voltar ao normal.
+    let fade = 1
     if (timestamp > m.endTime) {
       const f = (timestamp - m.endTime) / release
-      value *= 1 - f * f * (3 - 2 * f)
+      fade = 1 - f * f * (3 - 2 * f)
     }
+
+    // Compensacao: cancela o quanto a tendencia natural lenta andou desde o inicio da janela.
+    // Sem isso o mercado sintetico podia empurrar o preco para o lado oposto com mais forca do
+    // que a manipulacao e a operacao perdia apesar da direcao forcada.
+    const counter = (slowNaturalDev(symSeed, timestamp) - slowNaturalDev(symSeed, m.startTime)) * band
 
     // Ruido rapido sobreposto: pavios e candles de cor contraria dentro de cada perna. Nao muda
     // o destino (media zero), so tira a aparencia de linha desenhada.
-    const easeIn = Math.min(1, (timestamp - m.startTime) / 20)
+    // Perto do fim da janela o ruido e reduzido: assim o fechamento e definido pelo caminho
+    // controlado e nao por um pavio aleatorio que poderia inverter o resultado da operacao.
+    const easeIn = Math.min(1, (timestamp - m.startTime) / 20) * (1 - 0.75 * Math.max(0, (p - 0.85) / 0.15))
     const wick =
       0.5 * valueNoise(timestamp / 34 + symSeed, symSeed + 21) +
       0.3 * valueNoise(timestamp / 13 + symSeed, symSeed + 41) +
       0.2 * valueNoise(timestamp / 5 + symSeed, symSeed + 61)
 
-    drift += dir * (total * value + band * prof.wick * (0.8 + 0.5 * strength) * wick * easeIn)
+    // O ruido tambem e medido em velas normais (antes usava a banda inteira, o que sozinho ja
+    // gerava pavios de 2,5 velas). Nao tem direcao: e simetrico e de media zero.
+    drift +=
+      fade * (dir * total * value - counter + unit * prof.wick * (0.8 + 0.5 * strength) * wick * easeIn)
   }
   return drift
 }

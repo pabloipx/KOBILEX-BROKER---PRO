@@ -283,8 +283,8 @@ const MICRO_OCTAVES = [
   { period: 600, amp: 0.5 },
   { period: 300, amp: 0.354 },
   { period: 150, amp: 0.25 },
-  { period: 75, amp: 0.177 }, // ~1 min: define o corpo da vela
-  { period: 37, amp: 0.125 },
+  { period: 75, amp: 0.12 }, // ~1 min: define o corpo da vela (reduzido p/ velas menores)
+  { period: 37, amp: 0.09 },
   { period: 18, amp: 0.088 },
   { period: 9, amp: 0.0625 }, // pavios
   { period: 4.5, amp: 0.044 },

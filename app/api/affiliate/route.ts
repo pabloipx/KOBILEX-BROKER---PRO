@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getAffiliateSettings, resolveTerms, calculateCommission, round2 } from "@/lib/affiliate-commission"
 
 // GET - Obter dados do afiliado
 export async function GET() {
@@ -53,6 +54,8 @@ export async function GET() {
       return NextResponse.json({ affiliate: null })
     }
 
+    const settings = await getAffiliateSettings(admin)
+
     // Buscar referidos via admin (cross-user query)
     const { data: referredUsers } = await admin
       .from("profiles")
@@ -60,24 +63,44 @@ export async function GET() {
       .eq("referred_by", profile.affiliate_code)
       .order("created_at", { ascending: false })
 
-    // Para cada referido, buscar total de depositos aprovados
+    const terms = resolveTerms(profile, settings)
+
+    // Para cada referido, buscar depositos aprovados e aplicar o modelo de comissao vigente
     const referralsWithDeposits = await Promise.all(
       (referredUsers || []).map(async (referredUser) => {
         const { data: deposits } = await admin
           .from("deposits")
-          .select("amount")
+          .select("amount, created_at")
           .eq("user_id", referredUser.id)
           .in("status", ["approved", "completed"])
+          .order("created_at", { ascending: true })
 
-        const totalDeposits = deposits?.reduce((sum, d) => sum + Number(d.amount), 0) || 0
-        const commission = totalDeposits * ((profile.affiliate_commission_percent || 77) / 100)
+        const rows = deposits || []
+        const totalDeposits = rows.reduce((sum, d) => sum + Number(d.amount), 0)
+
+        // O CPA e pago uma unica vez, no primeiro deposito que atinge o minimo
+        let cpaConsumed = false
+        let commission = 0
+        let revshareTotal = 0
+        let cpaTotal = 0
+
+        for (const deposit of rows) {
+          const isFirstQualifiedDeposit = !cpaConsumed && Number(deposit.amount) >= terms.cpaMinDeposit
+          const breakdown = calculateCommission(Number(deposit.amount), terms, { isFirstQualifiedDeposit })
+          if (breakdown.cpaAmount > 0) cpaConsumed = true
+          commission += breakdown.total
+          revshareTotal += breakdown.revshareAmount
+          cpaTotal += breakdown.cpaAmount
+        }
 
         return {
           id: referredUser.id,
           referred_user_id: referredUser.id,
           status: totalDeposits > 0 ? "active" : "registered",
           total_deposits: totalDeposits,
-          total_commission: commission,
+          total_commission: round2(commission),
+          revshare_commission: round2(revshareTotal),
+          cpa_commission: round2(cpaTotal),
           created_at: referredUser.created_at,
           profiles: {
             full_name: referredUser.full_name,
@@ -95,7 +118,7 @@ export async function GET() {
     const { data: withdrawals } = await admin
       .from("affiliate_withdrawals")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("affiliate_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20)
 
@@ -104,7 +127,13 @@ export async function GET() {
         id: user.id,
         user_id: user.id,
         code: profile.affiliate_code,
-        commission_rate: profile.affiliate_commission_percent || 77,
+        commission_rate: terms.revsharePercent,
+        commission_model: terms.model,
+        cpa_amount: terms.cpaAmount,
+        cpa_min_deposit: terms.cpaMinDeposit,
+        sub_percent: terms.subPercent,
+        min_withdrawal: settings.min_withdrawal,
+        withdrawal_fee_percent: settings.withdrawal_fee_percent,
         balance: profile.affiliate_balance || 0,
         status: profile.affiliate_status || "active",
         total_earned: profile.affiliate_total_earned || totalEarned,
@@ -113,6 +142,12 @@ export async function GET() {
       },
       referrals: referralsWithDeposits,
       withdrawals: withdrawals || [],
+      // Preferencias de exibicao controladas pelo admin
+      display: {
+        currency: settings.display_currency,
+        usd_rate: settings.usd_rate,
+        next_payment_date: settings.next_payment_date,
+      },
     })
   } catch (error) {
     console.log("[v0] Affiliate GET - Error:", error)
@@ -199,14 +234,23 @@ export async function POST() {
       attempts++
     }
 
+    const settings = await getAffiliateSettings(admin)
+
+    if (!settings.program_enabled) {
+      return NextResponse.json({ error: "O programa de afiliados esta temporariamente fechado" }, { status: 403 })
+    }
+
     // Atualizar perfil para ser afiliado (via admin to bypass RLS)
     const { data: updatedProfile, error } = await admin
       .from("profiles")
       .update({
         is_affiliate: true,
         affiliate_code: code,
-        affiliate_status: "active",
-        affiliate_commission_percent: 77.0,
+        affiliate_status: settings.auto_approve_affiliates ? "active" : "pending",
+        affiliate_commission_percent: settings.default_revshare_percent,
+        affiliate_cpa_amount: settings.default_cpa_amount,
+        affiliate_cpa_min_deposit: settings.cpa_min_deposit,
+        affiliate_sub_percent: settings.sub_affiliate_percent,
         affiliate_balance: 0,
         affiliate_total_earned: 0,
         affiliate_total_referrals: 0,

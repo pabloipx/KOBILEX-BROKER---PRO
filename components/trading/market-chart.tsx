@@ -978,8 +978,15 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         let baseData: Candle[] = []
         try {
           baseData = dedup(multiAssetEngine.getHistory(sym as any, tf) as Candle[])
-        } catch {}
-        if (baseData.length === 0) baseData = dedup(latest.current.candles || [])
+        } catch (err) {
+          console.error("[v0] Falha ao montar o historico do grafico:", err)
+        }
+
+        // Usa a serie mais completa das duas. O historico do motor pode estar praticamente
+        // vazio nos primeiros instantes de um ativo de mercado aberto (o feed real ainda esta
+        // carregando); nesse caso as velas vindas do hook desenham mais do grafico.
+        const fromProps = dedup(latest.current.candles || [])
+        if (fromProps.length > baseData.length) baseData = fromProps
         if (dead || myToken !== loadToken || !seriesRef.current) return
 
         if (baseData.length > 0) {
@@ -987,7 +994,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
             seriesRef.current.setData(
               baseData.map((c) => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })),
             )
-          } catch {}
+          } catch (err) {
+            // Silenciar aqui foi o que escondeu o grafico vazio: a serie ficava sem dados e
+            // nada indicava o motivo.
+            console.error("[v0] setData rejeitou as velas:", err, "velas:", baseData.length)
+          }
           const last = baseData[baseData.length - 1]
           formingRef.current = { ...last }
           smoothPriceRef.current = last.close
@@ -1398,11 +1409,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       <div
         className="absolute inset-0 z-0 pointer-events-none"
         style={{
-          backgroundImage: "url(/images/kodilex-watermark.png)",
+          backgroundImage: "url(/images/urynbroker-watermark.png)",
           backgroundRepeat: "no-repeat",
           backgroundPosition: "center 45%",
           backgroundSize: "55% auto",
-          opacity: 0.09,
+          opacity: 0.1,
         }}
       />
       {/* Vinheta sutil para dar profundidade */}

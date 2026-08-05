@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Edit2, Save, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -18,6 +17,8 @@ interface Symbol {
   volatility: number
 }
 
+const ADMIN_TOKEN = "Admin123!"
+
 export function AdminMarkets() {
   const [symbols, setSymbols] = useState<Symbol[]>([])
   const [loading, setLoading] = useState(true)
@@ -30,12 +31,10 @@ export function AdminMarkets() {
 
   const loadSymbols = async () => {
     try {
-      const supabase = createClient()
-
-      const { data, error } = await supabase.from("otc_symbols").select("*").order("symbol")
-
-      if (error) throw error
-      setSymbols(data || [])
+      const res = await fetch("/api/admin/symbols", { headers: { "x-admin-token": ADMIN_TOKEN } })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Falha ao carregar ativos")
+      setSymbols(json.symbols || [])
     } catch (error) {
       console.error("Error loading symbols:", error)
     } finally {
@@ -43,12 +42,21 @@ export function AdminMarkets() {
     }
   }
 
+  const patchSymbol = async (payload: Record<string, unknown>) => {
+    const res = await fetch("/api/admin/symbols", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      throw new Error(json.error || "Falha ao atualizar ativo")
+    }
+  }
+
   const toggleSymbolActive = async (id: string, isActive: boolean) => {
     try {
-      const supabase = createClient()
-
-      await supabase.from("otc_symbols").update({ is_active: isActive }).eq("id", id)
-
+      await patchSymbol({ id, is_active: isActive })
       loadSymbols()
     } catch (error) {
       console.error("Error toggling symbol:", error)
@@ -64,16 +72,12 @@ export function AdminMarkets() {
     if (!editingId) return
 
     try {
-      const supabase = createClient()
-
-      await supabase
-        .from("otc_symbols")
-        .update({
-          payout_percentage: editForm.payout_percentage,
-          volatility: editForm.volatility,
-          base_price: editForm.base_price,
-        })
-        .eq("id", editingId)
+      await patchSymbol({
+        id: editingId,
+        payout_percentage: editForm.payout_percentage,
+        volatility: editForm.volatility,
+        base_price: editForm.base_price,
+      })
 
       setEditingId(null)
       setEditForm({})

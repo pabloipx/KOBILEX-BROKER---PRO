@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { CheckCircle, XCircle, Clock, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -20,6 +19,8 @@ interface AdminDepositsProps {
   onUpdate: () => void
 }
 
+const ADMIN_TOKEN = "Admin123!"
+
 export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
   const [deposits, setDeposits] = useState<Deposit[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,29 +33,16 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
 
   const loadDeposits = async () => {
     try {
-      const supabase = createClient()
+      const res = await fetch("/api/admin/data?type=deposits", { headers: { "x-admin-token": ADMIN_TOKEN } })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Falha ao carregar depósitos")
 
-      const { data, error } = await supabase.from("deposits").select("*").order("created_at", { ascending: false })
-
-      if (error) throw error
-
-      // Get user emails
-      const depositsWithEmails = await Promise.all(
-        (data || []).map(async (deposit: any) => {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("email")
-            .eq("id", deposit.user_id)
-            .maybeSingle()
-
-          return {
-            ...deposit,
-            user_email: profile?.email || "Desconhecido",
-          }
-        }),
+      setDeposits(
+        (json.deposits || []).map((deposit: any) => ({
+          ...deposit,
+          user_email: deposit.user_email || deposit.profiles?.email || deposit.email || "Desconhecido",
+        })),
       )
-
-      setDeposits(depositsWithEmails)
     } catch (error) {
       console.error("Error loading deposits:", error)
     } finally {
@@ -64,32 +52,16 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
 
   const updateDepositStatus = async (id: string, status: "completed" | "rejected", userId: string, amount: number) => {
     try {
-      const supabase = createClient()
-
-      await supabase
-        .from("deposits")
-        .update({
-          status,
-          processed_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-
-      // If approved, add to user balance
-      if (status === "completed") {
-        const { data: currentBalance } = await supabase
-          .from("user_balances")
-          .select("balance_real")
-          .eq("user_id", userId)
-          .maybeSingle()
-
-        const newBalance = (currentBalance?.balance_real || 0) + amount
-
-        await supabase.from("user_balances").upsert({
-          user_id: userId,
-          balance_real: newBalance,
-          updated_at: new Date().toISOString(),
-        })
-      }
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({
+          action: status === "completed" ? "approve_deposit" : "reject_deposit",
+          data: { depositId: id, userId, amount },
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Falha ao atualizar depósito")
 
       loadDeposits()
       onUpdate()
@@ -98,9 +70,15 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
     }
   }
 
+  const normalizeStatus = (status: string) => {
+    if (status === "approved" || status === "completed") return "completed"
+    if (status === "rejected" || status === "cancelled") return "rejected"
+    return "pending"
+  }
+
   const filteredDeposits = deposits.filter((deposit) => {
     const matchesSearch = deposit.user_email?.toLowerCase().includes(search.toLowerCase())
-    const matchesFilter = filter === "all" || deposit.status === filter
+    const matchesFilter = filter === "all" || normalizeStatus(deposit.status) === filter
     return matchesSearch && matchesFilter
   })
 
@@ -112,7 +90,7 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
   }
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (normalizeStatus(status)) {
       case "completed":
         return (
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
@@ -230,7 +208,7 @@ export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
                       {new Date(deposit.created_at).toLocaleString("pt-BR")}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {deposit.status === "pending" && (
+                      {normalizeStatus(deposit.status) === "pending" && (
                         <div className="flex justify-end gap-2">
                           <Button
                             onClick={() =>

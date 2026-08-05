@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, TrendingUp, TrendingDown, Search } from "lucide-react"
+import { ChevronDown, TrendingUp, TrendingDown, Search, Lock } from "lucide-react"
 import type { OTCAsset } from "@/lib/price-engine/types"
+import { getMarketStatus } from "@/lib/market-hours"
 
 interface AssetSelectorProps {
   assets: OTCAsset[]
@@ -141,6 +142,10 @@ export function AssetSelector({
                 filteredAssets.map((asset) => {
                   if (!asset) return null
                   const isSelected = safeSelectedAsset.symbol === asset.symbol
+                  // Ativos de mercado aberto fora do horário ficam sinalizados. A seleção
+                  // continua liberada para consultar o gráfico; quem bloqueia a entrada é o
+                  // painel de operação.
+                  const isClosed = !getMarketStatus(asset).open
                   return (
                     <button
                       key={asset.id || asset.symbol}
@@ -153,13 +158,26 @@ export function AssetSelector({
                         isSelected ? "bg-[#f97316]/10 border-l-2 border-[#f97316]" : "border-l-2 border-transparent"
                       }`}
                     >
-                      <span className="text-xl">{categoryIcons[asset.category] || "💱"}</span>
+                      <span className={`text-xl ${isClosed ? "opacity-40" : ""}`}>
+                        {categoryIcons[asset.category] || "💱"}
+                      </span>
                       <div className="flex-1 text-left">
-                        <div className="text-white font-medium text-sm">{asset.name}</div>
-                        <div className="text-[#6B7280] text-xs">{asset.symbol}</div>
+                        <div
+                          className={`font-medium text-sm flex items-center gap-1.5 ${
+                            isClosed ? "text-white/40" : "text-white"
+                          }`}
+                        >
+                          {asset.name}
+                          {isClosed && <Lock className="w-3 h-3 text-yellow-500 shrink-0" />}
+                        </div>
+                        <div className={`text-xs ${isClosed ? "text-yellow-500/70" : "text-[#6B7280]"}`}>
+                          {isClosed ? "Mercado fechado" : asset.symbol}
+                        </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[#f97316] font-medium text-sm">{asset.payout || 96}%</div>
+                        <div className={`font-medium text-sm ${isClosed ? "text-white/30" : "text-[#f97316]"}`}>
+                          {asset.payout || 96}%
+                        </div>
                         <div className="text-[#6B7280] text-xs">payout</div>
                       </div>
                     </button>

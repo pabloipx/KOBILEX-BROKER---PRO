@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { CheckCircle, XCircle, Clock, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -21,6 +20,8 @@ interface AdminWithdrawalsProps {
   onUpdate: () => void
 }
 
+const ADMIN_TOKEN = "Admin123!"
+
 export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,29 +34,16 @@ export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
 
   const loadWithdrawals = async () => {
     try {
-      const supabase = createClient()
+      const res = await fetch("/api/admin/data?type=withdrawals", { headers: { "x-admin-token": ADMIN_TOKEN } })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Falha ao carregar saques")
 
-      const { data, error } = await supabase.from("withdrawals").select("*").order("created_at", { ascending: false })
-
-      if (error) throw error
-
-      // Get user emails
-      const withdrawalsWithEmails = await Promise.all(
-        (data || []).map(async (withdrawal: any) => {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("email")
-            .eq("id", withdrawal.user_id)
-            .maybeSingle()
-
-          return {
-            ...withdrawal,
-            user_email: profile?.email || "Desconhecido",
-          }
-        }),
+      setWithdrawals(
+        (json.withdrawals || []).map((withdrawal: any) => ({
+          ...withdrawal,
+          user_email: withdrawal.user_email || "Desconhecido",
+        })),
       )
-
-      setWithdrawals(withdrawalsWithEmails)
     } catch (error) {
       console.error("Error loading withdrawals:", error)
     } finally {
@@ -63,17 +51,23 @@ export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
     }
   }
 
-  const updateWithdrawalStatus = async (id: string, status: "completed" | "rejected") => {
+  const updateWithdrawalStatus = async (
+    id: string,
+    status: "completed" | "rejected",
+    userId?: string,
+    amount?: number,
+  ) => {
     try {
-      const supabase = createClient()
-
-      await supabase
-        .from("withdrawals")
-        .update({
-          status,
-          processed_at: new Date().toISOString(),
-        })
-        .eq("id", id)
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({
+          action: status === "completed" ? "approve_withdrawal" : "reject_withdrawal",
+          data: { withdrawalId: id, userId, amount },
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Falha ao atualizar saque")
 
       loadWithdrawals()
       onUpdate()
@@ -82,9 +76,15 @@ export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
     }
   }
 
+  const normalizeStatus = (status: string) => {
+    if (status === "approved" || status === "completed" || status === "paid") return "completed"
+    if (status === "rejected" || status === "cancelled") return "rejected"
+    return "pending"
+  }
+
   const filteredWithdrawals = withdrawals.filter((withdrawal) => {
     const matchesSearch = withdrawal.user_email?.toLowerCase().includes(search.toLowerCase())
-    const matchesFilter = filter === "all" || withdrawal.status === filter
+    const matchesFilter = filter === "all" || normalizeStatus(withdrawal.status) === filter
     return matchesSearch && matchesFilter
   })
 
@@ -96,7 +96,7 @@ export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
   }
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (normalizeStatus(status)) {
       case "completed":
         return (
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
@@ -216,10 +216,12 @@ export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
                       {new Date(withdrawal.created_at).toLocaleString("pt-BR")}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {withdrawal.status === "pending" && (
+                      {normalizeStatus(withdrawal.status) === "pending" && (
                         <div className="flex justify-end gap-2">
                           <Button
-                            onClick={() => updateWithdrawalStatus(withdrawal.id, "completed")}
+                            onClick={() =>
+                              updateWithdrawalStatus(withdrawal.id, "completed", withdrawal.user_id, withdrawal.amount)
+                            }
                             size="sm"
                             className="bg-green-600 hover:bg-green-700 text-white"
                           >

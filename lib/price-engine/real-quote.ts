@@ -101,23 +101,180 @@ const TD_INTERVALS: Record<number, { interval: string; seconds: number }> = {
 // cliente com o grafico aberto recarrega velas a cada poucos segundos. Com o cache a fonte e
 // consultada no maximo uma vez por intervalo, independente de haver 1 ou 10.000 usuarios.
 //
-// O TTL de 15s nao reduz a fidelidade: a vela em formacao so muda de fato a cada minuto, e o
-// preco ao vivo (que se move a cada segundo) vem por outro caminho, o getLivePrice.
-const CANDLE_TTL_MS = 15_000
+// O TTL nao reduz a fidelidade: quem move a vela em formacao a cada segundo e o fluxo ao vivo
+// (WebSocket), nao esta busca. Aqui so precisamos das velas JA FECHADAS, que por definicao nao
+// mudam mais.
+//
+// 120s e o que faz os 12 pares caberem na cota: 12 requisicoes a cada 2 minutos = 6 por minuto,
+// abaixo do limite de 8. Com 45s dariam 16 por minuto e 5 pares ficavam presos na reserva.
+const CANDLE_TTL_MS = 120_000
 const candleCache = new Map<string, { candles: RealCandle[]; at: number }>()
 
-export async function fetchTwelveDataCandles(
+// Controle de vazao (limite do plano: 8 requisicoes por minuto).
+//
+// Medido nesta base: pedir os 12 pares em rajada estoura a cota e a fonte passa a responder
+// 200 com {status:"error"}. Os 6 primeiros pares voltaram com OHLC real e os 6 seguintes caiam
+// calados na reserva achatada — exatamente a falha que o usuario veria ao trocar de ativo rapido.
+//
+// Trabalhamos com 7 para deixar folga para o /price (cotacao ao vivo) usar a mesma cota.
+const TD_MAX_PER_MIN = 7
+const TD_WINDOW_MS = 60_000
+let tdCalls: number[] = []
+
+/** Consome uma vaga da janela. Devolve false se a cota do minuto ja acabou. */
+function takeRateSlot(): boolean {
+  const now = Date.now()
+  tdCalls = tdCalls.filter((t) => now - t < TD_WINDOW_MS)
+  if (tdCalls.length >= TD_MAX_PER_MIN) return false
+  tdCalls.push(now)
+  return true
+}
+
+/** Quanto falta para a vaga mais antiga sair da janela e liberar espaco. */
+function msUntilSlot(): number {
+  const now = Date.now()
+  const ativos = tdCalls.filter((t) => now - t < TD_WINDOW_MS).sort((a, b) => a - b)
+  if (ativos.length < TD_MAX_PER_MIN) return 0
+  return TD_WINDOW_MS - (now - ativos[0]) + 250 // folga para o relogio do servidor
+}
+
+/**
+ * Espera por uma vaga, ate o teto. Usado na PRIMEIRA carga de um par, quando nao existe cache
+ * para servir: melhor entregar o OHLC real alguns segundos depois do que entregar de imediato a
+ * serie achatada da reserva, que e justamente o defeito que estamos corrigindo.
+ */
+const TD_MAX_WAIT_MS = 20_000
+async function waitForRateSlot(): Promise<boolean> {
+  if (takeRateSlot()) return true
+  const espera = msUntilSlot()
+  if (espera > TD_MAX_WAIT_MS) return false
+  await new Promise((r) => setTimeout(r, espera))
+  return takeRateSlot()
+}
+
+// Une chamadas simultaneas do mesmo (simbolo, intervalo) numa unica ida a rede. Sem isso, varios
+// clientes abrindo o mesmo par no mesmo instante gastariam uma requisicao cada.
+const inflight = new Map<string, Promise<RealCandle[] | null>>()
+
+// =============================================
+// AQUECEDOR DE CACHE
+// =============================================
+//
+// Por que existe: com 11 pares de forex, atender cada cliente na hora nao cabe na cota. Medido,
+// com as requisicoes disputando a fonte entre si, 4 pares ficavam presos na reserva achatada
+// mesmo com a chave configurada — e fazer o cliente esperar a vaga levaria ~60s no pior caso.
+//
+// Aqui invertemos o fluxo: um unico laco de fundo renova o cache de cada par em uso, espacado
+// para respeitar a cota. As requisicoes dos clientes passam a apenas LER o cache, e por isso
+// respondem na hora e sempre com OHLC real.
+type Demand = { symbol: string; spec: { interval: string; seconds: number }; at: number }
+const demand = new Map<string, Demand>()
+
+// 9s entre renovacoes = ~6,6 por minuto, abaixo do limite de 8. Um ciclo completo de 11 pares
+// leva ~99s, dentro do TTL de 120s: o cache nunca vence enquanto o par estiver em uso.
+const WARM_EVERY_MS = 9_000
+// Para de renovar um par que ninguem abre ha 10 min, liberando cota para os que estao em uso.
+const DEMAND_TTL_MS = 600_000
+
+let warmTimer: ReturnType<typeof setInterval> | null = null
+
+function startWarmer() {
+  if (warmTimer) return
+  warmTimer = setInterval(warmTick, WARM_EVERY_MS)
+  // Nao segura o processo vivo por causa deste laco (ambiente Node).
+  ;(warmTimer as any).unref?.()
+}
+
+/** Renova o par em uso cujo cache esta mais velho. Uma requisicao por tique, no maximo. */
+function warmTick() {
+  const agora = Date.now()
+
+  let alvo: { key: string; d: Demand } | null = null
+  let maisVelho = Number.POSITIVE_INFINITY
+  for (const [key, d] of demand) {
+    if (agora - d.at > DEMAND_TTL_MS) {
+      demand.delete(key)
+      continue
+    }
+    // Sem cache tem prioridade maxima; depois, o cache mais antigo.
+    const idade = candleCache.get(key)?.at ?? 0
+    if (idade < maisVelho) {
+      maisVelho = idade
+      alvo = { key, d }
+    }
+  }
+
+  if (!alvo) {
+    // Ninguem usando: encerra o laco e economiza cota. Volta a subir na proxima requisicao.
+    if (warmTimer) clearInterval(warmTimer)
+    warmTimer = null
+    return
+  }
+
+  // Ja esta fresco o suficiente: nao gasta a cota.
+  if (agora - maisVelho < CANDLE_TTL_MS / 2) return
+  if (inflight.has(alvo.key)) return
+
+  const key = process.env.TWELVE_DATA_API_KEY
+  const info = SYMBOLS[alvo.d.symbol]
+  if (!key || !info) return
+
+  const task = fetchFresh(alvo.key, alvo.d.symbol, info, alvo.d.spec, key, candleCache.get(alvo.key))
+    .catch(() => null)
+    .finally(() => inflight.delete(alvo!.key))
+  inflight.set(alvo.key, task)
+}
+
+export function fetchTwelveDataCandles(
   symbol: string,
   tf: number,
 ): Promise<RealCandle[] | null> {
   const info = SYMBOLS[symbol]
   const spec = TD_INTERVALS[tf]
   const key = process.env.TWELVE_DATA_API_KEY
-  if (!info || !spec || !key) return null
+  if (!info || !spec || !key) return Promise.resolve(null)
 
   const cacheKey = `${symbol}:${spec.interval}`
+
+  // Marca o par como "em uso" e garante que o aquecedor esteja rodando. E ele que mantem o cache
+  // quente dentro da cota, para que as requisicoes dos clientes leiam cache em vez de disputar a
+  // fonte entre si.
+  demand.set(cacheKey, { symbol, spec, at: Date.now() })
+  startWarmer()
+
   const hit = candleCache.get(cacheKey)
-  if (hit && Date.now() - hit.at < CANDLE_TTL_MS) return hit.candles
+  if (hit && Date.now() - hit.at < CANDLE_TTL_MS) return Promise.resolve(hit.candles)
+
+  const running = inflight.get(cacheKey)
+  if (running) return running
+
+  const task = fetchFresh(cacheKey, symbol, info, spec, key, hit).finally(() => {
+    inflight.delete(cacheKey)
+  })
+  inflight.set(cacheKey, task)
+  return task
+}
+
+async function fetchFresh(
+  cacheKey: string,
+  symbol: string,
+  info: SymbolInfo,
+  spec: { interval: string; seconds: number },
+  key: string,
+  hit: { candles: RealCandle[]; at: number } | undefined,
+): Promise<RealCandle[] | null> {
+  // Ja temos OHLC real deste par, so vencido: serve na hora em vez de gastar a cota. Velas
+  // fechadas nao mudam, entao o unico "atraso" e na vela em formacao, que o fluxo ao vivo corrige.
+  if (hit) {
+    if (!takeRateSlot()) return hit.candles
+  } else {
+    // Primeira carga deste par: nao ha nada para servir, entao vale esperar uma vaga. Devolver
+    // null aqui jogaria o grafico na reserva achatada, que e o defeito que estamos corrigindo.
+    if (!(await waitForRateSlot())) {
+      console.log("[v0] twelvedata sem vaga na cota:", symbol, spec.interval)
+      return null
+    }
+  }
 
   try {
     // outputsize cobre as ~240 velas que o grafico mostra mesmo quando o tf pedido exige

@@ -98,7 +98,9 @@ function buildMetrics(input: {
     }
 
     const cpaEarned = sum(myCommissions, "cpa_amount")
-    const commissionTotal = sum(myCommissions, "commission_amount")
+    // A coluna do valor da comissao e `amount` (nao `commission_amount`), por isso o total
+    // aparecia sempre zerado no painel mesmo havendo comissoes registradas.
+    const commissionTotal = sum(myCommissions, "amount")
     const revshareEarned = round2(commissionTotal - cpaEarned)
     const paidOut = sum(
       myWithdrawals.filter((w) => ["approved", "completed"].includes(String(w.status || "").toLowerCase())),
@@ -223,11 +225,13 @@ export async function GET(request: Request) {
       return {
         id: c.id,
         created_at: c.created_at,
-        deposit_amount: round2(c.deposit_amount || 0),
-        commission_amount: round2(c.commission_amount || 0),
-        commission_percent: Number(c.commission_percent) || 0,
+        deposit_amount: round2(c.deposit_amount || c.base_amount || 0),
+        // As chaves de saida seguem iguais (a UI ja as consome); apenas passam a ler as
+        // colunas que realmente existem: amount, percent e type.
+        commission_amount: round2(c.amount || 0),
+        commission_percent: Number(c.percent) || 0,
         cpa_amount: round2(c.cpa_amount || 0),
-        commission_model: c.commission_model || "revshare",
+        commission_model: c.type || "revshare",
         affiliate_name: affiliate?.full_name || "—",
         affiliate_code: affiliate?.affiliate_code || "—",
         referred_name: referred?.full_name || referred?.email || "Usuario",

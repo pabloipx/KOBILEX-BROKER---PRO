@@ -89,16 +89,27 @@ export async function POST(request: NextRequest) {
       }
 
       // Update deposit with PIX data - save AmploPay internal transaction id for active status check
-      await supabaseAdmin
+      //
+      // `copy_paste` nao existe na tabela: enquanto era enviada, o Postgres recusava o update
+      // INTEIRO, de modo que o QR Code e o `payment_reference` nunca eram salvos. Sem o
+      // payment_reference, a verificacao de pagamento e o cron nao conseguiam localizar a cobranca
+      // na AmploPay e o deposito ficava pendente para sempre, mesmo pago. O codigo copia-e-cola ja
+      // e guardado em `qr_code`, portanto a coluna extra era redundante.
+      const { error: pixUpdateError } = await supabaseAdmin
         .from("deposits")
         .update({
           qr_code: pixResponse.copyPaste,
           qr_code_base64: pixResponse.qrCode || "",
-          copy_paste: pixResponse.copyPaste,
           external_id: identifier, // Keep our identifier
-          payment_reference: pixResponse.providerTransactionId || "", // ID interno da AmploPay
+          payment_reference: pixResponse.providerTransactionId || null, // ID interno da AmploPay
         })
         .eq("id", deposit.id)
+
+      if (pixUpdateError) {
+        console.log("[v0] Erro ao salvar dados do PIX:", pixUpdateError.message)
+        await supabaseAdmin.from("deposits").delete().eq("id", deposit.id)
+        return NextResponse.json({ error: "Erro ao salvar dados do PIX" }, { status: 500 })
+      }
 
       console.log("[PIX] Created deposit:", deposit.id, "identifier:", identifier, "providerTxId:", pixResponse.providerTransactionId)
 

@@ -26,19 +26,30 @@ export async function approveDeposit(
     return { approved: false, alreadyProcessed: true }
   }
 
-  // 1. Marcar deposito como aprovado
-  const { error: updateError } = await supabaseAdmin
+  // 1. Marcar deposito como aprovado.
+  // A coluna de data de pagamento e `paid_at`; enquanto isso era gravado como `completed_at`
+  // (coluna inexistente) o Postgres recusava o update e esta funcao lancava excecao logo aqui,
+  // de modo que NENHUM deposito chegava a creditar saldo.
+  // O `select` no fim confirma que a linha realmente saiu de "pending": se outra execucao
+  // (webhook + verificacao ativa em paralelo) tiver aprovado primeiro, nao creditamos de novo.
+  const { data: updatedRows, error: updateError } = await supabaseAdmin
     .from("deposits")
     .update({
       status: "approved",
-      completed_at: new Date().toISOString(),
+      paid_at: new Date().toISOString(),
       payment_reference: providerTransactionId || deposit.payment_reference || null,
     })
     .eq("id", deposit.id)
     .eq("status", "pending") // guarda contra corrida: so atualiza se ainda estiver pendente
+    .select("id")
 
   if (updateError) {
     throw new Error(`Erro ao atualizar deposito: ${updateError.message}`)
+  }
+
+  // Nenhuma linha alterada = outra execucao aprovou este deposito antes. Sair sem creditar.
+  if (!updatedRows || updatedRows.length === 0) {
+    return { approved: false, alreadyProcessed: true }
   }
 
   // 2. Creditar saldo do usuario
@@ -127,10 +138,11 @@ export async function approveDeposit(
         .single()
 
       if (affiliate) {
+        // O deposito de origem e guardado em `reference_id` (nao existe coluna `deposit_id`).
         const { data: existingCommission } = await supabaseAdmin
           .from("affiliate_commissions")
           .select("id")
-          .eq("deposit_id", deposit.id)
+          .eq("reference_id", deposit.id)
           .maybeSingle()
 
         if (!existingCommission) {
@@ -142,16 +154,28 @@ export async function approveDeposit(
             const breakdown = calculateCommission(deposit.amount, terms, { isFirstQualifiedDeposit })
 
             if (breakdown.total > 0) {
-              await supabaseAdmin.from("affiliate_commissions").insert({
+              // Nomes reais das colunas: amount / percent / type / reference_id. As versoes
+              // commission_* nao existem no banco, entao a comissao NUNCA era gravada e o
+              // afiliado nao recebia nada por indicacao (o erro nao era verificado).
+              const { error: commissionError } = await supabaseAdmin.from("affiliate_commissions").insert({
                 affiliate_id: affiliate.id,
                 referred_user_id: deposit.user_id,
-                deposit_id: deposit.id,
+                reference_id: deposit.id,
+                type: breakdown.appliedModel,
+                status: "approved",
+                base_amount: deposit.amount,
                 deposit_amount: deposit.amount,
-                commission_percent: terms.revsharePercent,
-                commission_amount: breakdown.total,
-                commission_model: breakdown.appliedModel,
+                percent: terms.revsharePercent,
+                amount: breakdown.total,
+                revshare_amount: breakdown.revshareAmount,
                 cpa_amount: breakdown.cpaAmount,
+                level: 1,
+                description: "Comissao de deposito de indicado",
               })
+
+              if (commissionError) {
+                throw new Error(`Erro ao registrar comissao: ${commissionError.message}`)
+              }
 
               await supabaseAdmin
                 .from("profiles")

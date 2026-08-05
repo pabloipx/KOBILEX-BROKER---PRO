@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { validatePromoCode } from "@/lib/promo-codes"
 
 /**
@@ -11,7 +12,6 @@ import { validatePromoCode } from "@/lib/promo-codes"
  */
 export async function POST(request: NextRequest) {
   try {
-    const { createClient } = await import("@/lib/supabase/server")
     const supabase = await createClient()
 
     const {

@@ -23,6 +23,14 @@ export default function WithdrawPage() {
   const [cryptoType, setCryptoType] = useState<CryptoType>("usdt")
   const [cryptoWallet, setCryptoWallet] = useState("")
   const [balance, setBalance] = useState(0)
+  // Parte do saldo que ainda esta travada por um bonus com rollover em andamento.
+  const [lockedBalance, setLockedBalance] = useState(0)
+  const [rolloverInfo, setRolloverInfo] = useState<{
+    required: number
+    progress: number
+    remaining: number
+    cancelOnWithdrawal: boolean
+  } | null>(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState("")
@@ -81,11 +89,33 @@ export default function WithdrawPage() {
         setIsVerified(false)
       }
 
+      // Situacao do rollover: define quanto do saldo esta realmente disponivel para saque.
+      try {
+        const promoResponse = await fetch("/api/promo/status")
+        if (promoResponse.ok) {
+          const promo = await promoResponse.json()
+          if (promo.hasActiveBonus) {
+            setLockedBalance(promo.lockedAmount)
+            setRolloverInfo({
+              required: promo.rolloverRequired,
+              progress: promo.rolloverProgress,
+              remaining: promo.remaining,
+              cancelOnWithdrawal: promo.cancelsOnWithdrawal,
+            })
+          }
+        }
+      } catch {
+        // Sem bloquear a tela: na falha, o servidor ainda aplica a trava no envio do saque.
+      }
+
       setCheckingKyc(false)
     }
 
     loadData()
   }, [router, supabase])
+
+  // Saldo realmente sacavel: o total menos a parte travada por bonus em rollover.
+  const availableBalance = Math.max(0, balance - lockedBalance)
 
   const isKycApproved = kycStatus === "approved" || isVerified === true
   const needsKyc = !isKycApproved
@@ -144,69 +174,53 @@ export default function WithdrawPage() {
       return
     }
 
+    // Aviso antecipado: a trava de verdade e aplicada no servidor, isso so evita a ida perdida.
+    if (withdrawAmount > availableBalance) {
+      if (lockedBalance > 0) {
+        setError(
+          `Saldo disponível para saque: R$ ${availableBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. ` +
+            `Você tem R$ ${lockedBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em bônus travados pelo rollover.`,
+        )
+      } else {
+        setError("Saldo insuficiente para realizar este saque")
+      }
+      return
+    }
+
     setLoading(true)
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      setError("Usuário não autenticado")
-      setLoading(false)
-      return
-    }
-
-    const { data: currentBalance } = await supabase
-      .from("user_balances")
-      .select("balance_real")
-      .eq("user_id", user.id)
-      .single()
-
-    if (!currentBalance || currentBalance.balance_real < withdrawAmount) {
-      setError("Saldo insuficiente para realizar este saque")
-      setLoading(false)
-      return
-    }
-
-    // Criar objeto de saque baseado no método
-    const withdrawalData = withdrawMethod === "pix" 
-      ? {
-          user_id: user.id,
+    // O saque e criado pelo servidor (/api/withdraw), nao mais direto pelo navegador. Assim o saldo
+    // e debitado UMA unica vez e a trava de rollover nao pode ser contornada pelo cliente.
+    try {
+      const response = await fetch("/api/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           amount: withdrawAmount,
-          method: "pix",
-          pix_key: pixKey.trim(),
-          pix_key_type: pixKeyType,
-          status: "pending",
-        }
-      : {
-          user_id: user.id,
-          amount: withdrawAmount,
-          method: "crypto",
-          crypto_type: cryptoType.toUpperCase(),
-          crypto_wallet: cryptoWallet.trim(),
-          status: "pending",
-        }
+          method: withdrawMethod,
+          pixKey: pixKey.trim(),
+          pixKeyType,
+          cryptoType: cryptoType.toUpperCase(),
+          cryptoWallet: cryptoWallet.trim(),
+        }),
+      })
 
-    const { error: withdrawError } = await supabase.from("withdrawals").insert(withdrawalData)
+      const result = await response.json()
 
-    if (withdrawError) {
-      console.error("[v0] Withdrawal insert error:", withdrawError.message, withdrawError.code, withdrawError.details)
-      setError(`Erro ao solicitar saque: ${withdrawError.message || "Tente novamente."}`)
-      setLoading(false)
-      return
+      if (!response.ok) {
+        setError(result.error || "Erro ao solicitar saque. Tente novamente.")
+        setLoading(false)
+        return
+      }
+
+      setBalance(result.newBalance)
+      setLockedBalance(0)
+      setSuccess(true)
+    } catch (err) {
+      console.error("[v0] Erro ao solicitar saque:", err)
+      setError("Erro de conexao ao solicitar saque. Tente novamente.")
     }
 
-    const newBalance = currentBalance.balance_real - withdrawAmount
-    const { error: balanceError } = await supabase
-      .from("user_balances")
-      .update({ balance_real: newBalance })
-      .eq("user_id", user.id)
-
-    if (balanceError) {
-      console.error("Erro ao atualizar saldo:", balanceError)
-    }
-
-    setBalance(newBalance)
-    setSuccess(true)
     setLoading(false)
   }
 
@@ -361,12 +375,60 @@ export default function WithdrawPage() {
             <div className="w-10 h-10 rounded-full bg-[#f97316]/20 flex items-center justify-center">
               <Wallet className="w-5 h-5 text-[#f97316]" />
             </div>
-            <p className="text-sm text-[#9CA3AF]">Saldo disponível para saque</p>
-          </div>
-          <p className="text-3xl font-bold text-white">
-            R$ {balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-          </p>
-        </div>
+  <p className="text-sm text-[#9CA3AF]">Saldo disponível para saque</p>
+  </div>
+  <p className="text-3xl font-bold text-white">
+  R$ {availableBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+  </p>
+  {/* Com bonus ativo, o saldo total nao e todo sacavel: mostramos a parte travada. */}
+  {lockedBalance > 0 && (
+  <div className="mt-3 pt-3 border-t border-[#1F2933] flex flex-col gap-1">
+  <div className="flex items-center justify-between text-xs">
+  <span className="text-[#9CA3AF]">Saldo total</span>
+  <span className="text-[#9CA3AF]">
+  R$ {balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+  </span>
+  </div>
+  <div className="flex items-center justify-between text-xs">
+  <span className="text-[#fb923c]">Bônus travado (rollover)</span>
+  <span className="text-[#fb923c] font-medium">
+  R$ {lockedBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+  </span>
+  </div>
+  </div>
+  )}
+  </div>
+
+  {/* Progresso do rollover, para o usuario saber exatamente quanto falta liberar o bonus */}
+  {rolloverInfo && (
+  <div className="p-4 rounded-2xl bg-[#f97316]/5 border border-[#f97316]/30 flex flex-col gap-3">
+  <div className="flex items-start gap-3">
+  <AlertTriangle className="w-5 h-5 text-[#fb923c] shrink-0 mt-0.5" />
+  <div className="flex flex-col gap-1">
+  <p className="text-sm font-medium text-[#fb923c]">Rollover em andamento</p>
+  <p className="text-xs text-[#9CA3AF] leading-relaxed">
+  {rolloverInfo.cancelOnWithdrawal
+  ? `Faltam R$ ${rolloverInfo.remaining.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} de volume negociado. Sacar agora acima do saldo disponível cancela o bônus e remove o valor travado.`
+  : `Faltam R$ ${rolloverInfo.remaining.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} de volume negociado para liberar o bônus para saque.`}
+  </p>
+  </div>
+  </div>
+  <div className="flex flex-col gap-1.5">
+  <div className="h-2 rounded-full bg-[#1F2933] overflow-hidden">
+  <div
+  className="h-full rounded-full bg-[#f97316] transition-all"
+  style={{
+  width: `${rolloverInfo.required > 0 ? Math.min(100, (rolloverInfo.progress / rolloverInfo.required) * 100) : 100}%`,
+  }}
+  />
+  </div>
+  <p className="text-xs text-[#6B7280]">
+  R$ {rolloverInfo.progress.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} de R${" "}
+  {rolloverInfo.required.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} negociados
+  </p>
+  </div>
+  </div>
+  )}
 
         <div>
           <label className="block text-sm text-white mb-2 font-medium">Valor do saque</label>

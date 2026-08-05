@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes"
 
 /**
@@ -10,7 +11,6 @@ import { getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes
  */
 export async function GET() {
   try {
-    const { createClient } = await import("@/lib/supabase/server")
     const supabase = await createClient()
 
     const {

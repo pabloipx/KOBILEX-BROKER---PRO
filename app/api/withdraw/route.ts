@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient, createClient as createServerClient } from "@/lib/supabase/server"
 import { cancelActiveBonus, getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes"
 
-const MIN_WITHDRAWAL = 50
+// Mesmo minimo exibido na tela de saque.
+const MIN_WITHDRAWAL = 100
 
 /**
  * Criacao de saque no servidor.
@@ -30,8 +31,11 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const amount = Number(body.amount)
+    const method = body.method === "crypto" ? "crypto" : "pix"
     const pixKey = typeof body.pixKey === "string" ? body.pixKey.trim() : ""
     const pixKeyType = typeof body.pixKeyType === "string" ? body.pixKeyType : "cpf"
+    const cryptoType = typeof body.cryptoType === "string" ? body.cryptoType.trim().toUpperCase() : ""
+    const cryptoWallet = typeof body.cryptoWallet === "string" ? body.cryptoWallet.trim() : ""
     const holderName = typeof body.holderName === "string" ? body.holderName.trim() : ""
     const document = typeof body.document === "string" ? body.document.trim() : ""
 
@@ -46,8 +50,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!pixKey) {
+    // Os mesmos dados exigidos na tela sao revalidados aqui, porque a tela pode ser contornada.
+    if (method === "pix" && !pixKey) {
       return NextResponse.json({ error: "Informe a chave PIX" }, { status: 400 })
+    }
+
+    if (method === "crypto" && !cryptoWallet) {
+      return NextResponse.json({ error: "Informe o endereco da carteira" }, { status: 400 })
     }
 
     // Chave de servico: o saldo e o saque sao gravados sem depender das policies do cliente.
@@ -134,9 +143,11 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         amount,
         status: "pending",
-        method: "pix",
-        pix_key: pixKey,
-        pix_key_type: pixKeyType,
+        method,
+        pix_key: method === "pix" ? pixKey : null,
+        pix_key_type: method === "pix" ? pixKeyType : null,
+        crypto_type: method === "crypto" ? cryptoType : null,
+        crypto_wallet: method === "crypto" ? cryptoWallet : null,
         holder_name: holderName || null,
         document: document || null,
       })
@@ -172,7 +183,7 @@ export async function POST(request: NextRequest) {
       balance_after: newBalance,
       account_type: "real",
       reference_id: withdrawal.id,
-      description: "Solicitacao de saque via PIX",
+      description: method === "crypto" ? `Solicitacao de saque via ${cryptoType}` : "Solicitacao de saque via PIX",
     })
 
     return NextResponse.json({

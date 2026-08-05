@@ -17,11 +17,14 @@ function bucketOf(tsMs: number): number {
   return Math.floor(tsMs / 1000 / BUCKET) * BUCKET
 }
 
-// Throttle por simbolo: o endpoint de preco e chamado a cada ~1,5s por cada usuario
-// conectado. Sem isso, 100 usuarios gerariam ~67 gravacoes por segundo no mesmo simbolo,
-// todas com o mesmo preco. Uma gravacao a cada 2s por simbolo ja da ~30 amostras por vela,
-// resolucao mais que suficiente para o high/low do minuto.
-const MIN_WRITE_INTERVAL_MS = 2000
+// Throttle por simbolo. Sem ele, cada usuario conectado geraria uma gravacao por tick e 100
+// usuarios produziriam dezenas de escritas por segundo no mesmo simbolo, todas com o mesmo
+// preco. O limite e por SIMBOLO, nao por usuario: a vela e compartilhada, entao um unico
+// registro por instante serve a todos.
+//
+// 1s casa com o cache de preco da rota (o valor upstream nao muda mais rapido que isso) e da
+// ~60 amostras por vela de 1m — resolucao suficiente para o high/low do minuto.
+const MIN_WRITE_INTERVAL_MS = 1000
 const lastWrite = new Map<string, number>()
 
 // Retencao: o grafico usa no maximo algumas horas de 1m, mas guardamos alguns dias para

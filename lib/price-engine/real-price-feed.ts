@@ -5,9 +5,10 @@
  * valores no real-price-store, de onde o motor de precos le de forma sincrona. Ref-counted
  * por simbolo para nao duplicar timers.
  *
- * Duas frequencias: o preco ao vivo (1,5s) e a cotacao do TradingView e mantem a vela em
- * formacao acompanhando o mercado; o historico de velas (15s) traz o OHLC real consolidado.
- * Cada chamada de preco tambem alimenta, no servidor, o historico proprio de 1 minuto.
+ * Duas frequencias: o TICK (1s) e a cotacao real e vai formando a vela do periodo corrente
+ * (high sobe, low desce, close = ultimo preco), como faz uma corretora; o historico de velas
+ * (15s) traz o OHLC consolidado. Cada tick tambem alimenta, no servidor, o historico de 1m
+ * compartilhado, para que todos os usuarios vejam exatamente as mesmas velas.
  */
 
 import { REAL_FEED_SYMBOLS, setRealPrice, setRealCandles, pushRealTick } from "./real-price-store"
@@ -62,16 +63,15 @@ export function ensureRealFeed(symbol: string, tf: number): () => void {
       if (st) pollCandles(symbol, st.tf)
     }, 15000)
 
-    // Cadencia dos ticks. Cada leitura e um preco real e alimenta a vela em formacao, entao a
-    // resolucao do tick define diretamente a suavidade do grafico e a fidelidade do high/low:
-    // a 1,5s uma vela de 1m tinha ~40 amostras e o preco andava em degraus visiveis. A 600ms
-    // sao ~100 amostras por minuto, proximo do streaming que o TradingView exibe, e o movimento
-    // fica continuo sem que nada precise ser interpolado ou inventado no cliente.
+    // Cadencia dos ticks: 1s, casada com o cache de 1s da rota. Cada leitura e um preco real
+    // que alimenta a vela em formacao, entao a vela reflete o mercado na melhor resolucao que a
+    // fonte oferece. Ir mais rapido nao acrescenta informacao — a cotacao de forex a que temos
+    // acesso e renovada a cada ~20s — e so geraria requisicoes repetidas.
     pollPrice(symbol, tf)
     s.priceTimer = setInterval(() => {
       const st = feeds.get(symbol)
       if (st) pollPrice(symbol, st.tf)
-    }, 600)
+    }, 1000)
   }
 
   // Timeframe mudou: recarrega as velas do novo tf imediatamente

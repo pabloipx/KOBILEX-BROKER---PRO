@@ -41,20 +41,28 @@ function hasRealYahoo1m(info: SymbolInfo): boolean {
 }
 
 // Mapeia o simbolo interno do motor -> simbolos das fontes reais.
-// FX_IDC e a fonte de forex que o TradingView usa por padrao nos graficos publicos.
+//
+// A fonte de forex e OANDA, e nao FX_IDC. FX_IDC e uma fonte de REFERENCIA (taxa indicativa,
+// nao negociada): medida aqui, ela devolve o EUR/USD com 4 casas decimais e congelado — 1 unico
+// valor em 12 leituras, ou seja, 0 pip de variacao. Com um preco parado e sem a casa do pip, as
+// velas nasciam sem corpo e as operacoes curtas empatavam.
+//
+// OANDA e uma corretora de verdade: cotacao negociavel com 5 casas decimais (1.15542, a mesma
+// precisao do TradingView) e movimento real — na mesma medicao, 8 pips de amplitude em 60s.
+// E essa diferenca que permite formar velas com corpo real, sem inventar nada.
 const SYMBOLS: Record<string, SymbolInfo> = {
   BTCUSD: { yahoo: "BTC-USD", tv: "COINBASE:BTCUSD", tvScan: "crypto", decimals: 2 },
-  EURUSD: { yahoo: "EURUSD=X", tv: "FX_IDC:EURUSD", tvScan: "forex", decimals: 5 },
-  GBPJPY: { yahoo: "GBPJPY=X", tv: "FX_IDC:GBPJPY", tvScan: "forex", decimals: 3 },
-  EURJPY: { yahoo: "EURJPY=X", tv: "FX_IDC:EURJPY", tvScan: "forex", decimals: 3 },
-  AUDUSD: { yahoo: "AUDUSD=X", tv: "FX_IDC:AUDUSD", tvScan: "forex", decimals: 5 },
-  AUDJPY: { yahoo: "AUDJPY=X", tv: "FX_IDC:AUDJPY", tvScan: "forex", decimals: 3 },
-  GBPUSD: { yahoo: "GBPUSD=X", tv: "FX_IDC:GBPUSD", tvScan: "forex", decimals: 5 },
-  USDJPY: { yahoo: "USDJPY=X", tv: "FX_IDC:USDJPY", tvScan: "forex", decimals: 3 },
-  USDCHF: { yahoo: "USDCHF=X", tv: "FX_IDC:USDCHF", tvScan: "forex", decimals: 5 },
-  USDCAD: { yahoo: "USDCAD=X", tv: "FX_IDC:USDCAD", tvScan: "forex", decimals: 5 },
-  NZDUSD: { yahoo: "NZDUSD=X", tv: "FX_IDC:NZDUSD", tvScan: "forex", decimals: 5 },
-  EURGBP: { yahoo: "EURGBP=X", tv: "FX_IDC:EURGBP", tvScan: "forex", decimals: 5 },
+  EURUSD: { yahoo: "EURUSD=X", tv: "OANDA:EURUSD", tvScan: "forex", decimals: 5 },
+  GBPJPY: { yahoo: "GBPJPY=X", tv: "OANDA:GBPJPY", tvScan: "forex", decimals: 3 },
+  EURJPY: { yahoo: "EURJPY=X", tv: "OANDA:EURJPY", tvScan: "forex", decimals: 3 },
+  AUDUSD: { yahoo: "AUDUSD=X", tv: "OANDA:AUDUSD", tvScan: "forex", decimals: 5 },
+  AUDJPY: { yahoo: "AUDJPY=X", tv: "OANDA:AUDJPY", tvScan: "forex", decimals: 3 },
+  GBPUSD: { yahoo: "GBPUSD=X", tv: "OANDA:GBPUSD", tvScan: "forex", decimals: 5 },
+  USDJPY: { yahoo: "USDJPY=X", tv: "OANDA:USDJPY", tvScan: "forex", decimals: 3 },
+  USDCHF: { yahoo: "USDCHF=X", tv: "OANDA:USDCHF", tvScan: "forex", decimals: 5 },
+  USDCAD: { yahoo: "USDCAD=X", tv: "OANDA:USDCAD", tvScan: "forex", decimals: 5 },
+  NZDUSD: { yahoo: "NZDUSD=X", tv: "OANDA:NZDUSD", tvScan: "forex", decimals: 5 },
+  EURGBP: { yahoo: "EURGBP=X", tv: "OANDA:EURGBP", tvScan: "forex", decimals: 5 },
 }
 
 export interface RealCandle {
@@ -68,6 +76,18 @@ export interface RealCandle {
 // =============================================
 // PRECO AO VIVO (TradingView)
 // =============================================
+
+// Cache curto do preco upstream, compartilhado por todos os usuarios.
+//
+// Sem ele, a carga na fonte cresce com o numero de usuarios: cada cliente que consulta o preco
+// disparava uma chamada propria ao TradingView, o que levaria a bloqueio por excesso de
+// requisicoes justamente com a plataforma cheia. Com o cache, a fonte e consultada no maximo
+// uma vez por segundo por simbolo, independente de haver 1 ou 10.000 usuarios conectados.
+//
+// O TTL nao reduz a fidelidade: a cotacao de forex a que temos acesso e renovada a cada ~20s,
+// entao 1s de cache esta bem abaixo da resolucao real da fonte.
+const PRICE_TTL_MS = 1000
+const priceCache = new Map<string, { price: number; at: number }>()
 
 async function fetchTradingViewPrice(info: SymbolInfo): Promise<number> {
   const r = await fetch(`https://scanner.tradingview.com/${info.tvScan}/scan`, {
@@ -154,18 +174,19 @@ function parseCandles(result: any): RealCandle[] {
 /**
  * Monta as velas de 1m do forex combinando as duas fontes reais disponiveis.
  *
- * O problema: o Yahoo tem a LINHA DO TEMPO completa de 1m (um ponto por minuto, sem
- * buracos) mas com o minuto achatado — open=high=low=close. O historico de ticks tem
- * CORPO real (maxima/minima observadas) mas so nos minutos em que alguem estava usando
- * a plataforma, o que deixa vaos e velas sem corpo no grafico.
+ * As duas fontes NAO tem a mesma qualidade, e essa e a chave da funcao:
  *
- * A combinacao usa cada fonte no que ela tem de real:
- *  - o Yahoo define a sequencia de minutos e o fechamento real de cada um;
- *  - o open encadeia no fechamento do minuto anterior, entao o corpo reflete o movimento
- *    real entre um minuto e o seguinte (e nao um valor inventado);
- *  - a maxima/minima dos ticks observados expande o corpo quando ha registro.
+ *  - Ticks OANDA (gravados pela plataforma): cotacao negociavel, 5 casas decimais, com
+ *    maxima/minima realmente observadas no minuto. E o dado BOM — mas so existe nos minutos
+ *    em que havia alguem usando a plataforma.
+ *  - Yahoo: tem a linha do tempo completa (um ponto por minuto), porem com taxa indicativa
+ *    arredondada em 4 casas e o minuto achatado (open=high=low=close em 100% dos casos).
  *
- * Resultado: serie continua, sem vaos, com todos os valores vindos de preco real.
+ * Por isso o tick tem PRIORIDADE e o Yahoo e apenas preenchimento. Antes as duas eram tratadas
+ * como equivalentes: onde o Yahoo tinha um ponto, o fechamento dele vencia e apagava o tick de
+ * 5 casas do mesmo minuto (1.15567 virava 1.1558), achatando 150 das 240 velas.
+ *
+ * Resultado: serie continua, sem vaos, sempre com o melhor dado real disponivel em cada minuto.
  */
 function buildMinuteCandles(
   yahoo: RealCandle[],
@@ -199,21 +220,31 @@ function buildMinuteCandles(
   // vela de continuidade no ultimo preco real conhecido (nao houve preco novo observado).
   for (let t = first; t <= last; t += 60) {
     const tick = byBucket.get(t)
-    const close = tick?.close ?? yahooClose.get(t) ?? prevClose
-    const open = prevClose || close
 
-    let high = Math.max(open, close)
-    let low = Math.min(open, close)
     if (tick) {
-      high = Math.max(high, tick.high)
-      low = Math.min(low, tick.low)
+      // Minuto com tick real: usado integralmente. O open encadeia no fechamento anterior e o
+      // corpo/extremos vem do que foi efetivamente observado no mercado.
+      const open = prevClose || tick.open
+      out.push({
+        time: t,
+        open: round(open, decimals),
+        high: round(Math.max(tick.high, open, tick.close), decimals),
+        low: round(Math.min(tick.low, open, tick.close), decimals),
+        close: round(tick.close, decimals),
+      })
+      prevClose = tick.close
+      continue
     }
 
+    // Sem tick: cai no Yahoo (ou na continuidade). Sem maxima/minima observadas, a vela fica
+    // limitada ao proprio corpo — nao ha pavio a inventar.
+    const close = yahooClose.get(t) ?? prevClose
+    const open = prevClose || close
     out.push({
       time: t,
       open: round(open, decimals),
-      high: round(high, decimals),
-      low: round(low, decimals),
+      high: round(Math.max(open, close), decimals),
+      low: round(Math.min(open, close), decimals),
       close: round(close, decimals),
     })
     prevClose = close
@@ -280,6 +311,11 @@ export async function GET(req: Request) {
 
   try {
     if (type === "price") {
+      const cached = priceCache.get(symbol)
+      if (cached && Date.now() - cached.at < PRICE_TTL_MS) {
+        return NextResponse.json({ price: cached.price })
+      }
+
       let price: number
       try {
         price = await fetchTradingViewPrice(info)
@@ -294,6 +330,9 @@ export async function GET(req: Request) {
         }
       }
       if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido")
+
+      price = round(price, info.decimals)
+      priceCache.set(symbol, { price, at: Date.now() })
 
       // Alimenta o historico de 1m com este preco real. Nao usa await de proposito:
       // a cotacao do usuario nao pode esperar (nem falhar por causa da) gravacao.

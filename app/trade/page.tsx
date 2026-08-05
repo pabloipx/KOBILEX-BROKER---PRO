@@ -432,15 +432,36 @@ export default function TradePage() {
         const result = isWin ? "win" : "loss"
         const profitAmount = isWin ? trade.amount * (trade.payout_percentage || 0.96) : -trade.amount
 
-        await supabase
+        // A operacao SO e marcada como encerrada aqui. Duas correcoes importantes neste update:
+        //
+        // 1. Antes gravava `exit_time`, coluna que NAO existe em `trades` (o nome correto e
+        //    `closed_at`). O Postgres recusava o update inteiro com erro PGRST204, entao a operacao
+        //    ficava eternamente com result='pending' — era isso que travava o cronometro em "0s".
+        // 2. O erro nao era verificado. Como o registro continuava 'pending', a consulta acima
+        //    pegava a MESMA operacao no ciclo seguinte (a cada 3s) e creditava o ganho de novo, sem
+        //    limite. Agora, se o update falhar, abortamos antes de creditar qualquer coisa.
+        const { data: closedRows, error: closeError } = await supabase
           .from("trades")
           .update({
             result,
             profit: profitAmount,
             exit_price: exitPrice,
-            exit_time: new Date().toISOString(),
+            closed_at: new Date().toISOString(),
+            status: "closed",
           })
           .eq("id", trade.id)
+          .eq("result", "pending") // so encerra se ainda estiver pendente
+          .select("id")
+
+        // O credito depende de ESTE update ter encerrado a operacao de fato. Se deu erro, ou se
+        // nenhuma linha foi afetada (outro caminho de liquidacao fechou primeiro), nao creditamos:
+        // e o que impede o mesmo ganho de ser pago duas vezes.
+        if (closeError || !closedRows || closedRows.length === 0) {
+          if (closeError) {
+            console.error("[v0] Falha ao encerrar operacao, credito abortado:", closeError.message)
+          }
+          continue
+        }
 
         // Se ganhou, creditar o saldo
         if (isWin) {
@@ -545,17 +566,24 @@ export default function TradePage() {
           }
 
           // Update trade in DB
-          const { error: updateError } = await supabaseRef.current
+          // Mesma correcao do outro caminho de liquidacao: `exit_time` nao existe na tabela, o nome
+          // correto e `closed_at`. Com o nome errado o update era recusado (PGRST204), este bloco
+          // caia sempre no `updateError` abaixo e a operacao nunca era encerrada — ficava presa em
+          // 'pending' e era reprocessada indefinidamente.
+          const { data: closedRows, error: updateError } = await supabaseRef.current
             .from("trades")
             .update({
               exit_price: price,
-              exit_time: new Date().toISOString(),
+              closed_at: new Date().toISOString(),
+              status: "closed",
               result,
               profit: isWin ? profitAmount : -trade.amount,
             })
             .eq("id", existingTrade.id)
+            .in("result", ["pending", "PENDING"])
+            .select("id")
 
-          if (updateError) {
+          if (updateError || !closedRows || closedRows.length === 0) {
             processedTradesRef.current.delete(trade.id)
             continue
           }

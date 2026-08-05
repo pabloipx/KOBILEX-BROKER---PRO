@@ -948,7 +948,25 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         const sym = latest.current.symbol
         const tf = latest.current.timeframe
         const mob = containerRef.current ? containerRef.current.clientWidth < 768 : false
-        const bs = tf === 60 ? (mob ? 16 : 22) : tf === 300 ? (mob ? 11 : 15) : mob ? 9 : 12
+        // Largura da vela por tempo: quanto maior o periodo, mais velas cabem na tela. O 15m
+        // tinha de cair no mesmo espacamento do 10m por falta de um caso proprio, o que fazia os
+        // dois tempos parecerem identicos mesmo com os dados certos.
+        const bs =
+          tf === 60
+            ? mob
+              ? 16
+              : 22
+            : tf === 300
+              ? mob
+                ? 11
+                : 15
+              : tf === 600
+                ? mob
+                  ? 9
+                  : 12
+                : mob
+                  ? 7
+                  : 10
 
         // Bloqueia o loop de render de aplicar preco ate os novos dados chegarem
         loadedSymbolRef.current = null
@@ -1020,9 +1038,28 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
               to: total + rightBars,
             })
           } catch {}
+          loadedSymbolRef.current = sym
+          setLoading(false)
+        } else {
+          // Sem velas para este (ativo, timeframe) ainda.
+          //
+          // Este era o motivo de o grafico NAO MUDAR ao trocar o tempo no forex: a serie so era
+          // reescrita quando havia dados, entao com a lista vazia o `setData` nunca era chamado
+          // e as velas do tempo ANTERIOR continuavam desenhadas. Num ativo de mercado aberto a
+          // troca de tempo passa sempre por esse estado — o historico daquele tempo so existe
+          // depois que o feed busca (`pollCandles`) —, ou seja, trocar de 5m para 15m deixava o
+          // grafico exibindo 5m indefinidamente.
+          //
+          // Limpar a serie e manter `loadedSymbolRef` nulo garante que nada do tempo antigo
+          // sobreviva e que o loop de render nao escreva preco novo dentro de velas erradas.
+          // O efeito de reload roda de novo assim que o historico do novo tempo chega.
+          try {
+            seriesRef.current.setData([])
+          } catch {}
+          candleArrayRef.current = []
+          loadedSymbolRef.current = null
+          setLoading(true)
         }
-        loadedSymbolRef.current = sym
-        setLoading(false)
         // Redesenha linhas de operacao/overlays sobre os novos dados
         setSeriesReady((n) => n + 1)
       }
@@ -1226,6 +1263,18 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     loadDataRef.current?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe, reloadKey])
+
+  // Enquanto o par (ativo, timeframe) atual nao tiver velas, tenta recarregar a cada 400ms.
+  // Ao trocar o tempo de um ativo de mercado aberto, o historico daquele tempo chega da rede
+  // alguns instantes depois; sem esta tentativa o grafico so preencheria no proximo ciclo do
+  // feed (ate 15s de espera) ou ficaria parado caso a primeira busca falhasse.
+  useEffect(() => {
+    if (!loading) return
+    const id = setInterval(() => {
+      if (loadedSymbolRef.current === null) loadDataRef.current?.()
+    }, 400)
+    return () => clearInterval(id)
+  }, [loading, symbol, timeframe])
 
   // ===== INDICADORES: cria/remove series e atualiza os dados =====
   useEffect(() => {

@@ -133,8 +133,14 @@ export default function TradePage() {
   const [selectedSymbol, setSelectedSymbol] = useState("EURUSD_OTC")
   // Abas de ativos abertas (estilo IQ Option). O ativo selecionado e sempre uma delas.
   const [openTabs, setOpenTabs] = useState<string[]>(["EURUSD_OTC"])
+  // Tempo selecionado: vale para a ENTRADA e para o GRAFICO ao mesmo tempo.
+  //
+  // Antes existiam dois estados separados (`expiryTime` e `timeframe`) e nada os ligava, apesar
+  // de o segundo estar comentado como "acompanha o tempo selecionado". O resultado era que mudar
+  // o tempo pelas setas alterava so a duracao da operacao e o grafico continuava no periodo
+  // anterior — a troca simplesmente nao aparecia. Com um unico estado os dois nao podem divergir.
   const [expiryTime, setExpiryTime] = useState<number>(60)
-  const [timeframe, setTimeframe] = useState<number>(60) // Acompanha o tempo selecionado na corretora
+  const timeframe = expiryTime
   const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>([])
   const [isTrading, setIsTrading] = useState(false)
   const [showSidebar, setSidebarOpen] = useState(false)
@@ -218,7 +224,6 @@ export default function TradePage() {
   // tempo indisponivel e a entrada seria recusada pelo servidor.
   useEffect(() => {
     setExpiryTime(prev => normalizeTimeframe(selectedAsset?.symbol, prev))
-    setTimeframe(prev => normalizeTimeframe(selectedAsset?.symbol, prev))
   }, [selectedAsset?.symbol])
 
   // Janela de entrada considerando a duração escolhida: perto do fechamento, uma operação
@@ -1021,16 +1026,16 @@ export default function TradePage() {
           {/* Tempo de expiração do gráfico - abas estilo corretora */}
           <div>
             <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">
-              Tempo do grafico
+              Tempo (grafico e entrada)
             </label>
             <div className="flex items-center gap-1.5 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
               {timeframeOptions.map((tf) => (
                 <button
                   key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  aria-pressed={timeframe === tf}
+                  onClick={() => setExpiryTime(tf)}
+                  aria-pressed={expiryTime === tf}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
-                    timeframe === tf
+                    expiryTime === tf
                       ? "bg-primary text-primary-foreground"
                       : "text-white/60 hover:bg-white/10 hover:text-white"
                   }`}
@@ -1175,16 +1180,16 @@ export default function TradePage() {
                 </button>
               </div>
               <label className="text-white/50 text-[10px] mt-2 mb-1 block font-medium uppercase tracking-wider">
-                Tempo do grafico
+                Tempo (grafico e entrada)
               </label>
               <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
                 {timeframeOptions.map((tf) => (
                   <button
                     key={tf}
-                    onClick={() => setTimeframe(tf)}
-                    aria-pressed={timeframe === tf}
+                    onClick={() => setExpiryTime(tf)}
+                    aria-pressed={expiryTime === tf}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                      timeframe === tf
+                      expiryTime === tf
                         ? "bg-primary text-primary-foreground"
                         : "text-white/60 hover:bg-white/10 hover:text-white"
                     }`}

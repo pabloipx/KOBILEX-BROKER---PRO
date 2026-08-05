@@ -25,10 +25,10 @@ const TIMEFRAMES = [
 
 // Estilos de candle: como o movimento aparece no grafico (parecer real, nao manipulado).
 const STYLES = [
-  { value: "natural", label: "Realista", desc: "Tendencia com pullbacks (candles mistos)" },
-  { value: "suave", label: "Suave", desc: "Sobe/desce devagar e liso" },
-  { value: "forte", label: "Forte", desc: "Movimento impulsivo e rapido" },
-  { value: "volatil", label: "Volatil", desc: "Grandes oscilacoes, mais real (arriscado)" },
+  { value: "natural", label: "Realista", desc: "Vai contra, corrige e fecha na direcao" },
+  { value: "suave", label: "Suave", desc: "Caminho limpo, correcoes curtas" },
+  { value: "forte", label: "Forte", desc: "Pullbacks rasos, chegada decidida" },
+  { value: "volatil", label: "Volatil", desc: "Chicoteia muito antes de entregar a direcao" },
 ]
 
 function styleLabel(v: string) {

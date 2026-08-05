@@ -51,17 +51,26 @@ export interface Manipulation {
   style?: ManipulationStyle
 }
 
-// Perfis de comportamento (CALIBRADOS para ficar realista, do tamanho de um candle normal):
-// - slope:   viés direcional em fracao da banda natural por MINUTO. Valores baixos porque
-//            um candle OTC normal anda so uma pequena fracao da banda; a manipulacao apenas
-//            inclina levemente essa caminhada na direcao desejada, sem "rampas" gigantes.
-// - retrace: amplitude das retracoes/ruido (fracao da banda) -> candles mistos e pullbacks.
-// - period:  periodo (s) das ondas de retracao -> frequencia dos pullbacks.
-const STYLE_PROFILES: Record<ManipulationStyle, { slope: number; retrace: number; period: number }> = {
-  suave: { slope: 0.16, retrace: 0.1, period: 90 }, // sobe/desce devagar e liso, direcional
-  natural: { slope: 0.2, retrace: 0.18, period: 50 }, // tendencia com pullbacks (padrao)
-  forte: { slope: 0.34, retrace: 0.12, period: 30 }, // direcional firme e confiavel
-  volatil: { slope: 0.2, retrace: 0.34, period: 22 }, // muita oscilacao, mais realista/arriscado
+// Perfis de comportamento. A manipulacao NAO e mais uma rampa: ela e um CAMINHO com pernas
+// (avanco -> pullback -> avanco -> ...), como uma tendencia de verdade. Os parametros definem
+// o "temperamento" desse caminho:
+// - amp:      deslocamento total ao final da janela, em bandas naturais do ativo.
+// - retrace:  profundidade dos pullbacks como fracao da perna anterior (0.9 = devolve quase tudo).
+// - fake:     probabilidade de comecar com um movimento CONTRA a direcao (armadilha inicial).
+// - legs:     quantas pernas de avanco o caminho tem (mais pernas = mais zigue-zague).
+// - wick:     ruido rapido sobreposto -> pavios e candles de cor mista.
+const STYLE_PROFILES: Record<
+  ManipulationStyle,
+  { amp: number; retrace: number; fake: number; minLegs: number; maxLegs: number; wick: number }
+> = {
+  // sobe/desce de forma limpa, com respiros curtos
+  suave: { amp: 0.9, retrace: 0.45, fake: 0.2, minLegs: 3, maxLegs: 4, wick: 0.1 },
+  // tendencia com pullbacks de verdade e armadilha inicial frequente (padrao)
+  natural: { amp: 1.25, retrace: 0.72, fake: 0.55, minLegs: 4, maxLegs: 5, wick: 0.17 },
+  // direcional firme: pullbacks rasos, chegada decidida
+  forte: { amp: 1.8, retrace: 0.5, fake: 0.35, minLegs: 3, maxLegs: 5, wick: 0.12 },
+  // chicoteia muito antes de entregar a direcao
+  volatil: { amp: 1.35, retrace: 0.9, fake: 0.72, minLegs: 5, maxLegs: 7, wick: 0.3 },
 }
 
 let activeManipulations: Manipulation[] = []
@@ -74,8 +83,95 @@ export function getManipulations(): Manipulation[] {
   return activeManipulations
 }
 
+// -----------------------------------------------------------------------------
+// CAMINHO DA MANIPULACAO
+// -----------------------------------------------------------------------------
+// O problema do modelo antigo: o preco andava sempre para o mesmo lado, do inicio ao fim.
+// Uma manipulacao de ALTA sem nenhum candle de baixa e obvia — qualquer usuario percebe.
+//
+// Aqui o percurso e montado como um mercado real: pernas de avanco intercaladas com pullbacks
+// (que podem levar o preco ABAIXO de onde a manipulacao comecou, inclusive numa manipulacao de
+// alta), e so no ultimo trecho o movimento vira firme e monotono na direcao forcada. O valor no
+// fim da janela e SEMPRE 1 (deslocamento total na direcao), entao o resultado das operacoes que
+// expiram no fechamento continua garantido.
+//
+// O desenho e sorteado a partir do startTime: duas manipulacoes iguais nunca tracam o mesmo
+// caminho, mas cada uma e deterministica — o grafico nao se redesenha e a liquidacao no servidor
+// recalcula exatamente o mesmo preco.
+type ManipPath = { ps: number[]; vs: number[] }
+
+const pathCache = new Map<string, ManipPath>()
+
+function buildManipPath(seed: number, prof: (typeof STYLE_PROFILES)["natural"], strength: number): ManipPath {
+  const r = (k: number) => srand(seed * 0.061 + k * 7.13)
+
+  const legs = prof.minLegs + Math.floor(r(1) * (prof.maxLegs - prof.minLegs + 0.999))
+
+  // Armadilha inicial: o preco anda CONTRA a direcao forcada antes de virar. E o que faz a
+  // manipulacao de alta ter um fundo antes de subir.
+  const raw: number[] = [0]
+  let v = 0
+  if (r(2) < prof.fake) {
+    v = -(0.2 + 0.5 * r(3)) * (1.15 - 0.35 * strength)
+    raw.push(v)
+  }
+
+  for (let i = 0; i < legs; i++) {
+    const isLast = i === legs - 1
+    // A ultima perna e a mais decidida: e ela que confirma a direcao e fecha a janela.
+    const adv = (isLast ? 1.2 : 0.5) + 0.9 * r(10 + i)
+    v += adv
+    raw.push(v)
+
+    if (!isLast) {
+      // Pullbacks ficam mais rasos conforme a janela avanca -> convergencia natural no fim.
+      const lateness = (i + 1) / legs
+      const depth = prof.retrace * (0.35 + 0.85 * r(30 + i)) * (1 - 0.55 * lateness)
+      v -= adv * Math.min(0.95, depth)
+      raw.push(v)
+    }
+  }
+
+  // Duracao de cada trecho ~ proporcional ao tamanho do movimento, com folga aleatoria. Isso
+  // mantem a VELOCIDADE do preco parecida em todo o percurso: sem isso a ultima perna (a maior)
+  // acontecia no mesmo tempo das outras e virava um candle vertical no fim da janela.
+  const n = raw.length - 1
+  const ps = [0]
+  const durs: number[] = []
+  let tot = 0
+  for (let i = 0; i < n; i++) {
+    const d = (0.3 + Math.abs(raw[i + 1] - raw[i])) * (0.7 + 0.6 * r(60 + i))
+    durs.push(d)
+    tot += d
+  }
+  let acc = 0
+  for (let i = 0; i < n; i++) {
+    acc += durs[i] / tot
+    ps.push(Math.min(1, acc))
+  }
+
+  // Normaliza para que o fim da janela seja exatamente 1 (deslocamento total na direcao).
+  const last = raw[raw.length - 1] || 1
+  return { ps, vs: raw.map((x) => x / last) }
+}
+
+function shapeAt(path: ManipPath, p: number): number {
+  const { ps, vs } = path
+  if (p <= 0) return 0
+  if (p >= 1) return vs[vs.length - 1]
+  for (let i = 1; i < ps.length; i++) {
+    if (p <= ps[i]) {
+      const seg = Math.max(1e-6, ps[i] - ps[i - 1])
+      const t = (p - ps[i - 1]) / seg
+      const u = t * t * (3 - 2 * t) // smoothstep: sem "bicos" nas viradas
+      return vs[i - 1] * (1 - u) + vs[i] * u
+    }
+  }
+  return vs[vs.length - 1]
+}
+
 // Retorna o deslocamento de preco a aplicar para um ativo em um dado timestamp.
-// = tendencia forcada (leva o preco na direcao) + retracoes/ruido (dao aparencia real).
+// = caminho direcional (pernas + pullbacks) + ruido rapido (pavios/cor mista).
 function manipulationDrift(asset: OTCAsset, timestamp: number, bandOverride?: number): number {
   if (!activeManipulations.length) return 0
 
@@ -90,36 +186,47 @@ function manipulationDrift(asset: OTCAsset, timestamp: number, bandOverride?: nu
   for (let i = 0; i < activeManipulations.length; i++) {
     const m = activeManipulations[i]
     if (m.symbol !== asset.symbol) continue
-    if (timestamp < m.startTime || timestamp > m.endTime) continue
+
+    const duration = Math.max(1, m.endTime - m.startTime)
+    // Cauda de liberacao: ao terminar, o deslocamento se dissolve aos poucos em vez de o preco
+    // dar um salto de volta ao normal (o salto era a pista mais obvia de manipulacao).
+    const release = Math.min(60, Math.max(8, duration * 0.25))
+    if (timestamp < m.startTime || timestamp > m.endTime + release) continue
 
     const dir = m.direction === "up" ? 1 : -1
     const strength = Math.max(0, Math.min(100, m.strength)) / 100
     const prof = STYLE_PROFILES[m.style && STYLE_PROFILES[m.style] ? m.style : "natural"]
-    const elapsedMin = (timestamp - m.startTime) / 60
 
-    // Tendencia: viés direcional SUAVE. Escala com forca, mas cresce de forma amortecida
-    // (assintotica) para nao "disparar" em janelas longas — o preco vai indo na direcao
-    // sem virar uma rampa reta. Garante que o RESULTADO final feche na direcao forcada.
-    const effSlope = prof.slope * (0.5 + 0.7 * strength)
-    const maxDriftBands = effSlope * 6 // ~6 min para se aproximar do teto
-    const linear = effSlope * elapsedMin
-    const damped = maxDriftBands * (1 - Math.exp(-linear / Math.max(0.0001, maxDriftBands)))
-    const trend = dir * band * damped
+    const key = `${m.symbol}|${m.startTime}|${m.endTime}|${m.direction}|${m.style || "natural"}|${m.strength}`
+    let path = pathCache.get(key)
+    if (!path) {
+      path = buildManipPath(m.startTime + symSeed, prof, strength)
+      if (pathCache.size > 200) pathCache.clear()
+      pathCache.set(key, path)
+    }
 
-    // Oscilacao SIMETRICA multi-oitava: move o preco para CIMA e para BAIXO o tempo todo,
-    // em varias escalas de tempo. E o que faz o candle ter PAVIOS (topo/fundo dentro do
-    // minuto) e faz surgirem candles de cor CONTRARIA (pullbacks) durante a tendencia —
-    // como um grafico real. A tendencia acima e mais lenta, entao o RESULTADO ainda fecha
-    // na direcao manipulada, mas o caminho ate la parece 100% natural.
-    const easeIn = Math.min(1, elapsedMin / 0.4)
-    const p = prof.period
-    const osc =
-      0.46 * valueNoise(timestamp / (p * 1.8) + symSeed, symSeed + 21) + // swing candle-a-candle (cor)
-      0.32 * valueNoise(timestamp / (p * 0.75) + symSeed, symSeed + 41) + // movimento dentro do candle
-      0.22 * valueNoise(timestamp / (p * 0.28) + symSeed, symSeed + 61) // pavios (rapido)
-    const oscillation = band * prof.retrace * (0.9 + 0.6 * strength) * osc * easeIn
+    const p = Math.min(1, (timestamp - m.startTime) / duration)
+    // O deslocamento total acompanha o tamanho da janela (referencia: ~6 min = 100%), com teto.
+    // Assim uma janela curta nao vira um salto vertical e uma janela longa nao anda de lado.
+    const span = Math.min(1.35, Math.sqrt(duration / 360))
+    const total = band * prof.amp * (0.45 + 1.05 * strength) * span
+    let value = shapeAt(path, p)
 
-    drift += trend + oscillation
+    // Depois do fim da janela o valor fica em 1 e desaparece suavemente.
+    if (timestamp > m.endTime) {
+      const f = (timestamp - m.endTime) / release
+      value *= 1 - f * f * (3 - 2 * f)
+    }
+
+    // Ruido rapido sobreposto: pavios e candles de cor contraria dentro de cada perna. Nao muda
+    // o destino (media zero), so tira a aparencia de linha desenhada.
+    const easeIn = Math.min(1, (timestamp - m.startTime) / 20)
+    const wick =
+      0.5 * valueNoise(timestamp / 34 + symSeed, symSeed + 21) +
+      0.3 * valueNoise(timestamp / 13 + symSeed, symSeed + 41) +
+      0.2 * valueNoise(timestamp / 5 + symSeed, symSeed + 61)
+
+    drift += dir * (total * value + band * prof.wick * (0.8 + 0.5 * strength) * wick * easeIn)
   }
   return drift
 }

@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { cancelActiveBonus, getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -403,79 +402,65 @@ export async function POST(req: NextRequest) {
 
     if (action === "approve_withdrawal") {
       const withdrawalId = payload.withdrawalId
-      const userId = payload.userId
-      const amount = payload.amount
 
-      // TRAVA DE ROLLOVER. Esta e a ultima etapa antes do dinheiro sair, por isso a validacao fica
-      // aqui e nao apenas na tela: mesmo um pedido criado direto pelo navegador passa por este ponto.
-      const activeBonus = await getActiveBonus(supabase, userId)
-
-      if (activeBonus) {
-        const { data: balanceRow } = await supabase
-          .from("user_balances")
-          .select("balance_real")
-          .eq("user_id", userId)
-          .maybeSingle()
-
-        const locked = Number(activeBonus.bonus_amount || 0)
-        const available = Math.max(0, Number(balanceRow?.balance_real || 0) - locked)
-
-        // O saque so passa se couber no saldo LIVRE (fora do valor travado pelo bonus).
-        if (Number(amount) > available) {
-          if (await shouldCancelBonusOnWithdrawal(supabase)) {
-            // Politica configurada: o saque cancela o bonus e devolve o valor travado.
-            const cancelResult = await cancelActiveBonus(
-              supabase,
-              userId,
-              "saque aprovado antes de cumprir o rollover",
-            )
-            console.log(
-              `[v0] Bonus cancelado no saque ${withdrawalId}: R$ ${cancelResult.removedAmount || 0} removidos`,
-            )
-          } else {
-            const remaining = Math.max(0, Number(activeBonus.rollover_required) - Number(activeBonus.rollover_progress))
-            return NextResponse.json(
-              {
-                error:
-                  `Rollover em andamento. Saldo livre: R$ ${available.toFixed(2)} ` +
-                  `(R$ ${locked.toFixed(2)} travados). Faltam R$ ${remaining.toFixed(2)} de volume.`,
-              },
-              { status: 409 },
-            )
-          }
-        }
-      }
-
+      // O saldo JA foi debitado quando o usuario solicitou o saque (rota /api/withdraw), que e
+      // tambem onde a trava de rollover e aplicada. Este bloco antes debitava o valor OUTRA VEZ,
+      // entao um saque de R$ 100 tirava R$ 200 do usuario. A aprovacao agora so muda o status.
+      //
+      // A coluna `updated_at` nao existe em `withdrawals` (o correto e `processed_at`); usa-la
+      // fazia o Postgres recusar o update e a aprovacao falhar por completo.
       const { error: withdrawalError } = await supabase
         .from("withdrawals")
-        .update({ status: "completed", updated_at: new Date().toISOString() })
+        .update({ status: "completed", processed_at: new Date().toISOString() })
         .eq("id", withdrawalId)
       if (withdrawalError) throw withdrawalError
-      
-      const { data: currentBalance } = await supabase
-        .from("user_balances")
-        .select("balance_real")
-        .eq("user_id", userId)
-        .single()
-      
-      if (currentBalance) {
-        const newBalance = Math.max(0, (currentBalance.balance_real || 0) - Number(amount))
-        await supabase
-          .from("user_balances")
-          .update({ balance_real: newBalance, updated_at: new Date().toISOString() })
-          .eq("user_id", userId)
-      }
-      
+
       return NextResponse.json({ success: true })
     }
 
     if (action === "reject_withdrawal") {
       const withdrawalId = payload.withdrawalId
-      const { error } = await supabase
+
+      // Só devolve o saldo se o saque ainda estiver pendente. O filtro por status é o que impede
+      // um clique repetido em "rejeitar" de creditar o valor mais de uma vez.
+      const { data: rejected, error } = await supabase
         .from("withdrawals")
-        .update({ status: "rejected", updated_at: new Date().toISOString() })
+        .update({ status: "rejected", processed_at: new Date().toISOString() })
         .eq("id", withdrawalId)
+        .eq("status", "pending")
+        .select("user_id, amount")
+
       if (error) throw error
+
+      // Como o debito acontece na solicitacao, a rejeicao PRECISA devolver o valor — sem isso o
+      // usuario perderia o dinheiro de um saque recusado.
+      if (rejected && rejected.length > 0) {
+        const { user_id: refundUserId, amount: refundAmount } = rejected[0]
+
+        const { data: balanceRow } = await supabase
+          .from("user_balances")
+          .select("balance_real")
+          .eq("user_id", refundUserId)
+          .maybeSingle()
+
+        const restored = Number(balanceRow?.balance_real || 0) + Number(refundAmount)
+
+        await supabase
+          .from("user_balances")
+          .update({ balance_real: restored, updated_at: new Date().toISOString() })
+          .eq("user_id", refundUserId)
+
+        await supabase.from("transactions").insert({
+          user_id: refundUserId,
+          type: "withdrawal_refund",
+          amount: Number(refundAmount),
+          balance_after: restored,
+          account_type: "real",
+          reference_id: withdrawalId,
+          description: "Devolucao de saque rejeitado",
+        })
+      }
+
       return NextResponse.json({ success: true })
     }
 

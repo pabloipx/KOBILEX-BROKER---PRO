@@ -416,14 +416,17 @@ export default function TradePage() {
       if (expiredTrades.length === 0) return
 
       for (const trade of expiredTrades) {
-        // Preco de saida: usa o preco ATUAL do motor para o ativo (que ja inclui qualquer
-        // manipulacao do admin), garantindo que o resultado seja consistente com o grafico.
-        // Fallback para um pequeno movimento aleatorio apenas se o motor nao tiver preco.
+        // Preco de saida: o preco ATUAL do motor para o ativo — o mesmo que alimenta o grafico,
+        // garantindo que o resultado seja consistente com o que o usuario viu.
+        //
+        // NAO existe mais fallback aleatorio aqui. Antes, quando o motor nao tinha preco, a
+        // operacao era liquidada em `entry_price * (1 + (Math.random() - 0.5) * 0.01)`: ganho ou
+        // perda decidido por sorteio, com desvio de ate 0,5% sobre a entrada. Agora, sem preco a
+        // operacao permanece pendente e e liquidada no proximo ciclo (roda a cada 3s), quando
+        // houver cotacao real.
         const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
-        const exitPrice =
-          enginePrice && enginePrice > 0
-            ? enginePrice
-            : trade.entry_price * (1 + (Math.random() - 0.5) * 0.01)
+        if (!enginePrice || enginePrice <= 0) continue
+        const exitPrice = enginePrice
         const isWin =
           trade.direction === "CALL" ? exitPrice > trade.entry_price : exitPrice < trade.entry_price
         const result = isWin ? "win" : "loss"

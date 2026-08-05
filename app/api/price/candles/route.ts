@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getPriceManager } from "@/lib/price-engine/price-manager"
+import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 
 /**
  * Get historical candles for a symbol and timeframe
@@ -23,6 +24,16 @@ export async function GET(request: Request) {
       )
     }
 
+    // Ativos de MERCADO ABERTO nao podem receber velas do gerador sintetico. O historico real
+    // deles e servido por /api/market/crypto, que monta o OHLC a partir de ticks de mercado.
+    if (isRealSymbol(symbol)) {
+      return NextResponse.json(
+        { error: "Use /api/market/crypto para ativos de mercado aberto" },
+        { status: 400 },
+      )
+    }
+
+    // OTC: motor deterministico atual, sintetico de proposito.
     const priceManager = getPriceManager()
     const candles = priceManager.getHistoricalCandles(symbol, timeframe)
     const currentCandle = priceManager.getCurrentCandle(symbol, timeframe)

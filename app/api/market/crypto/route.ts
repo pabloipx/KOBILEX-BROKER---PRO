@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server"
 import { recordTick, getRecordedCandles } from "@/lib/price-engine/tick-recorder"
+import {
+  SYMBOLS,
+  round,
+  getLivePrice,
+  fetchTradingViewPrice,
+  type SymbolInfo as RealSymbolInfo,
+} from "@/lib/price-engine/real-quote"
 
 // Proxy para dados REAIS de mercado. Roda no servidor para evitar CORS e o bloqueio
 // geografico que afeta algumas exchanges (ex.: Binance) a partir da Vercel.
@@ -15,21 +22,10 @@ import { recordTick, getRecordedCandles } from "@/lib/price-engine/tick-recorder
 //    O scanner do TradingView so expoe o snapshot atual, sem historico.
 export const dynamic = "force-dynamic"
 
-interface SymbolInfo {
-  /** Simbolo no Yahoo Finance, usado no historico de velas */
-  yahoo: string
-  /** Ticker no TradingView, usado no preco ao vivo */
-  tv: string
-  /** Mercado do scanner do TradingView */
-  tvScan: "forex" | "crypto"
-  /** Casas decimais do par. O Yahoo devolve float32 alargado (1.1531364917755127). */
-  decimals: number
-}
-
-/** Arredonda para a precisao real do par, removendo o ruido de ponto flutuante do Yahoo. */
-function round(value: number, decimals: number): number {
-  return Number(value.toFixed(decimals))
-}
+// O mapa de simbolos, o arredondamento e a busca de preco vivem em lib/price-engine/real-quote
+// para que a LIQUIDACAO das operacoes use exatamente a mesma cotacao que alimenta o grafico.
+// Duas copias divergiriam com o tempo e o usuario seria pago por um preco diferente do que viu.
+type SymbolInfo = RealSymbolInfo
 
 /**
  * O Yahoo so tem OHLC real de 1m para cripto. Para forex ele devolve o minuto achatado
@@ -40,71 +36,12 @@ function hasRealYahoo1m(info: SymbolInfo): boolean {
   return info.tvScan === "crypto"
 }
 
-// Mapeia o simbolo interno do motor -> simbolos das fontes reais.
-//
-// A fonte de forex e OANDA, e nao FX_IDC. FX_IDC e uma fonte de REFERENCIA (taxa indicativa,
-// nao negociada): medida aqui, ela devolve o EUR/USD com 4 casas decimais e congelado — 1 unico
-// valor em 12 leituras, ou seja, 0 pip de variacao. Com um preco parado e sem a casa do pip, as
-// velas nasciam sem corpo e as operacoes curtas empatavam.
-//
-// OANDA e uma corretora de verdade: cotacao negociavel com 5 casas decimais (1.15542, a mesma
-// precisao do TradingView) e movimento real — na mesma medicao, 8 pips de amplitude em 60s.
-// E essa diferenca que permite formar velas com corpo real, sem inventar nada.
-const SYMBOLS: Record<string, SymbolInfo> = {
-  BTCUSD: { yahoo: "BTC-USD", tv: "COINBASE:BTCUSD", tvScan: "crypto", decimals: 2 },
-  EURUSD: { yahoo: "EURUSD=X", tv: "OANDA:EURUSD", tvScan: "forex", decimals: 5 },
-  GBPJPY: { yahoo: "GBPJPY=X", tv: "OANDA:GBPJPY", tvScan: "forex", decimals: 3 },
-  EURJPY: { yahoo: "EURJPY=X", tv: "OANDA:EURJPY", tvScan: "forex", decimals: 3 },
-  AUDUSD: { yahoo: "AUDUSD=X", tv: "OANDA:AUDUSD", tvScan: "forex", decimals: 5 },
-  AUDJPY: { yahoo: "AUDJPY=X", tv: "OANDA:AUDJPY", tvScan: "forex", decimals: 3 },
-  GBPUSD: { yahoo: "GBPUSD=X", tv: "OANDA:GBPUSD", tvScan: "forex", decimals: 5 },
-  USDJPY: { yahoo: "USDJPY=X", tv: "OANDA:USDJPY", tvScan: "forex", decimals: 3 },
-  USDCHF: { yahoo: "USDCHF=X", tv: "OANDA:USDCHF", tvScan: "forex", decimals: 5 },
-  USDCAD: { yahoo: "USDCAD=X", tv: "OANDA:USDCAD", tvScan: "forex", decimals: 5 },
-  NZDUSD: { yahoo: "NZDUSD=X", tv: "OANDA:NZDUSD", tvScan: "forex", decimals: 5 },
-  EURGBP: { yahoo: "EURGBP=X", tv: "OANDA:EURGBP", tvScan: "forex", decimals: 5 },
-}
-
 export interface RealCandle {
   time: number
   open: number
   high: number
   low: number
   close: number
-}
-
-// =============================================
-// PRECO AO VIVO (TradingView)
-// =============================================
-
-// Cache curto do preco upstream, compartilhado por todos os usuarios.
-//
-// Sem ele, a carga na fonte cresce com o numero de usuarios: cada cliente que consulta o preco
-// disparava uma chamada propria ao TradingView, o que levaria a bloqueio por excesso de
-// requisicoes justamente com a plataforma cheia. Com o cache, a fonte e consultada no maximo
-// uma vez por segundo por simbolo, independente de haver 1 ou 10.000 usuarios conectados.
-//
-// O TTL nao reduz a fidelidade: a cotacao de forex a que temos acesso e renovada a cada ~20s,
-// entao 1s de cache esta bem abaixo da resolucao real da fonte.
-const PRICE_TTL_MS = 1000
-const priceCache = new Map<string, { price: number; at: number }>()
-
-async function fetchTradingViewPrice(info: SymbolInfo): Promise<number> {
-  const r = await fetch(`https://scanner.tradingview.com/${info.tvScan}/scan`, {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
-    body: JSON.stringify({
-      symbols: { tickers: [info.tv], query: { types: [] } },
-      columns: ["close"],
-    }),
-  })
-  if (!r.ok) throw new Error(`tradingview ${r.status}`)
-
-  const j = await r.json()
-  const price = Number(j?.data?.[0]?.d?.[0])
-  if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido no tradingview")
-  return price
 }
 
 // =============================================
@@ -311,11 +248,15 @@ export async function GET(req: Request) {
 
   try {
     if (type === "price") {
-      const cached = priceCache.get(symbol)
-      if (cached && Date.now() - cached.at < PRICE_TTL_MS) {
-        return NextResponse.json({ price: cached.price })
+      // getLivePrice ja arredonda e faz o cache de 1s por simbolo, compartilhado com a
+      // liquidacao das operacoes: grafico e resultado sempre leem a MESMA cotacao.
+      const live = await getLivePrice(symbol)
+      if (live !== null) {
+        recordTick(symbol, live)
+        return NextResponse.json({ price: live })
       }
 
+      // A fonte principal falhou. Cai no meta do Yahoo para manter o ativo negociavel.
       let price: number
       try {
         price = await fetchTradingViewPrice(info)
@@ -332,7 +273,6 @@ export async function GET(req: Request) {
       if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido")
 
       price = round(price, info.decimals)
-      priceCache.set(symbol, { price, at: Date.now() })
 
       // Alimenta o historico de 1m com este preco real. Nao usa await de proposito:
       // a cotacao do usuario nao pode esperar (nem falhar por causa da) gravacao.

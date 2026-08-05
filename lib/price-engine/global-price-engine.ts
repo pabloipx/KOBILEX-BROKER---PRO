@@ -83,7 +83,7 @@ class GlobalPriceEngine {
     return this.generatePriceAtTime(now)
   }
 
-  getCandles(timeframe: 60 | 300 | 600): GlobalCandle[] {
+  getCandles(timeframe: 60 | 300 | 600 | 900): GlobalCandle[] {
     const now = Math.floor(Date.now() / 1000)
     const candles: GlobalCandle[] = []
     const currentCandleStart = Math.floor(now / timeframe) * timeframe
@@ -97,7 +97,7 @@ class GlobalPriceEngine {
     return candles
   }
 
-  getCurrentCandle(timeframe: 60 | 300 | 600): GlobalCandle | null {
+  getCurrentCandle(timeframe: 60 | 300 | 600 | 900): GlobalCandle | null {
     const now = Math.floor(Date.now() / 1000)
     const candleStart = Math.floor(now / timeframe) * timeframe
     const elapsed = now - candleStart
@@ -130,7 +130,7 @@ class GlobalPriceEngine {
     return true // Sempre "rodando" - é stateless
   }
 
-  getGlobalState(timeframe: 60 | 300 | 600) {
+  getGlobalState(timeframe: 60 | 300 | 600 | 900) {
     return {
       symbol: "OTC_EURUSD",
       price: this.getCurrentPrice(),

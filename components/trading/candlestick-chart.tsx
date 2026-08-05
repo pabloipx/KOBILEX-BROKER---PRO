@@ -8,7 +8,7 @@ interface CandlestickChartProps {
   currentCandle: Candle | null
   currentPrice: number
   symbol: string
-  timeframe: 60 | 300 | 600
+  timeframe: 60 | 300 | 600 | 900
   entryPrice?: number
   direction?: "CALL" | "PUT"
   expiryTime?: number

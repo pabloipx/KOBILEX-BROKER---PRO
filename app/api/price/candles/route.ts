@@ -14,10 +14,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Symbol and timeframe parameters required" }, { status: 400 })
     }
 
-    const timeframe = Number(timeframeParam) as 60 | 300 | 600
+    const timeframe = Number(timeframeParam) as 60 | 300 | 600 | 900
 
-    if (![60, 300, 600].includes(timeframe)) {
-      return NextResponse.json({ error: "Invalid timeframe. Must be 60, 300, or 600" }, { status: 400 })
+    if (![60, 300, 600, 900].includes(timeframe)) {
+      return NextResponse.json(
+        { error: "Invalid timeframe. Must be 60, 300, 600, or 900" },
+        { status: 400 },
+      )
     }
 
     const priceManager = getPriceManager()

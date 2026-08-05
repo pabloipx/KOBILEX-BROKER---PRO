@@ -23,12 +23,12 @@ interface CandleBuilder {
 
 export class CandleAggregator {
   private symbol: string
-  private timeframe: 60 | 300 | 600
+  private timeframe: 60 | 300 | 600 | 900
   private currentCandle: CandleBuilder | null = null
   private completedCandles: Candle[] = []
   private maxCandles = 100
 
-  constructor(symbol: string, timeframe: 60 | 300 | 600) {
+  constructor(symbol: string, timeframe: 60 | 300 | 600 | 900) {
     this.symbol = symbol
     this.timeframe = timeframe
   }

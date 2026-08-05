@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getTradeManager } from "@/lib/trade-engine/trade-manager"
+import { isTimeframeAllowed, timeframesFor, TIMEFRAME_LABELS } from "@/lib/trading/timeframes"
 
 export async function POST(request: Request) {
   try {
@@ -27,8 +28,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid direction" }, { status: 400 })
     }
 
-    if (![60, 300, 600].includes(timeframe)) {
-      return NextResponse.json({ error: "Invalid timeframe" }, { status: 400 })
+    // A duracao valida depende do ativo: mercado aberto opera em 5m/10m/15m, OTC em 1m/5m/10m.
+    // A checagem tem de ficar aqui, e nao so na interface: uma chamada direta a esta rota
+    // poderia abrir uma operacao de 30s num par real, cuja fonte de preco nao tem resolucao
+    // para liquidar de forma justa.
+    if (!isTimeframeAllowed(symbol, timeframe)) {
+      const permitidos = timeframesFor(symbol)
+        .map(tf => TIMEFRAME_LABELS[tf])
+        .join(", ")
+      return NextResponse.json(
+        { error: `Tempo indisponivel para ${symbol}. Use: ${permitidos}.` },
+        { status: 400 },
+      )
     }
 
     if (amount <= 0) {

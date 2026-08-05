@@ -68,7 +68,7 @@ interface Props {
   candles: Candle[]
   currentPrice: number
   activeTrades?: ActiveTrade[]
-  timeframe: 60 | 300 | 600
+  timeframe: 60 | 300 | 600 | 900
   symbol: string
   payout?: number
   result?: TradeResult | null

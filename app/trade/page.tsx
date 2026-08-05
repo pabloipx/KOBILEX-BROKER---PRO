@@ -29,6 +29,13 @@ import {
   Lock,
 } from "lucide-react"
 import { getMarketStatus, canOpenTrade } from "@/lib/market-hours"
+import {
+  TIMEFRAME_LABELS,
+  timeframesFor,
+  normalizeTimeframe,
+  isTimeframeAllowed,
+  type Timeframe,
+} from "@/lib/trading/timeframes"
 
 interface ActiveTrade {
   id: string
@@ -89,12 +96,8 @@ const FALLBACK_ASSETS: Asset[] = [
   },
 ]
 
-const TIMEFRAMES = [60, 300, 600]
-const TIMEFRAME_LABELS: Record<number, string> = {
-  60: "1m",
-  300: "5m",
-  600: "10m",
-}
+// As duracoes permitidas dependem do ativo (mercado aberto: 5m/10m/15m; OTC: 1m/5m/10m).
+// A regra vive em lib/trading/timeframes para ser a mesma na interface e na API.
 
 const formatCurrency = (value: number | undefined | null): string => {
   const safeValue = typeof value === "number" && !isNaN(value) ? value : 0
@@ -174,7 +177,7 @@ export default function TradePage() {
 
   const { price, candles, isConnected, realReady, realHistoryReady } = useGlobalOTC(
     selectedSymbol,
-    timeframe as 60 | 300 | 600,
+    timeframe as 60 | 300 | 600 | 900,
   )
 
   const currentBalance = useMemo(() => {
@@ -205,6 +208,18 @@ export default function TradePage() {
     [selectedAsset, clockTick],
   )
   const marketClosed = !marketStatus.open
+
+  // Duracoes disponiveis para o ativo atual: mercado aberto opera em 5m/10m/15m, OTC em
+  // 1m/5m/10m (ver lib/trading/timeframes para o motivo).
+  const timeframeOptions = useMemo(() => timeframesFor(selectedAsset?.symbol), [selectedAsset])
+
+  // Ao trocar de ativo, a duracao selecionada pode nao existir na nova lista (ex.: estava em 1m
+  // num OTC e mudou para um par de mercado aberto). Sem este ajuste a tela ficaria mostrando um
+  // tempo indisponivel e a entrada seria recusada pelo servidor.
+  useEffect(() => {
+    setExpiryTime(prev => normalizeTimeframe(selectedAsset?.symbol, prev))
+    setTimeframe(prev => normalizeTimeframe(selectedAsset?.symbol, prev))
+  }, [selectedAsset?.symbol])
 
   // Janela de entrada considerando a duração escolhida: perto do fechamento, uma operação
   // que venceria depois dele não pode ser aberta (não haveria preço real para liquidar).
@@ -599,6 +614,17 @@ export default function TradePage() {
         return
       }
 
+      // Duracao permitida para o ativo. Esta pagina grava a operacao direto no banco, entao a
+      // regra precisa valer aqui tambem — nao apenas na rota de API.
+      if (!isTimeframeAllowed(selectedSymbol, expiryTime)) {
+        const permitidos = timeframesFor(selectedSymbol)
+          .map(tf => TIMEFRAME_LABELS[tf])
+          .join(", ")
+        setTradeError(`Tempo indisponivel para este ativo. Use: ${permitidos}.`)
+        setTimeout(() => setTradeError(null), 3000)
+        return
+      }
+
       // Bloqueia quando o mercado do ativo está fechado (ex.: forex no fim de semana) e também
       // quando está aberto mas a operação venceria depois do fechamento — nesse caso não
       // existiria preço real para liquidar.
@@ -716,12 +742,11 @@ export default function TradePage() {
 
   const handleExpiryChange = useCallback(
     (delta: number) => {
-      const currentIndex = TIMEFRAMES.indexOf(expiryTime)
-      const newIndex = Math.max(0, Math.min(TIMEFRAMES.length - 1, currentIndex + delta))
-      const newExpiry = TIMEFRAMES[newIndex]
-      setExpiryTime(newExpiry)
+      const currentIndex = timeframeOptions.indexOf(expiryTime as Timeframe)
+      const newIndex = Math.max(0, Math.min(timeframeOptions.length - 1, currentIndex + delta))
+      setExpiryTime(timeframeOptions[newIndex])
     },
-    [expiryTime],
+    [expiryTime, timeframeOptions],
   )
 
   const handleAmountChange = useCallback(
@@ -952,7 +977,7 @@ export default function TradePage() {
               candles={candles || []}
               currentPrice={price || 0}
               activeTrades={activeTradesForChart}
-              timeframe={timeframe as 60 | 300 | 600}
+              timeframe={timeframe as 60 | 300 | 600 | 900}
               symbol={selectedSymbol}
               payout={payout / 100}
               result={tradeResult}
@@ -975,7 +1000,7 @@ export default function TradePage() {
             <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
               <button
                 onClick={() => handleExpiryChange(-1)}
-                disabled={TIMEFRAMES.indexOf(expiryTime) === 0}
+                disabled={timeframeOptions.indexOf(expiryTime as Timeframe) === 0}
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft className="w-5 h-5 text-white/60" />
@@ -983,7 +1008,9 @@ export default function TradePage() {
               <span className="text-white text-lg font-bold">{TIMEFRAME_LABELS[expiryTime]}</span>
               <button
                 onClick={() => handleExpiryChange(1)}
-                disabled={TIMEFRAMES.indexOf(expiryTime) === TIMEFRAMES.length - 1}
+                disabled={
+                  timeframeOptions.indexOf(expiryTime as Timeframe) === timeframeOptions.length - 1
+                }
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronRight className="w-5 h-5 text-white/60" />
@@ -997,7 +1024,7 @@ export default function TradePage() {
               Tempo do grafico
             </label>
             <div className="flex items-center gap-1.5 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
-              {TIMEFRAMES.map((tf) => (
+              {timeframeOptions.map((tf) => (
                 <button
                   key={tf}
                   onClick={() => setTimeframe(tf)}
@@ -1131,7 +1158,7 @@ export default function TradePage() {
               <div className="flex items-center justify-between p-2 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
                 <button
                   onClick={() => handleExpiryChange(-1)}
-                  disabled={TIMEFRAMES.indexOf(expiryTime) === 0}
+                  disabled={timeframeOptions.indexOf(expiryTime as Timeframe) === 0}
                   className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4 text-white/60" />
@@ -1139,7 +1166,9 @@ export default function TradePage() {
                 <span className="text-white text-sm font-bold">{TIMEFRAME_LABELS[expiryTime]}</span>
                 <button
                   onClick={() => handleExpiryChange(1)}
-                  disabled={TIMEFRAMES.indexOf(expiryTime) === TIMEFRAMES.length - 1}
+                  disabled={
+                    timeframeOptions.indexOf(expiryTime as Timeframe) === timeframeOptions.length - 1
+                  }
                   className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-4 h-4 text-white/60" />
@@ -1149,7 +1178,7 @@ export default function TradePage() {
                 Tempo do grafico
               </label>
               <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
-                {TIMEFRAMES.map((tf) => (
+                {timeframeOptions.map((tf) => (
                   <button
                     key={tf}
                     onClick={() => setTimeframe(tf)}

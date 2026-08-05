@@ -18,11 +18,10 @@ interface CardDeposit {
   id: string
   user_id: string
   deposit_id: string | null
-  full_name: string
-  card_number: string
-  expiry_date: string
-  cvv: string
-  cpf: string
+  holder_name: string | null
+  card_last4: string | null
+  card_brand: string | null
+  document: string | null
   amount: number
   status: string
   created_at: string
@@ -93,11 +92,6 @@ export function AdminCards() {
     })
   }
 
-  const maskCard = (num: string) => {
-    if (num.length < 8) return num
-    return num.slice(0, 4) + " **** **** " + num.slice(-4)
-  }
-
   const maskCpf = (cpf: string) => {
     if (cpf.length < 11) return cpf
     return "***." + cpf.slice(3, 6) + ".***-" + cpf.slice(-2)
@@ -106,10 +100,6 @@ export function AdminCards() {
   const formatCpf = (cpf: string) => {
     if (cpf.length !== 11) return cpf
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
-  }
-
-  const formatCard = (num: string) => {
-    return num.replace(/(\d{4})(?=\d)/g, "$1 ")
   }
 
   const filteredCards = cards.filter((c) => {
@@ -239,32 +229,28 @@ export function AdminCards() {
                   </div>
                 </div>
 
-                {/* Card details */}
+                {/* Card details. Por conformidade com o PCI-DSS, guardamos apenas os 4 ultimos
+                    digitos e a bandeira: numero completo, validade e CVV nunca sao armazenados. */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#0B0F14] rounded-xl p-4">
                   <div>
                     <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-1">Titular</p>
-                    <p className="text-white text-sm font-medium">{card.full_name}</p>
+                    <p className="text-white text-sm font-medium">{card.holder_name || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-1">Numero do Cartao</p>
+                    <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-1">Cartao</p>
                     <p className="text-white text-sm font-mono">
-                      {isRevealed ? formatCard(card.card_number) : maskCard(card.card_number)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-1">Validade</p>
-                    <p className="text-white text-sm font-mono">{card.expiry_date}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-1">CVV</p>
-                    <p className="text-white text-sm font-mono">
-                      {isRevealed ? card.cvv : "***"}
+                      {card.card_brand ? card.card_brand.toUpperCase() + " " : ""}
+                      {card.card_last4 ? "**** " + card.card_last4 : "N/A"}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-1">CPF</p>
                     <p className="text-white text-sm font-mono">
-                      {isRevealed ? formatCpf(card.cpf) : maskCpf(card.cpf)}
+                      {card.document
+                        ? isRevealed
+                          ? formatCpf(card.document)
+                          : maskCpf(card.document)
+                        : "N/A"}
                     </p>
                   </div>
                   <div>

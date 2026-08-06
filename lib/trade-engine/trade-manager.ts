@@ -4,6 +4,9 @@
  */
 
 import type { Trade } from "@/lib/types"
+import { getRealPriceAt } from "@/lib/price-engine/real-quote"
+import { isRealSymbol } from "@/lib/price-engine/real-price-store"
+import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 
 function getSupabaseAdmin() {
   const { createClient } = require("@supabase/supabase-js")
@@ -17,23 +20,34 @@ function getSupabaseAdmin() {
   })
 }
 
-// Função para gerar preço determinístico (mesmo algoritmo do price-engine)
-function generatePriceAtTime(timestamp: number): number {
-  const basePrice = 1.085
-  const seed = timestamp
-  const x = Math.sin(seed * 12.9898 + seed * 78.233) * 43758.5453123
-  const random = x - Math.floor(x)
-  
-  const microCycle = random * 0.0001 - 0.00005
-  const shortCycle = Math.sin(seed * 0.01) * 0.0003
-  const mediumCycle = Math.sin(seed * 0.001) * 0.0005
-  const longCycle = Math.sin(seed * 0.0001) * 0.001
-  
-  const deviation = microCycle + shortCycle + mediumCycle + longCycle
-  const price = basePrice + deviation
-  const maxDev = basePrice * 0.008
-  
-  return Number(Math.max(basePrice - maxDev, Math.min(basePrice + maxDev, price)).toFixed(5))
+// O gerador sintetico de preco (`generatePriceAtTime`) foi REMOVIDO daqui.
+//
+// Ele produzia um preco em torno de 1.085 a partir de senos somados a um pseudo-aleatorio com
+// semente no relogio, e — pior — ignorava o parametro `symbol`: BTCUSD, USDJPY e EURUSD eram
+// todos abertos e liquidados sobre a mesma serie inventada de ~1.08. Como esse mesmo numero era
+// usado como entry_price e exit_price, o WIN/LOSS do usuario era decidido por um valor que nao
+// tinha relacao com o mercado nem com o grafico exibido na tela.
+//
+// Agora o preco de mercado aberto vem de `getRealPriceAt` (cotacao real + historico de ticks
+// gravado). Sem preco real, a operacao nao e aberta nem liquidada — ver os metodos abaixo.
+
+/** Preco de abertura: real no mercado aberto, motor sintetico no OTC. `null` = indisponivel. */
+async function getEntryPrice(symbol: string): Promise<number | null> {
+  if (isRealSymbol(symbol)) {
+    return getRealPriceAt(symbol, Date.now())
+  }
+  // OTC segue com o motor deterministico atual, intocado e de proposito sintetico.
+  const otc = multiAssetEngine.getCurrentPrice(symbol)
+  return otc && otc > 0 ? otc : null
+}
+
+/** Preco de liquidacao no instante do vencimento. `null` = indisponivel (nao liquida). */
+async function getExitPrice(symbol: string, expiryMs: number): Promise<number | null> {
+  if (isRealSymbol(symbol)) {
+    return getRealPriceAt(symbol, expiryMs)
+  }
+  const otc = multiAssetEngine.getCurrentPrice(symbol)
+  return otc && otc > 0 ? otc : null
 }
 
 export class TradeManager {
@@ -64,7 +78,13 @@ export class TradeManager {
         return { success: false, error: "Insufficient balance" }
       }
 
-      const currentPrice = generatePriceAtTime(Math.floor(Date.now() / 1000))
+      // Preco de entrada: real para mercado aberto, motor sintetico para OTC (que e sintetico
+      // de proposito). Se um ativo de mercado aberto nao tiver preco real disponivel, a operacao
+      // e recusada — abrir sobre um preco inventado tornaria a liquidacao arbitraria.
+      const currentPrice = await getEntryPrice(symbol)
+      if (currentPrice === null) {
+        return { success: false, error: "Preco de mercado indisponivel. Tente novamente." }
+      }
 
       const now = new Date()
       const expiryTime = new Date(now.getTime() + duration * 1000)
@@ -130,9 +150,20 @@ export class TradeManager {
         return { success: true, result: trade.result }
       }
 
-      const exitPrice = generatePriceAtTime(Math.floor(Date.now() / 1000))
+      // Preco de saida no instante do VENCIMENTO (nao no instante em que a rota rodou): se a
+      // resolucao atrasar, o resultado ainda tem de refletir o preco do momento em que a
+      // operacao venceu.
+      const expiryMs = new Date(trade.expiry_time).getTime()
+      const exitPrice = await getExitPrice(trade.symbol, expiryMs)
+
+      // Sem preco real nao ha como decidir ganho ou perda com justica. A operacao permanece
+      // PENDING e sera resolvida na proxima tentativa, quando houver cotacao.
+      if (exitPrice === null) {
+        return { success: false, error: "Preco de mercado indisponivel para liquidar" }
+      }
+
       const priceDiff = exitPrice - trade.entry_price
-      
+
       let result: "WIN" | "LOSS"
       if (trade.direction === "CALL") {
         result = priceDiff > 0 ? "WIN" : "LOSS"
@@ -147,13 +178,16 @@ export class TradeManager {
         profit = -trade.amount
       }
 
+      // `exit_time` nao existe na tabela `trades`; o nome correto e `closed_at`. Com o nome errado
+      // o Postgres recusava o update inteiro (PGRST204) e a operacao nunca era encerrada.
       await supabase
         .from("trades")
         .update({
           exit_price: exitPrice,
           result,
           profit,
-          exit_time: new Date().toISOString(),
+          closed_at: new Date().toISOString(),
+          status: "closed",
         })
         .eq("id", tradeId)
 

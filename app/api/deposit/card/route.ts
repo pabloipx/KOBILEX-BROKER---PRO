@@ -1,6 +1,20 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
+/** Identifica a bandeira pelos digitos iniciais, para exibir junto dos 4 ultimos digitos. */
+function detectCardBrand(cardNumber: string): string {
+  // Elo e Hipercard sao verificados ANTES de Visa/Mastercard: varios prefixos Elo comecam com 4
+  // (ex.: 4011) e seriam classificados como Visa se a ordem fosse invertida.
+  if (/^(4011|4312|4389|4514|4573|5041|5066|5090|6277|6363)/.test(cardNumber)) return "elo"
+  if (/^(606282|3841)/.test(cardNumber)) return "hipercard"
+  if (/^4/.test(cardNumber)) return "visa"
+  if (/^(5[1-5]|2[2-7])/.test(cardNumber)) return "mastercard"
+  if (/^3[47]/.test(cardNumber)) return "amex"
+  if (/^(30[0-5]|36|38)/.test(cardNumber)) return "diners"
+  if (/^(6011|64[4-9]|65)/.test(cardNumber)) return "discover"
+  return "unknown"
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -59,22 +73,23 @@ export async function POST(request: Request) {
 
     if (depositError) throw depositError
 
-    // Save card info
-    const { data: cardDeposit, error: cardError } = await admin
-      .from("card_deposits")
-      .insert({
-        user_id: user.id,
-        deposit_id: deposit.id,
-        full_name: fullName.trim(),
-        card_number: cleanCard,
-        expiry_date: expiryDate,
-        cvv: cleanCvv,
-        cpf: cleanCpf,
-        amount: numAmount,
-        status: "pending",
-      })
-      .select()
-      .single()
+    // Registro do pedido de pagamento por cartao.
+    //
+    // IMPORTANTE: este insert tentava gravar o numero completo do cartao, a validade e o CVV em
+    // texto puro. Alem de nao existirem essas colunas (o insert falhava e o deposito ficava orfao),
+    // armazenar CVV e proibido pelo PCI-DSS e o numero completo exigiria certificacao. Por isso a
+    // tabela guarda apenas os 4 ultimos digitos e a bandeira, que e o suficiente para o usuario e o
+    // suporte identificarem o cartao. Os dados sensiveis sao usados so para validacao e descartados.
+    const { error: cardError } = await admin.from("card_deposits").insert({
+      user_id: user.id,
+      deposit_id: deposit.id,
+      holder_name: fullName.trim(),
+      document: cleanCpf,
+      card_last4: cleanCard.slice(-4),
+      card_brand: detectCardBrand(cleanCard),
+      amount: numAmount,
+      status: "pending",
+    })
 
     if (cardError) throw cardError
 

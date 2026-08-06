@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
+import { isRealSymbol } from "@/lib/price-engine/real-price-store"
+import { getBars, subscribeBars, unsubscribeBars } from "@/lib/price-engine/datafeed"
 
 // Mapa central de casas decimais por simbolo (fonte unica: engine de precos)
 const SYMBOL_DECIMALS: Record<string, number> = Object.fromEntries(
@@ -67,7 +69,7 @@ interface Props {
   candles: Candle[]
   currentPrice: number
   activeTrades?: ActiveTrade[]
-  timeframe: 60 | 300 | 600
+  timeframe: 60 | 300 | 600 | 900
   symbol: string
   payout?: number
   result?: TradeResult | null
@@ -299,6 +301,19 @@ const DRAW_TOOLS: { id: DrawTool; label: string; icon: React.ReactNode }[] = [
 function fmtPrice(p: number, sym: string): string {
   if (!p || p <= 0) return (0).toFixed(getDecimals(sym))
   return p.toFixed(getDecimals(sym, p))
+}
+
+/**
+ * Largura da vela por tempo: quanto maior o periodo, mais velas cabem na tela.
+ *
+ * O 15m nao tinha caso proprio e caia no mesmo espacamento do 10m, o que fazia os dois tempos
+ * parecerem identicos mesmo com os dados certos.
+ */
+function barSpacingFor(tf: number, mobile: boolean): number {
+  if (tf === 60) return mobile ? 16 : 22
+  if (tf === 300) return mobile ? 11 : 15
+  if (tf === 600) return mobile ? 9 : 12
+  return mobile ? 7 : 10
 }
 
 function dedup(arr: Candle[]): Candle[] {
@@ -947,7 +962,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         const sym = latest.current.symbol
         const tf = latest.current.timeframe
         const mob = containerRef.current ? containerRef.current.clientWidth < 768 : false
-        const bs = tf === 60 ? (mob ? 16 : 22) : tf === 300 ? (mob ? 11 : 15) : mob ? 9 : 12
+        const bs = barSpacingFor(tf, mob)
 
         // Bloqueia o loop de render de aplicar preco ate os novos dados chegarem
         loadedSymbolRef.current = null
@@ -970,24 +985,41 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           })
         } catch {}
 
-        // ===== Historico CLIENT-SIDE (instantaneo, sem rede) =====
-        // O motor de precos e puro/deterministico, entao construimos as ~24h de velas
-        // localmente. Isso remove a dependencia do endpoint serverless (/api/global/history),
-        // cujo cold start em producao segurava o grafico vazio/travado. Resultado: o grafico
-        // aparece ja carregado na entrada e a troca de ativo e imediata.
-        let baseData: Candle[] = []
-        try {
-          baseData = dedup(multiAssetEngine.getHistory(sym as any, tf) as Candle[])
-        } catch (err) {
-          console.error("[v0] Falha ao montar o historico do grafico:", err)
-        }
+        // ===== Historico via DATAFEED =====
+        // O historico agora vem do datafeed (getBars), que no mercado aberto busca o OHLC real
+        // com maxima e minima de verdade, e no OTC le o motor deterministico. Antes o grafico
+        // montava as velas so a partir do motor local: no forex isso dependia do feed ja ter
+        // preenchido o store, e a fonte anterior devolvia velas achatadas
+        // (open=high=low=close), que e o motivo de o desenho nao bater com o mercado real.
+        void getBars(sym as any, tf as any)
+          .then((bars) => {
+            // Uma carga mais nova comecou no meio do caminho: descarta esta resposta.
+            if (dead || myToken !== loadToken || !seriesRef.current || !chartRef.current) return
+            applyBars(dedup(bars as Candle[]))
+          })
+          .catch((err) => {
+            console.error("[v0] Falha ao montar o historico do grafico:", err)
+            if (dead || myToken !== loadToken) return
+            applyBars([])
+          })
+      }
 
-        // Usa a serie mais completa das duas. O historico do motor pode estar praticamente
-        // vazio nos primeiros instantes de um ativo de mercado aberto (o feed real ainda esta
-        // carregando); nesse caso as velas vindas do hook desenham mais do grafico.
+      // Desenha a serie recebida do datafeed. Extraido para fora do loadData porque agora o
+      // historico chega de forma assincrona.
+      const applyBars = (bars: Candle[]) => {
+        if (!chartRef.current || !seriesRef.current) return
+        const tf = latest.current.timeframe
+        const sym = latest.current.symbol
+        const mob = containerRef.current ? containerRef.current.clientWidth < 768 : false
+        const bs = barSpacingFor(tf, mob)
+
+        let baseData = bars
+
+        // Usa a serie mais completa das duas. O historico pode chegar curto nos primeiros
+        // instantes de um ativo de mercado aberto; nesse caso as velas vindas do hook
+        // desenham mais do grafico.
         const fromProps = dedup(latest.current.candles || [])
         if (fromProps.length > baseData.length) baseData = fromProps
-        if (dead || myToken !== loadToken || !seriesRef.current) return
 
         if (baseData.length > 0) {
           try {
@@ -1019,9 +1051,28 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
               to: total + rightBars,
             })
           } catch {}
+          loadedSymbolRef.current = sym
+          setLoading(false)
+        } else {
+          // Sem velas para este (ativo, timeframe) ainda.
+          //
+          // Este era o motivo de o grafico NAO MUDAR ao trocar o tempo no forex: a serie so era
+          // reescrita quando havia dados, entao com a lista vazia o `setData` nunca era chamado
+          // e as velas do tempo ANTERIOR continuavam desenhadas. Num ativo de mercado aberto a
+          // troca de tempo passa sempre por esse estado — o historico daquele tempo so existe
+          // depois que o feed busca (`pollCandles`) —, ou seja, trocar de 5m para 15m deixava o
+          // grafico exibindo 5m indefinidamente.
+          //
+          // Limpar a serie e manter `loadedSymbolRef` nulo garante que nada do tempo antigo
+          // sobreviva e que o loop de render nao escreva preco novo dentro de velas erradas.
+          // O efeito de reload roda de novo assim que o historico do novo tempo chega.
+          try {
+            seriesRef.current.setData([])
+          } catch {}
+          candleArrayRef.current = []
+          loadedSymbolRef.current = null
+          setLoading(true)
         }
-        loadedSymbolRef.current = sym
-        setLoading(false)
         // Redesenha linhas de operacao/overlays sobre os novos dados
         setSeriesReady((n) => n + 1)
       }
@@ -1048,6 +1099,58 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         } catch {
           target = latest.current.currentPrice
         }
+
+        // ===== MERCADO ABERTO: renderiza a vela de ticks, sem reconstrui-la =====
+        // Nos ativos reais o OHLC vem pronto do motor, formado tick a tick pelo feed. O caminho
+        // abaixo (suavizacao exponencial + high/low recalculados no cliente) e do motor OTC: ao
+        // aplica-lo aos ativos reais, cada frame empurrava um preco interpolado para dentro da
+        // vela e os extremos cresciam a cada frame, criando pavios que o mercado nao teve.
+        // Aqui apenas atualizamos a vela existente, sem redesenhar a serie.
+        if (isRealSymbol(sym)) {
+          const live = multiAssetEngine.getCurrentCandle(sym as any, tf)
+          if (!live) return
+
+          const f = formingRef.current
+          if (!f || live.time > f.time) {
+            // Novo periodo: a vela nasce com o dado real do motor (Open = fechamento anterior).
+            formingRef.current = { ...live }
+          } else if (live.time === f.time) {
+            // Mesmo periodo: atualizacao continua dos extremos e do fechamento.
+            f.open = live.open
+            f.high = live.high
+            f.low = live.low
+            f.close = live.close
+          }
+
+          const cur = formingRef.current!
+          if (cur.close > prevTargetRef.current) dirRef.current = "up"
+          else if (cur.close < prevTargetRef.current) dirRef.current = "down"
+          prevTargetRef.current = cur.close
+          smoothPriceRef.current = cur.close
+
+          const arr = candleArrayRef.current
+          if (arr.length && arr[arr.length - 1].time === cur.time) {
+            arr[arr.length - 1] = { ...cur }
+          } else {
+            arr.push({ ...cur })
+            if (arr.length > 600) arr.shift()
+          }
+
+          try {
+            seriesRef.current.update({
+              time: cur.time as any,
+              open: cur.open,
+              high: cur.high,
+              low: cur.low,
+              close: cur.close,
+            })
+          } catch {}
+          updateHeader(cur, cur.close)
+          updateCountdown(cur.close)
+          lastFrameAt = Date.now()
+          return
+        }
+
         if (target > 0 && formingRef.current) {
           if (smoothPriceRef.current === 0) smoothPriceRef.current = target
           // Suavizacao relativa a escala do preco: funciona para qualquer magnitude
@@ -1173,6 +1276,29 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     loadDataRef.current?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe, reloadKey])
+
+  // Fluxo AO VIVO da vela atual (WebSocket via SSE, com reserva por consulta).
+  //
+  // O datafeed grava cada tick no store de precos, que e a mesma fonte que o loop de render do
+  // grafico e a liquidacao das operacoes consultam. Por isso o preco chega em tempo real sem
+  // alterar nada do desenho, dos indicadores ou das ferramentas.
+  useEffect(() => {
+    if (!isRealSymbol(symbol)) return
+    const id = subscribeBars(symbol, timeframe as 60 | 300 | 600 | 900, () => {})
+    return () => unsubscribeBars(id)
+  }, [symbol, timeframe])
+
+  // Enquanto o par (ativo, timeframe) atual nao tiver velas, tenta recarregar a cada 400ms.
+  // Ao trocar o tempo de um ativo de mercado aberto, o historico daquele tempo chega da rede
+  // alguns instantes depois; sem esta tentativa o grafico so preencheria no proximo ciclo do
+  // feed (ate 15s de espera) ou ficaria parado caso a primeira busca falhasse.
+  useEffect(() => {
+    if (!loading) return
+    const id = setInterval(() => {
+      if (loadedSymbolRef.current === null) loadDataRef.current?.()
+    }, 400)
+    return () => clearInterval(id)
+  }, [loading, symbol, timeframe])
 
   // ===== INDICADORES: cria/remove series e atualiza os dados =====
   useEffect(() => {

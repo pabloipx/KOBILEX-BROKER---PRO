@@ -7,6 +7,7 @@ import { createBrowserClient } from "@supabase/ssr"
 import { ChevronLeft, Copy, Check, Loader2, Clock, RefreshCw, CreditCard, CheckCircle2, XCircle, X, Info, Sparkles, ShieldCheck, Lock } from "lucide-react"
 import Image from "next/image"
 import { QRCodeSVG } from "qrcode.react"
+import { PromoCodeInput } from "@/components/promo-code-input"
 
 const QUICK_AMOUNTS = [50, 100, 500, 1000, 5000, 10000, 50000, 100000]
 
@@ -35,6 +36,8 @@ export default function DepositPage() {
   const [method, setMethod] = useState<DepositMethod>("pix")
   const [amount, setAmount] = useState("50,00")
   const [acceptTerms, setAcceptTerms] = useState(false)
+  // Codigo promocional ja validado pelo servidor; enviado junto ao gerar o PIX.
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [promoCode, setPromoCode] = useState("")
@@ -260,6 +263,7 @@ export default function DepositPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: depositAmount,
+          promoCode: appliedPromoCode,
         }),
       })
       const data = await response.json()
@@ -1166,6 +1170,11 @@ export default function DepositPage() {
               </>
             )}
           </div>
+        )}
+
+        {/* Codigo promocional - apenas PIX, o unico metodo que concede bonus hoje */}
+        {method === "pix" && !pixData && (
+          <PromoCodeInput amount={parseAmount()} onApplied={setAppliedPromoCode} />
         )}
 
         {/* Terms - only for PIX and Card */}

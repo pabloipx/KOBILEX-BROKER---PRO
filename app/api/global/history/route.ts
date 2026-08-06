@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const timeframe = Number(searchParams.get("timeframe") || "60") as 60 | 300 | 600
+    const timeframe = Number(searchParams.get("timeframe") || "60") as 60 | 300 | 600 | 900
     const symbol = searchParams.get("symbol") || "EURUSD_OTC"
 
     const validSymbol = OTC_ASSETS.find((a) => a.symbol === symbol)?.symbol || "EURUSD_OTC"

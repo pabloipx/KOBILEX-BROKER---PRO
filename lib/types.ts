@@ -57,7 +57,7 @@ export interface TickData {
 
 export interface CandleData {
   type: "candle"
-  timeframe: 60 | 300 | 600
+  timeframe: 60 | 300 | 600 | 900
   data: {
     time: number
     open: number

@@ -72,16 +72,33 @@ export function setRealPrice(symbol: string, price: number): void {
 
 export function setRealCandles(symbol: string, tf: number, candles: RealCandle[]): void {
   const e = ensure(symbol)
-
-  // O historico recarrega a cada 15s, enquanto o preco ao vivo chega a cada 1,5s. Substituir a
-  // lista inteira jogaria fora a vela em formacao (e a maxima/minima ja acumuladas nela), que
-  // a fonte publica ainda nao consolidou. Por isso as velas mais recentes que o historico sao
-  // preservadas.
   const prev = e.candles.get(tf)
+
   if (prev?.length && candles.length) {
+    // O historico recarrega a cada 15s, enquanto os ticks chegam a cada 600ms. Substituir a
+    // lista inteira jogaria fora o trabalho dos ticks nas velas que a fonte ainda nao
+    // consolidou. Duas protecoes:
+
+    // 1) Velas mais recentes que o historico do servidor sao mantidas na integra — elas so
+    //    existem porque os ticks as construiram.
     const lastServer = candles[candles.length - 1].time
     const live = prev.filter(c => c.time > lastServer)
     if (live.length) candles = [...candles, ...live]
+
+    // 2) Nas velas que APARECEM nas duas listas, os extremos observados por tick nunca sao
+    //    reduzidos. Sem isto, a cada 15s o high/low de uma vela encolhia para o valor achatado
+    //    da fonte (que no forex vem com high == low) e o grafico "perdia" pavios reais que ja
+    //    havia desenhado — a vela piscava e mudava de forma sozinha.
+    const byTime = new Map(prev.map(c => [c.time, c]))
+    candles = candles.map(c => {
+      const old = byTime.get(c.time)
+      if (!old) return c
+      return {
+        ...c,
+        high: Math.max(c.high, old.high),
+        low: Math.min(c.low, old.low),
+      }
+    })
   }
 
   e.candles.set(tf, candles)
@@ -91,10 +108,15 @@ export function setRealCandles(symbol: string, tf: number, candles: RealCandle[]
 const MAX_REAL_CANDLES = 400
 
 /**
- * Atualiza a vela EM FORMACAO com o ultimo preco real recebido. O historico completo vem do
- * endpoint de candles (a cada 15s), enquanto o preco chega a cada 1,5s — esta funcao mantem a
- * vela atual acompanhando o preco ao vivo entre duas cargas de historico. Todos os valores sao
- * reais: nada aqui e sintetizado.
+ * Registra um TICK real na vela em formacao. E o nucleo do motor de mercado aberto.
+ *
+ * Regras de formacao, iguais as de uma corretora:
+ *   - a vela do periodo corrente e ATUALIZADA, nunca recriada nem substituida;
+ *   - High sobe quando o tick supera a maxima; Low desce quando fica abaixo da minima;
+ *   - Close e sempre o ultimo tick recebido;
+ *   - ao virar o periodo, a vela nova abre no fechamento da anterior (Open = close anterior).
+ *
+ * Todos os valores sao precos reais de mercado: nada aqui e gerado.
  */
 export function pushRealTick(symbol: string, tf: number, price: number, decimals: number): void {
   const e = ensure(symbol)

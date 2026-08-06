@@ -29,6 +29,13 @@ import {
   Lock,
 } from "lucide-react"
 import { getMarketStatus, canOpenTrade } from "@/lib/market-hours"
+import {
+  TIMEFRAME_LABELS,
+  timeframesFor,
+  normalizeTimeframe,
+  isTimeframeAllowed,
+  type Timeframe,
+} from "@/lib/trading/timeframes"
 
 interface ActiveTrade {
   id: string
@@ -89,12 +96,8 @@ const FALLBACK_ASSETS: Asset[] = [
   },
 ]
 
-const TIMEFRAMES = [60, 300, 600]
-const TIMEFRAME_LABELS: Record<number, string> = {
-  60: "1m",
-  300: "5m",
-  600: "10m",
-}
+// As duracoes permitidas dependem do ativo (mercado aberto: 5m/10m/15m; OTC: 1m/5m/10m).
+// A regra vive em lib/trading/timeframes para ser a mesma na interface e na API.
 
 const formatCurrency = (value: number | undefined | null): string => {
   const safeValue = typeof value === "number" && !isNaN(value) ? value : 0
@@ -130,8 +133,14 @@ export default function TradePage() {
   const [selectedSymbol, setSelectedSymbol] = useState("EURUSD_OTC")
   // Abas de ativos abertas (estilo IQ Option). O ativo selecionado e sempre uma delas.
   const [openTabs, setOpenTabs] = useState<string[]>(["EURUSD_OTC"])
+  // Tempo selecionado: vale para a ENTRADA e para o GRAFICO ao mesmo tempo.
+  //
+  // Antes existiam dois estados separados (`expiryTime` e `timeframe`) e nada os ligava, apesar
+  // de o segundo estar comentado como "acompanha o tempo selecionado". O resultado era que mudar
+  // o tempo pelas setas alterava so a duracao da operacao e o grafico continuava no periodo
+  // anterior — a troca simplesmente nao aparecia. Com um unico estado os dois nao podem divergir.
   const [expiryTime, setExpiryTime] = useState<number>(60)
-  const [timeframe, setTimeframe] = useState<number>(60) // Acompanha o tempo selecionado na corretora
+  const timeframe = expiryTime
   const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>([])
   const [isTrading, setIsTrading] = useState(false)
   const [showSidebar, setSidebarOpen] = useState(false)
@@ -174,7 +183,7 @@ export default function TradePage() {
 
   const { price, candles, isConnected, realReady, realHistoryReady } = useGlobalOTC(
     selectedSymbol,
-    timeframe as 60 | 300 | 600,
+    timeframe as 60 | 300 | 600 | 900,
   )
 
   const currentBalance = useMemo(() => {
@@ -205,6 +214,17 @@ export default function TradePage() {
     [selectedAsset, clockTick],
   )
   const marketClosed = !marketStatus.open
+
+  // Duracoes disponiveis para o ativo atual: mercado aberto opera em 5m/10m/15m, OTC em
+  // 1m/5m/10m (ver lib/trading/timeframes para o motivo).
+  const timeframeOptions = useMemo(() => timeframesFor(selectedAsset?.symbol), [selectedAsset])
+
+  // Ao trocar de ativo, a duracao selecionada pode nao existir na nova lista (ex.: estava em 1m
+  // num OTC e mudou para um par de mercado aberto). Sem este ajuste a tela ficaria mostrando um
+  // tempo indisponivel e a entrada seria recusada pelo servidor.
+  useEffect(() => {
+    setExpiryTime(prev => normalizeTimeframe(selectedAsset?.symbol, prev))
+  }, [selectedAsset?.symbol])
 
   // Janela de entrada considerando a duração escolhida: perto do fechamento, uma operação
   // que venceria depois dele não pode ser aberta (não haveria preço real para liquidar).
@@ -396,28 +416,52 @@ export default function TradePage() {
       if (expiredTrades.length === 0) return
 
       for (const trade of expiredTrades) {
-        // Preco de saida: usa o preco ATUAL do motor para o ativo (que ja inclui qualquer
-        // manipulacao do admin), garantindo que o resultado seja consistente com o grafico.
-        // Fallback para um pequeno movimento aleatorio apenas se o motor nao tiver preco.
+        // Preco de saida: o preco ATUAL do motor para o ativo — o mesmo que alimenta o grafico,
+        // garantindo que o resultado seja consistente com o que o usuario viu.
+        //
+        // NAO existe mais fallback aleatorio aqui. Antes, quando o motor nao tinha preco, a
+        // operacao era liquidada em `entry_price * (1 + (Math.random() - 0.5) * 0.01)`: ganho ou
+        // perda decidido por sorteio, com desvio de ate 0,5% sobre a entrada. Agora, sem preco a
+        // operacao permanece pendente e e liquidada no proximo ciclo (roda a cada 3s), quando
+        // houver cotacao real.
         const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
-        const exitPrice =
-          enginePrice && enginePrice > 0
-            ? enginePrice
-            : trade.entry_price * (1 + (Math.random() - 0.5) * 0.01)
+        if (!enginePrice || enginePrice <= 0) continue
+        const exitPrice = enginePrice
         const isWin =
           trade.direction === "CALL" ? exitPrice > trade.entry_price : exitPrice < trade.entry_price
         const result = isWin ? "win" : "loss"
         const profitAmount = isWin ? trade.amount * (trade.payout_percentage || 0.96) : -trade.amount
 
-        await supabase
+        // A operacao SO e marcada como encerrada aqui. Duas correcoes importantes neste update:
+        //
+        // 1. Antes gravava `exit_time`, coluna que NAO existe em `trades` (o nome correto e
+        //    `closed_at`). O Postgres recusava o update inteiro com erro PGRST204, entao a operacao
+        //    ficava eternamente com result='pending' — era isso que travava o cronometro em "0s".
+        // 2. O erro nao era verificado. Como o registro continuava 'pending', a consulta acima
+        //    pegava a MESMA operacao no ciclo seguinte (a cada 3s) e creditava o ganho de novo, sem
+        //    limite. Agora, se o update falhar, abortamos antes de creditar qualquer coisa.
+        const { data: closedRows, error: closeError } = await supabase
           .from("trades")
           .update({
             result,
             profit: profitAmount,
             exit_price: exitPrice,
-            exit_time: new Date().toISOString(),
+            closed_at: new Date().toISOString(),
+            status: "closed",
           })
           .eq("id", trade.id)
+          .eq("result", "pending") // so encerra se ainda estiver pendente
+          .select("id")
+
+        // O credito depende de ESTE update ter encerrado a operacao de fato. Se deu erro, ou se
+        // nenhuma linha foi afetada (outro caminho de liquidacao fechou primeiro), nao creditamos:
+        // e o que impede o mesmo ganho de ser pago duas vezes.
+        if (closeError || !closedRows || closedRows.length === 0) {
+          if (closeError) {
+            console.error("[v0] Falha ao encerrar operacao, credito abortado:", closeError.message)
+          }
+          continue
+        }
 
         // Se ganhou, creditar o saldo
         if (isWin) {
@@ -522,17 +566,24 @@ export default function TradePage() {
           }
 
           // Update trade in DB
-          const { error: updateError } = await supabaseRef.current
+          // Mesma correcao do outro caminho de liquidacao: `exit_time` nao existe na tabela, o nome
+          // correto e `closed_at`. Com o nome errado o update era recusado (PGRST204), este bloco
+          // caia sempre no `updateError` abaixo e a operacao nunca era encerrada — ficava presa em
+          // 'pending' e era reprocessada indefinidamente.
+          const { data: closedRows, error: updateError } = await supabaseRef.current
             .from("trades")
             .update({
               exit_price: price,
-              exit_time: new Date().toISOString(),
+              closed_at: new Date().toISOString(),
+              status: "closed",
               result,
               profit: isWin ? profitAmount : -trade.amount,
             })
             .eq("id", existingTrade.id)
+            .in("result", ["pending", "PENDING"])
+            .select("id")
 
-          if (updateError) {
+          if (updateError || !closedRows || closedRows.length === 0) {
             processedTradesRef.current.delete(trade.id)
             continue
           }
@@ -596,6 +647,17 @@ export default function TradePage() {
   const executeTrade = useCallback(
     async (direction: "CALL" | "PUT") => {
       if (isTrading || !user) {
+        return
+      }
+
+      // Duracao permitida para o ativo. Esta pagina grava a operacao direto no banco, entao a
+      // regra precisa valer aqui tambem — nao apenas na rota de API.
+      if (!isTimeframeAllowed(selectedSymbol, expiryTime)) {
+        const permitidos = timeframesFor(selectedSymbol)
+          .map(tf => TIMEFRAME_LABELS[tf])
+          .join(", ")
+        setTradeError(`Tempo indisponivel para este ativo. Use: ${permitidos}.`)
+        setTimeout(() => setTradeError(null), 3000)
         return
       }
 
@@ -716,12 +778,11 @@ export default function TradePage() {
 
   const handleExpiryChange = useCallback(
     (delta: number) => {
-      const currentIndex = TIMEFRAMES.indexOf(expiryTime)
-      const newIndex = Math.max(0, Math.min(TIMEFRAMES.length - 1, currentIndex + delta))
-      const newExpiry = TIMEFRAMES[newIndex]
-      setExpiryTime(newExpiry)
+      const currentIndex = timeframeOptions.indexOf(expiryTime as Timeframe)
+      const newIndex = Math.max(0, Math.min(timeframeOptions.length - 1, currentIndex + delta))
+      setExpiryTime(timeframeOptions[newIndex])
     },
-    [expiryTime],
+    [expiryTime, timeframeOptions],
   )
 
   const handleAmountChange = useCallback(
@@ -952,7 +1013,7 @@ export default function TradePage() {
               candles={candles || []}
               currentPrice={price || 0}
               activeTrades={activeTradesForChart}
-              timeframe={timeframe as 60 | 300 | 600}
+              timeframe={timeframe as 60 | 300 | 600 | 900}
               symbol={selectedSymbol}
               payout={payout / 100}
               result={tradeResult}
@@ -975,7 +1036,7 @@ export default function TradePage() {
             <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
               <button
                 onClick={() => handleExpiryChange(-1)}
-                disabled={TIMEFRAMES.indexOf(expiryTime) === 0}
+                disabled={timeframeOptions.indexOf(expiryTime as Timeframe) === 0}
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft className="w-5 h-5 text-white/60" />
@@ -983,7 +1044,9 @@ export default function TradePage() {
               <span className="text-white text-lg font-bold">{TIMEFRAME_LABELS[expiryTime]}</span>
               <button
                 onClick={() => handleExpiryChange(1)}
-                disabled={TIMEFRAMES.indexOf(expiryTime) === TIMEFRAMES.length - 1}
+                disabled={
+                  timeframeOptions.indexOf(expiryTime as Timeframe) === timeframeOptions.length - 1
+                }
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronRight className="w-5 h-5 text-white/60" />
@@ -994,16 +1057,16 @@ export default function TradePage() {
           {/* Tempo de expiração do gráfico - abas estilo corretora */}
           <div>
             <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">
-              Tempo do grafico
+              Tempo (grafico e entrada)
             </label>
             <div className="flex items-center gap-1.5 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
-              {TIMEFRAMES.map((tf) => (
+              {timeframeOptions.map((tf) => (
                 <button
                   key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  aria-pressed={timeframe === tf}
+                  onClick={() => setExpiryTime(tf)}
+                  aria-pressed={expiryTime === tf}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
-                    timeframe === tf
+                    expiryTime === tf
                       ? "bg-primary text-primary-foreground"
                       : "text-white/60 hover:bg-white/10 hover:text-white"
                   }`}
@@ -1131,7 +1194,7 @@ export default function TradePage() {
               <div className="flex items-center justify-between p-2 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
                 <button
                   onClick={() => handleExpiryChange(-1)}
-                  disabled={TIMEFRAMES.indexOf(expiryTime) === 0}
+                  disabled={timeframeOptions.indexOf(expiryTime as Timeframe) === 0}
                   className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4 text-white/60" />
@@ -1139,23 +1202,25 @@ export default function TradePage() {
                 <span className="text-white text-sm font-bold">{TIMEFRAME_LABELS[expiryTime]}</span>
                 <button
                   onClick={() => handleExpiryChange(1)}
-                  disabled={TIMEFRAMES.indexOf(expiryTime) === TIMEFRAMES.length - 1}
+                  disabled={
+                    timeframeOptions.indexOf(expiryTime as Timeframe) === timeframeOptions.length - 1
+                  }
                   className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-4 h-4 text-white/60" />
                 </button>
               </div>
               <label className="text-white/50 text-[10px] mt-2 mb-1 block font-medium uppercase tracking-wider">
-                Tempo do grafico
+                Tempo (grafico e entrada)
               </label>
               <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
-                {TIMEFRAMES.map((tf) => (
+                {timeframeOptions.map((tf) => (
                   <button
                     key={tf}
-                    onClick={() => setTimeframe(tf)}
-                    aria-pressed={timeframe === tf}
+                    onClick={() => setExpiryTime(tf)}
+                    aria-pressed={expiryTime === tf}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                      timeframe === tf
+                      expiryTime === tf
                         ? "bg-primary text-primary-foreground"
                         : "text-white/60 hover:bg-white/10 hover:text-white"
                     }`}

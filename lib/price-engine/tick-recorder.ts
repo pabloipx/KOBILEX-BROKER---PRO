@@ -17,11 +17,14 @@ function bucketOf(tsMs: number): number {
   return Math.floor(tsMs / 1000 / BUCKET) * BUCKET
 }
 
-// Throttle por simbolo: o endpoint de preco e chamado a cada ~1,5s por cada usuario
-// conectado. Sem isso, 100 usuarios gerariam ~67 gravacoes por segundo no mesmo simbolo,
-// todas com o mesmo preco. Uma gravacao a cada 2s por simbolo ja da ~30 amostras por vela,
-// resolucao mais que suficiente para o high/low do minuto.
-const MIN_WRITE_INTERVAL_MS = 2000
+// Throttle por simbolo. Sem ele, cada usuario conectado geraria uma gravacao por tick e 100
+// usuarios produziriam dezenas de escritas por segundo no mesmo simbolo, todas com o mesmo
+// preco. O limite e por SIMBOLO, nao por usuario: a vela e compartilhada, entao um unico
+// registro por instante serve a todos.
+//
+// 1s casa com o cache de preco da rota (o valor upstream nao muda mais rapido que isso) e da
+// ~60 amostras por vela de 1m — resolucao suficiente para o high/low do minuto.
+const MIN_WRITE_INTERVAL_MS = 1000
 const lastWrite = new Map<string, number>()
 
 // Retencao: o grafico usa no maximo algumas horas de 1m, mas guardamos alguns dias para
@@ -69,6 +72,50 @@ export function recordTick(symbol: string, price: number): void {
     .then(({ error }) => {
       if (error) console.log("[v0] recordTick falhou:", symbol, error.message)
     })
+}
+
+/**
+ * Ultimo preco real conhecido de cada simbolo, lido do historico de ticks gravado.
+ *
+ * Existe porque o feed de precos roda no NAVEGADOR: no servidor o real-price-store esta
+ * sempre vazio, e ate agora as rotas de servidor caiam no gerador sintetico para os ativos de
+ * mercado aberto (numeros diferentes dos do grafico). Lendo do historico gravado, o servidor
+ * responde com o mesmo preco real que todos os usuarios estao vendo.
+ *
+ * Retorna tambem o primeiro fechamento da janela, para a variacao percentual sair de dado
+ * real em vez do basePrice de catalogo.
+ */
+export async function getRecordedSnapshots(
+  symbols: string[],
+  windowMinutes = 240,
+): Promise<Map<string, { price: number; first: number }>> {
+  const out = new Map<string, { price: number; first: number }>()
+  if (!symbols.length) return out
+
+  const since = Math.floor(Date.now() / 1000) - windowMinutes * BUCKET
+  const { data, error } = await createAdminClient()
+    .from("market_candles_1m")
+    .select("symbol, bucket_time, close")
+    .in("symbol", symbols)
+    .gte("bucket_time", since)
+    .order("bucket_time", { ascending: true })
+
+  if (error) {
+    console.log("[v0] getRecordedSnapshots falhou:", error.message)
+    return out
+  }
+
+  // Ordem crescente: a primeira linha de cada simbolo e a mais antiga da janela e a ultima
+  // sobrescreve o preco, ficando com a mais recente.
+  for (const row of data ?? []) {
+    const close = Number(row.close)
+    if (!Number.isFinite(close) || close <= 0) continue
+    const prev = out.get(row.symbol as string)
+    if (prev) prev.price = close
+    else out.set(row.symbol as string, { price: close, first: close })
+  }
+
+  return out
 }
 
 /**

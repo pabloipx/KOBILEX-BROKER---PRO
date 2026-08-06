@@ -82,7 +82,7 @@ export class PriceManager {
     return this.generatePriceAtTime(config, Math.floor(Date.now() / 1000))
   }
 
-  getHistoricalCandles(symbol: string, timeframe: 60 | 300 | 600): Candle[] {
+  getHistoricalCandles(symbol: string, timeframe: 60 | 300 | 600 | 900): Candle[] {
     const config = this.symbols.get(symbol)
     if (!config) return []
 
@@ -98,7 +98,7 @@ export class PriceManager {
     return candles
   }
 
-  getCurrentCandle(symbol: string, timeframe: 60 | 300 | 600): Candle | null {
+  getCurrentCandle(symbol: string, timeframe: 60 | 300 | 600 | 900): Candle | null {
     const config = this.symbols.get(symbol)
     if (!config) return null
 

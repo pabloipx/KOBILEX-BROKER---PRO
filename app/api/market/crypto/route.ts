@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server"
 import { recordTick, getRecordedCandles } from "@/lib/price-engine/tick-recorder"
+import {
+  SYMBOLS,
+  round,
+  getLivePrice,
+  fetchTradingViewPrice,
+  fetchTwelveDataCandles,
+  type SymbolInfo as RealSymbolInfo,
+  type RealCandle,
+} from "@/lib/price-engine/real-quote"
 
 // Proxy para dados REAIS de mercado. Roda no servidor para evitar CORS e o bloqueio
 // geografico que afeta algumas exchanges (ex.: Binance) a partir da Vercel.
@@ -15,21 +24,10 @@ import { recordTick, getRecordedCandles } from "@/lib/price-engine/tick-recorder
 //    O scanner do TradingView so expoe o snapshot atual, sem historico.
 export const dynamic = "force-dynamic"
 
-interface SymbolInfo {
-  /** Simbolo no Yahoo Finance, usado no historico de velas */
-  yahoo: string
-  /** Ticker no TradingView, usado no preco ao vivo */
-  tv: string
-  /** Mercado do scanner do TradingView */
-  tvScan: "forex" | "crypto"
-  /** Casas decimais do par. O Yahoo devolve float32 alargado (1.1531364917755127). */
-  decimals: number
-}
-
-/** Arredonda para a precisao real do par, removendo o ruido de ponto flutuante do Yahoo. */
-function round(value: number, decimals: number): number {
-  return Number(value.toFixed(decimals))
-}
+// O mapa de simbolos, o arredondamento e a busca de preco vivem em lib/price-engine/real-quote
+// para que a LIQUIDACAO das operacoes use exatamente a mesma cotacao que alimenta o grafico.
+// Duas copias divergiriam com o tempo e o usuario seria pago por um preco diferente do que viu.
+type SymbolInfo = RealSymbolInfo
 
 /**
  * O Yahoo so tem OHLC real de 1m para cripto. Para forex ele devolve o minuto achatado
@@ -40,52 +38,9 @@ function hasRealYahoo1m(info: SymbolInfo): boolean {
   return info.tvScan === "crypto"
 }
 
-// Mapeia o simbolo interno do motor -> simbolos das fontes reais.
-// FX_IDC e a fonte de forex que o TradingView usa por padrao nos graficos publicos.
-const SYMBOLS: Record<string, SymbolInfo> = {
-  BTCUSD: { yahoo: "BTC-USD", tv: "COINBASE:BTCUSD", tvScan: "crypto", decimals: 2 },
-  EURUSD: { yahoo: "EURUSD=X", tv: "FX_IDC:EURUSD", tvScan: "forex", decimals: 5 },
-  GBPJPY: { yahoo: "GBPJPY=X", tv: "FX_IDC:GBPJPY", tvScan: "forex", decimals: 3 },
-  EURJPY: { yahoo: "EURJPY=X", tv: "FX_IDC:EURJPY", tvScan: "forex", decimals: 3 },
-  AUDUSD: { yahoo: "AUDUSD=X", tv: "FX_IDC:AUDUSD", tvScan: "forex", decimals: 5 },
-  AUDJPY: { yahoo: "AUDJPY=X", tv: "FX_IDC:AUDJPY", tvScan: "forex", decimals: 3 },
-  GBPUSD: { yahoo: "GBPUSD=X", tv: "FX_IDC:GBPUSD", tvScan: "forex", decimals: 5 },
-  USDJPY: { yahoo: "USDJPY=X", tv: "FX_IDC:USDJPY", tvScan: "forex", decimals: 3 },
-  USDCHF: { yahoo: "USDCHF=X", tv: "FX_IDC:USDCHF", tvScan: "forex", decimals: 5 },
-  USDCAD: { yahoo: "USDCAD=X", tv: "FX_IDC:USDCAD", tvScan: "forex", decimals: 5 },
-  NZDUSD: { yahoo: "NZDUSD=X", tv: "FX_IDC:NZDUSD", tvScan: "forex", decimals: 5 },
-  EURGBP: { yahoo: "EURGBP=X", tv: "FX_IDC:EURGBP", tvScan: "forex", decimals: 5 },
-}
-
-export interface RealCandle {
-  time: number
-  open: number
-  high: number
-  low: number
-  close: number
-}
-
-// =============================================
-// PRECO AO VIVO (TradingView)
-// =============================================
-
-async function fetchTradingViewPrice(info: SymbolInfo): Promise<number> {
-  const r = await fetch(`https://scanner.tradingview.com/${info.tvScan}/scan`, {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" },
-    body: JSON.stringify({
-      symbols: { tickers: [info.tv], query: { types: [] } },
-      columns: ["close"],
-    }),
-  })
-  if (!r.ok) throw new Error(`tradingview ${r.status}`)
-
-  const j = await r.json()
-  const price = Number(j?.data?.[0]?.d?.[0])
-  if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido no tradingview")
-  return price
-}
+// RealCandle vive em lib/price-engine/real-quote e e reexportado para nao quebrar quem importa
+// o tipo desta rota.
+export type { RealCandle }
 
 // =============================================
 // HISTORICO DE VELAS (Yahoo Finance)
@@ -154,18 +109,19 @@ function parseCandles(result: any): RealCandle[] {
 /**
  * Monta as velas de 1m do forex combinando as duas fontes reais disponiveis.
  *
- * O problema: o Yahoo tem a LINHA DO TEMPO completa de 1m (um ponto por minuto, sem
- * buracos) mas com o minuto achatado — open=high=low=close. O historico de ticks tem
- * CORPO real (maxima/minima observadas) mas so nos minutos em que alguem estava usando
- * a plataforma, o que deixa vaos e velas sem corpo no grafico.
+ * As duas fontes NAO tem a mesma qualidade, e essa e a chave da funcao:
  *
- * A combinacao usa cada fonte no que ela tem de real:
- *  - o Yahoo define a sequencia de minutos e o fechamento real de cada um;
- *  - o open encadeia no fechamento do minuto anterior, entao o corpo reflete o movimento
- *    real entre um minuto e o seguinte (e nao um valor inventado);
- *  - a maxima/minima dos ticks observados expande o corpo quando ha registro.
+ *  - Ticks OANDA (gravados pela plataforma): cotacao negociavel, 5 casas decimais, com
+ *    maxima/minima realmente observadas no minuto. E o dado BOM — mas so existe nos minutos
+ *    em que havia alguem usando a plataforma.
+ *  - Yahoo: tem a linha do tempo completa (um ponto por minuto), porem com taxa indicativa
+ *    arredondada em 4 casas e o minuto achatado (open=high=low=close em 100% dos casos).
  *
- * Resultado: serie continua, sem vaos, com todos os valores vindos de preco real.
+ * Por isso o tick tem PRIORIDADE e o Yahoo e apenas preenchimento. Antes as duas eram tratadas
+ * como equivalentes: onde o Yahoo tinha um ponto, o fechamento dele vencia e apagava o tick de
+ * 5 casas do mesmo minuto (1.15567 virava 1.1558), achatando 150 das 240 velas.
+ *
+ * Resultado: serie continua, sem vaos, sempre com o melhor dado real disponivel em cada minuto.
  */
 function buildMinuteCandles(
   yahoo: RealCandle[],
@@ -199,21 +155,31 @@ function buildMinuteCandles(
   // vela de continuidade no ultimo preco real conhecido (nao houve preco novo observado).
   for (let t = first; t <= last; t += 60) {
     const tick = byBucket.get(t)
-    const close = tick?.close ?? yahooClose.get(t) ?? prevClose
-    const open = prevClose || close
 
-    let high = Math.max(open, close)
-    let low = Math.min(open, close)
     if (tick) {
-      high = Math.max(high, tick.high)
-      low = Math.min(low, tick.low)
+      // Minuto com tick real: usado integralmente. O open encadeia no fechamento anterior e o
+      // corpo/extremos vem do que foi efetivamente observado no mercado.
+      const open = prevClose || tick.open
+      out.push({
+        time: t,
+        open: round(open, decimals),
+        high: round(Math.max(tick.high, open, tick.close), decimals),
+        low: round(Math.min(tick.low, open, tick.close), decimals),
+        close: round(tick.close, decimals),
+      })
+      prevClose = tick.close
+      continue
     }
 
+    // Sem tick: cai no Yahoo (ou na continuidade). Sem maxima/minima observadas, a vela fica
+    // limitada ao proprio corpo — nao ha pavio a inventar.
+    const close = yahooClose.get(t) ?? prevClose
+    const open = prevClose || close
     out.push({
       time: t,
       open: round(open, decimals),
-      high: round(high, decimals),
-      low: round(low, decimals),
+      high: round(Math.max(open, close), decimals),
+      low: round(Math.min(open, close), decimals),
       close: round(close, decimals),
     })
     prevClose = close
@@ -280,6 +246,15 @@ export async function GET(req: Request) {
 
   try {
     if (type === "price") {
+      // getLivePrice ja arredonda e faz o cache de 1s por simbolo, compartilhado com a
+      // liquidacao das operacoes: grafico e resultado sempre leem a MESMA cotacao.
+      const live = await getLivePrice(symbol)
+      if (live !== null) {
+        recordTick(symbol, live)
+        return NextResponse.json({ price: live })
+      }
+
+      // A fonte principal falhou. Cai no meta do Yahoo para manter o ativo negociavel.
       let price: number
       try {
         price = await fetchTradingViewPrice(info)
@@ -295,6 +270,8 @@ export async function GET(req: Request) {
       }
       if (!Number.isFinite(price) || price <= 0) throw new Error("preco invalido")
 
+      price = round(price, info.decimals)
+
       // Alimenta o historico de 1m com este preco real. Nao usa await de proposito:
       // a cotacao do usuario nao pode esperar (nem falhar por causa da) gravacao.
       recordTick(symbol, price)
@@ -304,6 +281,21 @@ export async function GET(req: Request) {
 
     // type === "candles"
     const tf = Math.max(60, Number(searchParams.get("tf") || 60))
+
+    // FONTE PRIMARIA: OHLC real da Twelve Data.
+    //
+    // O Yahoo (usado abaixo como reserva) devolve o forex de 1m com open=high=low=close em 100%
+    // das velas — medido: 1242 de 1242. Sem maxima e minima do intervalo nao existe pavio nem
+    // corpo, e era essa a razao de o grafico nao ficar igual ao do mercado real mesmo com o
+    // preco ao vivo correto. A Twelve Data entrega o intervalo agregado de verdade.
+    const td = await fetchTwelveDataCandles(symbol, tf)
+    if (td) {
+      // O 10m nao existe na fonte: vem em 5min e e agregado aqui, preservando o OHLC do periodo.
+      const candles = aggregate(td, tf)
+      if (candles.length >= 2) {
+        return NextResponse.json({ candles: candles.slice(-240), source: "twelvedata" })
+      }
+    }
 
     // Forex em 1m: combina a linha do tempo do Yahoo (continua, com o fechamento real de
     // cada minuto) com o corpo dos ticks observados. Sozinha, nenhuma das duas serve: o

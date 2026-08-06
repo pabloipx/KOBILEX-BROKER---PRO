@@ -7,11 +7,19 @@
  */
 
 const BASE_URL = process.env.AMPLOPAY_BASE_URL || "https://app.amplopay.com/api/v1"
-// Chave Pública (Client ID) - lida de AMPLOPAY_PUBLIC_KEY, com fallback para a fixa.
-// Deve formar um PAR VÁLIDO com a chave secreta na mesma conta AmploPay.
-const PUBLIC_KEY = process.env.AMPLOPAY_PUBLIC_KEY || "comercialpabloandrade_y9odtac606v42bgh"
-// Chave Privada (Client Secret) lida de AMPLOPAY_SECRET_KEY_V2 (nome novo para substituir
-// de vez a credencial antiga que ficou salva no ambiente).
+
+// Credenciais AmploPay. As DUAS vem do ambiente e devem ser do MESMO par/conta, senao a API
+// recusa a autenticacao.
+//
+// Chave Pública (Client ID).
+//
+// Nao existe mais fallback fixo aqui. Antes o codigo caia numa chave publica gravada no fonte,
+// de uma conta DIFERENTE da chave secreta do ambiente. Isso era perigoso por dois motivos:
+// o par ficava cruzado (publica de uma conta + secreta de outra), gerando falha de autenticacao
+// dificil de diagnosticar; e credencial escrita no codigo vaza junto com o repositorio.
+// Sem a variavel, agora falha de forma clara em vez de tentar uma conta errada em silencio.
+const PUBLIC_KEY = process.env.AMPLOPAY_PUBLIC_KEY || ""
+// Chave Privada (Client Secret).
 const SECRET_KEY = process.env.AMPLOPAY_SECRET_KEY_V2 || ""
 
 // URL do webhook que a AmploPay chama quando o pagamento e confirmado.
@@ -104,7 +112,16 @@ class AmploPayClient {
     metadata?: Record<string, any>
   }): Promise<AmploPayPixResponse> {
     if (!PUBLIC_KEY || !SECRET_KEY) {
-      throw new Error("Credenciais AmploPay nao configuradas. Configure AMPLOPAY_PUBLIC_KEY e AMPLOPAY_SECRET_KEY.")
+      // Diz exatamente QUAL variavel falta. A mensagem antiga citava "AMPLOPAY_SECRET_KEY", nome
+      // que nao existe mais no codigo (o correto e AMPLOPAY_SECRET_KEY_V2), o que mandava quem
+      // fosse diagnosticar procurar a variavel errada.
+      const faltando = [
+        !PUBLIC_KEY && "AMPLOPAY_PUBLIC_KEY (Chave Pública / Client ID)",
+        !SECRET_KEY && "AMPLOPAY_SECRET_KEY_V2 (Chave Privada)",
+      ]
+        .filter(Boolean)
+        .join(" e ")
+      throw new Error(`Credenciais AmploPay nao configuradas. Falta configurar: ${faltando}.`)
     }
 
     const payload: Record<string, any> = {

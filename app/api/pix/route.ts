@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { amplopay } from "@/lib/amplopay"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { approveDeposit, isPaidStatus } from "@/lib/deposits"
+import { validatePromoCode } from "@/lib/promo-codes"
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     const supabaseAdmin = createAdminClient()
 
     const body = await request.json()
-    const { amount } = body
+    const { amount, promoCode } = body
 
     const numericAmount =
       typeof amount === "string" ? Number.parseFloat(amount.replace(/[^\d.,]/g, "").replace(",", ".")) : Number(amount)
@@ -42,6 +43,19 @@ export async function POST(request: NextRequest) {
 
     const identifier = `DEP-${user.id.slice(0, 8)}-${Date.now()}`
 
+    // Valida o codigo promocional AQUI, no servidor, antes de gravar no deposito. Nunca confiamos
+    // no que a tela envia: o bonus e recalculado a partir da campanha no banco.
+    // Codigo invalido nao derruba o deposito — apenas nao gera bonus.
+    let validatedPromoCode: string | null = null
+    if (typeof promoCode === "string" && promoCode.trim()) {
+      const validation = await validatePromoCode(supabaseAdmin, promoCode, user.id, numericAmount)
+      if (validation.valid) {
+        validatedPromoCode = validation.promo.code
+      } else {
+        console.log(`[v0] Codigo promocional recusado no deposito: ${validation.error}`)
+      }
+    }
+
     // Insert deposit record
     const { data: deposit, error: depositError } = await supabaseAdmin
       .from("deposits")
@@ -51,6 +65,7 @@ export async function POST(request: NextRequest) {
         method: "pix",
         status: "pending",
         external_id: identifier,
+        promo_code: validatedPromoCode,
       })
       .select()
       .single()
@@ -74,16 +89,27 @@ export async function POST(request: NextRequest) {
       }
 
       // Update deposit with PIX data - save AmploPay internal transaction id for active status check
-      await supabaseAdmin
+      //
+      // `copy_paste` nao existe na tabela: enquanto era enviada, o Postgres recusava o update
+      // INTEIRO, de modo que o QR Code e o `payment_reference` nunca eram salvos. Sem o
+      // payment_reference, a verificacao de pagamento e o cron nao conseguiam localizar a cobranca
+      // na AmploPay e o deposito ficava pendente para sempre, mesmo pago. O codigo copia-e-cola ja
+      // e guardado em `qr_code`, portanto a coluna extra era redundante.
+      const { error: pixUpdateError } = await supabaseAdmin
         .from("deposits")
         .update({
           qr_code: pixResponse.copyPaste,
           qr_code_base64: pixResponse.qrCode || "",
-          copy_paste: pixResponse.copyPaste,
           external_id: identifier, // Keep our identifier
-          payment_reference: pixResponse.providerTransactionId || "", // ID interno da AmploPay
+          payment_reference: pixResponse.providerTransactionId || null, // ID interno da AmploPay
         })
         .eq("id", deposit.id)
+
+      if (pixUpdateError) {
+        console.log("[v0] Erro ao salvar dados do PIX:", pixUpdateError.message)
+        await supabaseAdmin.from("deposits").delete().eq("id", deposit.id)
+        return NextResponse.json({ error: "Erro ao salvar dados do PIX" }, { status: 500 })
+      }
 
       console.log("[PIX] Created deposit:", deposit.id, "identifier:", identifier, "providerTxId:", pixResponse.providerTransactionId)
 

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { approveDeposit } from "@/lib/deposits"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -73,24 +74,21 @@ export async function PATCH(req: NextRequest) {
     if (cardError) throw cardError
 
     if (status === "approved" && card.deposit_id) {
-      await supabase
+      // Credita pela funcao central em vez de somar o saldo aqui direto. Antes, aprovar o mesmo
+      // cartao duas vezes creditava o valor duas vezes (nao havia guarda de status), o deposito
+      // nao aparecia no extrato e um eventual bonus de cupom nao era concedido. approveDeposit
+      // trata os tres pontos de forma idempotente.
+      const { data: deposit, error: depositFetchError } = await supabase
         .from("deposits")
-        .update({ status: "approved", updated_at: new Date().toISOString() })
+        .select("id, user_id, amount, status, payment_reference")
         .eq("id", card.deposit_id)
+        .maybeSingle()
 
-      const { data: balance } = await supabase
-        .from("user_balances")
-        .select("balance_real")
-        .eq("user_id", card.user_id)
-        .single()
+      if (depositFetchError) throw depositFetchError
 
-      const currentBalance = balance?.balance_real || 0
-      const newBalance = Math.round((currentBalance + Number(card.amount)) * 100) / 100
-
-      await supabase
-        .from("user_balances")
-        .update({ balance_real: newBalance, updated_at: new Date().toISOString() })
-        .eq("user_id", card.user_id)
+      if (deposit) {
+        await approveDeposit(supabase, deposit)
+      }
     }
 
     if (status === "rejected" && card.deposit_id) {

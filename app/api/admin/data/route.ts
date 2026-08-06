@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { approveDeposit } from "@/lib/deposits"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -313,81 +314,38 @@ export async function POST(req: NextRequest) {
         }, { status: 400 })
       }
       
-      // Atualizar status do depósito para "approved" (status válido)
-      const { data: depositData, error: depositError } = await supabase
+      // Este bloco reimplementava a aprovacao por conta propria e divergia do fluxo do webhook:
+      // nao tinha protecao contra aprovacao repetida (aprovar duas vezes creditava duas vezes),
+      // nao registrava a transacao no extrato, nao concedia o bonus do cupom e gravava a comissao
+      // em colunas inexistentes com 77% fixo, ignorando os modelos CPA/hibrido.
+      // Agora usa a MESMA funcao do webhook, que ja trata tudo isso de forma idempotente.
+      const { data: deposit, error: depositFetchError } = await supabase
         .from("deposits")
-        .update({ status: "approved", updated_at: new Date().toISOString() })
+        .select("id, user_id, amount, status, payment_reference")
         .eq("id", depositId)
-        .select()
-      
-      if (depositError) {
-        return NextResponse.json({ error: "Erro ao atualizar depósito: " + depositError.message }, { status: 500 })
-      }
-
-      // Atualizar saldo do usuário
-      const { data: currentBalance } = await supabase
-        .from("user_balances")
-        .select("balance_real")
-        .eq("user_id", userId)
         .maybeSingle()
-      
-      const newBalance = (currentBalance?.balance_real || 0) + Number(amount)
-      
-      const { error: balanceError } = await supabase
-        .from("user_balances")
-        .upsert(
-          { user_id: userId, balance_real: newBalance, updated_at: new Date().toISOString() },
-          { onConflict: "user_id" },
-        )
-      
-      if (balanceError) {
-        return NextResponse.json({ error: "Erro ao atualizar saldo: " + balanceError.message }, { status: 500 })
+
+      if (depositFetchError) {
+        return NextResponse.json({ error: "Erro ao buscar depósito: " + depositFetchError.message }, { status: 500 })
       }
 
-      // Verificar se usuario foi indicado por afiliado e creditar comissao
+      if (!deposit) {
+        return NextResponse.json({ error: "Depósito não encontrado" }, { status: 404 })
+      }
+
       try {
-        const { data: userProfile } = await supabase
-          .from("profiles")
-          .select("referred_by")
-          .eq("id", userId)
-          .single()
+        const result = await approveDeposit(supabase, deposit)
 
-        if (userProfile?.referred_by) {
-          const { data: affiliateProfile } = await supabase
-            .from("profiles")
-            .select("id, affiliate_balance, affiliate_total_earned, affiliate_commission_percent")
-            .eq("affiliate_code", userProfile.referred_by)
-            .eq("is_affiliate", true)
-            .single()
-
-          if (affiliateProfile) {
-            const commissionPercent = affiliateProfile.affiliate_commission_percent || 77
-            const commissionAmount = Number(amount) * (commissionPercent / 100)
-
-            await supabase
-              .from("profiles")
-              .update({
-                affiliate_balance: (affiliateProfile.affiliate_balance || 0) + commissionAmount,
-                affiliate_total_earned: (affiliateProfile.affiliate_total_earned || 0) + commissionAmount,
-              })
-              .eq("id", affiliateProfile.id)
-
-            await supabase.from("affiliate_commissions").insert({
-              affiliate_id: affiliateProfile.id,
-              referred_user_id: userId,
-              deposit_id: depositId,
-              deposit_amount: Number(amount),
-              commission_percent: commissionPercent,
-              commission_amount: commissionAmount,
-              created_at: new Date().toISOString(),
-            })
-          }
+        if (result.alreadyProcessed) {
+          return NextResponse.json({ success: true, alreadyProcessed: true })
         }
-      } catch (affiliateError) {
-        // Nao falhar a aprovacao do deposito por erro de afiliado
-      }
 
-      return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, newBalance: result.newBalance })
+      } catch (approveError) {
+        const message = approveError instanceof Error ? approveError.message : "Erro ao aprovar depósito"
+        console.log("[v0] Erro ao aprovar deposito:", message)
+        return NextResponse.json({ error: message }, { status: 500 })
+      }
     }
 
     if (action === "reject_deposit") {
@@ -402,39 +360,65 @@ export async function POST(req: NextRequest) {
 
     if (action === "approve_withdrawal") {
       const withdrawalId = payload.withdrawalId
-      const userId = payload.userId
-      const amount = payload.amount
-      
+
+      // O saldo JA foi debitado quando o usuario solicitou o saque (rota /api/withdraw), que e
+      // tambem onde a trava de rollover e aplicada. Este bloco antes debitava o valor OUTRA VEZ,
+      // entao um saque de R$ 100 tirava R$ 200 do usuario. A aprovacao agora so muda o status.
+      //
+      // A coluna `updated_at` nao existe em `withdrawals` (o correto e `processed_at`); usa-la
+      // fazia o Postgres recusar o update e a aprovacao falhar por completo.
       const { error: withdrawalError } = await supabase
         .from("withdrawals")
-        .update({ status: "completed", updated_at: new Date().toISOString() })
+        .update({ status: "completed", processed_at: new Date().toISOString() })
         .eq("id", withdrawalId)
       if (withdrawalError) throw withdrawalError
-      
-      const { data: currentBalance } = await supabase
-        .from("user_balances")
-        .select("balance_real")
-        .eq("user_id", userId)
-        .single()
-      
-      if (currentBalance) {
-        const newBalance = Math.max(0, (currentBalance.balance_real || 0) - Number(amount))
-        await supabase
-          .from("user_balances")
-          .update({ balance_real: newBalance, updated_at: new Date().toISOString() })
-          .eq("user_id", userId)
-      }
-      
+
       return NextResponse.json({ success: true })
     }
 
     if (action === "reject_withdrawal") {
       const withdrawalId = payload.withdrawalId
-      const { error } = await supabase
+
+      // Só devolve o saldo se o saque ainda estiver pendente. O filtro por status é o que impede
+      // um clique repetido em "rejeitar" de creditar o valor mais de uma vez.
+      const { data: rejected, error } = await supabase
         .from("withdrawals")
-        .update({ status: "rejected", updated_at: new Date().toISOString() })
+        .update({ status: "rejected", processed_at: new Date().toISOString() })
         .eq("id", withdrawalId)
+        .eq("status", "pending")
+        .select("user_id, amount")
+
       if (error) throw error
+
+      // Como o debito acontece na solicitacao, a rejeicao PRECISA devolver o valor — sem isso o
+      // usuario perderia o dinheiro de um saque recusado.
+      if (rejected && rejected.length > 0) {
+        const { user_id: refundUserId, amount: refundAmount } = rejected[0]
+
+        const { data: balanceRow } = await supabase
+          .from("user_balances")
+          .select("balance_real")
+          .eq("user_id", refundUserId)
+          .maybeSingle()
+
+        const restored = Number(balanceRow?.balance_real || 0) + Number(refundAmount)
+
+        await supabase
+          .from("user_balances")
+          .update({ balance_real: restored, updated_at: new Date().toISOString() })
+          .eq("user_id", refundUserId)
+
+        await supabase.from("transactions").insert({
+          user_id: refundUserId,
+          type: "withdrawal_refund",
+          amount: Number(refundAmount),
+          balance_after: restored,
+          account_type: "real",
+          reference_id: withdrawalId,
+          description: "Devolucao de saque rejeitado",
+        })
+      }
+
       return NextResponse.json({ success: true })
     }
 

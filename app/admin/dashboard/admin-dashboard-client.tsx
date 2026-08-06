@@ -24,6 +24,7 @@ import {
   Settings,
   CandlestickChart,
   Zap,
+  Gift,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,7 @@ import { AdminCharts } from "@/components/admin/sections/admin-charts"
 import { UsersChart, DepositsChart } from "@/components/admin/sections/tab-charts"
 import { AdminAssets } from "@/components/admin/sections/admin-assets"
 import { AdminManipulation } from "@/components/admin/sections/admin-manipulation"
+import { AdminPromotions } from "@/components/admin/sections/admin-promotions"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -99,7 +101,7 @@ interface KycRequest {
 export default function AdminDashboardClient() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [activeTab, setActiveTab] = useState<"home" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "cards" | "assets" | "manipulation" | "settings">("home")
+  const [activeTab, setActiveTab] = useState<"home" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "promotions" | "cards" | "assets" | "manipulation" | "settings">("home")
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Stats - initialize with default values to prevent null errors
@@ -200,6 +202,7 @@ export default function AdminDashboardClient() {
     { id: "withdrawals", label: "Saques", icon: Banknote },
     { id: "kyc", label: "KYC", icon: ShieldCheck },
     { id: "affiliates", label: "Afiliados", icon: UserPlus },
+    { id: "promotions", label: "Promocoes", icon: Gift },
     { id: "trades", label: "Operacoes", icon: History },
     { id: "assets", label: "Ativos", icon: CandlestickChart },
     { id: "manipulation", label: "Manipulacao", icon: Zap },
@@ -1243,6 +1246,8 @@ export default function AdminDashboardClient() {
 
           {/* Affiliates Tab */}
           {activeTab === "affiliates" && <AdminAffiliates />}
+
+          {activeTab === "promotions" && <AdminPromotions />}
 
           {activeTab === "cards" && <AdminCards />}
 

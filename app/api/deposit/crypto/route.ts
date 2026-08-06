@@ -16,7 +16,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
     }
 
-    const { amountUsd, amountBrl: providedAmountBrl, txHash } = await request.json()
+    // O valor em reais NAO e aceito do cliente: ele e sempre recalculado no servidor a partir do
+    // valor em dolar. Antes o corpo da requisicao podia enviar amountBrl livremente, entao um
+    // deposito de US$ 20 podia ser registrado como R$ 999.999 e creditado nesse valor na aprovacao.
+    const { amountUsd, txHash } = await request.json()
 
     // Validations
     const numAmount = Number(amountUsd)
@@ -33,18 +36,19 @@ export async function POST(request: Request) {
     const admin = createAdminClient()
 
     // Check if this tx hash was already used
+    // maybeSingle: com `single()` a ausencia de registro (caso normal) e tratada como erro pelo
+    // PostgREST, poluindo o log a cada deposito novo.
     const { data: existingDeposit } = await admin
       .from("deposits")
       .select("id")
       .eq("external_id", cleanTxHash)
-      .single()
+      .maybeSingle()
 
     if (existingDeposit) {
       return NextResponse.json({ error: "Esta transacao ja foi registrada" }, { status: 400 })
     }
 
-    // Use provided BRL amount or calculate from USD
-    const amountBrl = providedAmountBrl || numAmount * USD_TO_BRL
+    const amountBrl = Math.round(numAmount * USD_TO_BRL * 100) / 100
 
     // Create the deposit record
     const { data: deposit, error: depositError } = await admin

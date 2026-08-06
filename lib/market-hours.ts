@@ -55,10 +55,8 @@ export function getMarketStatus(
   // Sem info do ativo ou ativo OTC: sempre disponível.
   if (!asset || asset.market !== "open") return { open: true }
 
-  // Mercado aberto de cripto funciona 24 horas, todos os dias.
-  if (asset.category === "crypto") return { open: true }
-
-  // Demais (forex / ações do mercado aberto): Seg–Sex, 08:00–18:00 (Brasília).
+  // Todos os ativos da aba "Mercado aberto" — inclusive cripto como BTC/USD — seguem a
+  // mesma janela: Seg–Sex, 08:00–18:00 (Brasília). Cripto so opera 24h na versao OTC.
   const { weekday, hour } = brasiliaParts(now)
   const isWeekday = weekday >= 1 && weekday <= 5
   const isWithinHours = hour >= MARKET_OPEN_HOUR && hour < MARKET_CLOSE_HOUR

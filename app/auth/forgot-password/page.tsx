@@ -4,11 +4,10 @@ import type React from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import Image from "next/image"
 import { useState } from "react"
-import { Mail, ArrowRight, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react"
+import { LockKeyhole, Loader2, CheckCircle2 } from "lucide-react"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -56,107 +55,105 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-white">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+    <div className="flex min-h-screen w-full flex-col bg-white">
+      {/* Header fino com a logo e acesso ao cadastro */}
+      <header className="flex items-center justify-between border-b border-gray-100 px-5 py-3 sm:px-8">
         <Link href="/" className="flex items-center">
           <Image
             src="/images/uryn-fox-logo.png"
             alt="URYNBROKER"
-            width={160}
-            height={40}
-            className="h-9 w-auto"
+            width={180}
+            height={44}
+            className="h-8 w-auto sm:h-9"
             unoptimized
           />
         </Link>
-        <Link href="/auth/login">
-          <Button
-            variant="outline"
-            className="h-10 rounded-full border-orange-500 bg-transparent px-6 text-orange-600 hover:bg-orange-50 hover:text-orange-600"
-          >
-            Entrar
+        <Link href="/auth/sign-up">
+          <Button className="h-10 rounded-md bg-orange-500 px-6 font-medium text-white hover:bg-orange-600">
+            Registrar-se
           </Button>
         </Link>
       </header>
 
-      <main className="mx-auto w-full max-w-md">
-        {sent ? (
-          /* Success State */
-          <div className="px-5 pb-8 pt-12">
-            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
-              <CheckCircle2 className="h-9 w-9 text-emerald-600" />
-            </div>
-            <h1 className="mb-2 text-2xl font-bold text-balance text-gray-900">Verifique seu e-mail</h1>
-            <p className="text-sm leading-relaxed text-gray-600">
-              {"Enviamos um link de recuperação para "}
-              <span className="font-medium text-gray-900">{email.trim().toLowerCase()}</span>
-              {". Abra o e-mail e clique no link para criar uma nova senha."}
-            </p>
+      {/* Conteudo centralizado verticalmente na pagina */}
+      <main className="flex flex-1 items-center justify-center px-5 py-12">
+        <div className="w-full max-w-sm text-center">
+          {sent ? (
+            <>
+              <h1 className="text-2xl font-bold text-balance text-gray-800 sm:text-3xl">Verifique seu e-mail</h1>
 
-            <div className="mt-6 rounded-xl border border-orange-200 bg-orange-50 p-4">
-              <p className="text-xs leading-relaxed text-gray-600">
+              <div className="my-7 flex justify-center">
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50">
+                  <CheckCircle2 className="h-9 w-9 text-emerald-600" strokeWidth={1.75} />
+                </span>
+              </div>
+
+              <p className="text-sm leading-relaxed text-gray-600 text-pretty">
+                {"Enviamos um link de recuperação para "}
+                <span className="font-medium text-gray-800">{email.trim().toLowerCase()}</span>
+                {". Abra o e-mail e clique no link para criar uma nova senha."}
+              </p>
+
+              <p className="mt-4 text-xs leading-relaxed text-gray-400">
                 Não recebeu? Verifique a caixa de spam ou tente novamente em alguns minutos.
               </p>
-            </div>
 
-            <Button
-              onClick={() => {
-                setSent(false)
-                setError(null)
-              }}
-              variant="outline"
-              className="mt-6 h-12 w-full rounded-xl border-orange-500 bg-transparent text-orange-600 hover:bg-orange-50 hover:text-orange-600"
-            >
-              Enviar para outro e-mail
-            </Button>
-
-            <Link href="/auth/login" className="block">
-              <Button className="mt-3 h-12 w-full rounded-xl bg-orange-500 text-white hover:bg-orange-600">
-                Voltar para o login
+              <Button
+                onClick={() => {
+                  setSent(false)
+                  setError(null)
+                }}
+                className="mt-7 h-12 w-full rounded-md bg-orange-500 text-base font-medium text-white hover:bg-orange-600"
+              >
+                Enviar para outro e-mail
               </Button>
-            </Link>
-          </div>
-        ) : (
-          <>
-            {/* Hero Section */}
-            <div className="px-5 pb-6 pt-8">
-              <h1 className="mb-1 text-2xl font-bold text-balance text-gray-900">Esqueceu sua senha?</h1>
-              <p className="text-sm leading-relaxed text-gray-600">
-                Digite seu e-mail e enviaremos um link para você criar uma nova senha.
-              </p>
-            </div>
 
-            {/* Form */}
-            <div className="px-5 pb-8">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                    <Mail className="h-4 w-4 text-orange-500" />
-                    E-mail
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="Digite seu e-mail"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                    disabled={isLoading}
-                    className="h-12 rounded-xl border border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/30 disabled:opacity-50"
-                  />
-                </div>
+              <Link
+                href="/auth/login"
+                className="mt-4 block text-sm text-orange-600 transition-colors hover:text-orange-700"
+              >
+                Voltar ao login
+              </Link>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-balance text-gray-800 sm:text-3xl">Recuperação de senha</h1>
+
+              <div className="my-7 flex justify-center">
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-50">
+                  <LockKeyhole className="h-9 w-9 text-orange-500" strokeWidth={1.75} />
+                </span>
+              </div>
+
+              <p className="text-sm leading-relaxed text-gray-600 text-pretty">
+                Para começar o processo de alteração de sua senha, digite seu e-mail
+              </p>
+
+              <form onSubmit={handleSubmit} className="mt-6 text-left">
+                <label htmlFor="email" className="sr-only">
+                  E-mail
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  disabled={isLoading}
+                  className="h-12 rounded-md border border-gray-300 bg-white text-gray-800 placeholder:text-gray-400 focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/25 disabled:opacity-50"
+                />
 
                 {error && (
-                  <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-                    <span aria-hidden="true">!</span>
+                  <p role="alert" className="mt-3 text-sm text-red-600">
                     {error}
-                  </div>
+                  </p>
                 )}
 
                 <Button
                   type="submit"
-                  className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 text-base font-semibold text-white shadow-lg shadow-orange-500/30 transition-all duration-200 hover:bg-orange-600 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
+                  className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-orange-500 text-base font-medium text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-70"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -165,24 +162,27 @@ export default function ForgotPasswordPage() {
                       Enviando...
                     </>
                   ) : (
-                    <>
-                      Enviar link de recuperação
-                      <ArrowRight className="h-5 w-5" />
-                    </>
+                    "Enviar"
                   )}
                 </Button>
-
-                <Link
-                  href="/auth/login"
-                  className="flex items-center justify-center gap-2 pt-4 text-sm text-gray-500 transition-colors hover:text-gray-900"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Voltar para o login
-                </Link>
               </form>
-            </div>
-          </>
-        )}
+
+              <Link
+                href="/auth/login"
+                className="mt-5 block text-sm text-orange-600 transition-colors hover:text-orange-700"
+              >
+                Voltar ao login
+              </Link>
+
+              <p className="mt-3 text-sm text-gray-600">
+                {"Ainda não possui uma conta? "}
+                <Link href="/auth/sign-up" className="text-orange-600 transition-colors hover:text-orange-700">
+                  Inscrever-se
+                </Link>
+              </p>
+            </>
+          )}
+        </div>
       </main>
     </div>
   )

@@ -1393,12 +1393,13 @@ export default function TradePage() {
                 )}
                 {filteredAssets.map((asset) => {
                   // Status do mercado deste ativo. OTC e cripto estao sempre abertos; pares de
-                  // mercado aberto fecham no fim de semana. Quando fechado, o item nao pode ser
-                  // selecionado e exibe o horario da proxima abertura.
+                  // mercado aberto so operam Seg-Sex das 8h as 18h (Brasilia). Quando fechado, o
+                  // item nao pode ser selecionado e exibe o horario da proxima abertura.
                   const status = getMarketStatus(asset, new Date(clockTick))
                   const closed = !status.open
                   const openLabel = status.nextOpen
                     ? status.nextOpen.toLocaleString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
                         weekday: "long",
                         hour: "2-digit",
                         minute: "2-digit",

@@ -1391,37 +1391,80 @@ export default function TradePage() {
                 {filteredAssets.length === 0 && (
                   <p className="text-gray-500 text-sm text-center py-8">Nenhum ativo nesta categoria.</p>
                 )}
-                {filteredAssets.map((asset) => (
-                  <button
-                    key={asset.symbol}
-                    onClick={() => {
-                      setSelectedSymbol(asset.symbol)
-                      setShowAssetModal(false)
-                      setAssetSearch("")
-                    }}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors ${
-                      selectedSymbol === asset.symbol ? "bg-[#26a69a]/20 border border-[#26a69a]/50" : ""
-                    }`}
-                    style={{ backgroundColor: selectedSymbol === asset.symbol ? undefined : "#1a1a1e" }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
-                        <Image
-                          src={asset.logo || "/placeholder.svg"}
-                          alt={asset.name}
-                          width={40}
-                          height={40}
-                          className="w-full h-full object-cover"
-                        />
+                {filteredAssets.map((asset) => {
+                  // Status do mercado deste ativo. OTC e cripto estao sempre abertos; pares de
+                  // mercado aberto so operam Seg-Sex das 8h as 18h (Brasilia). Quando fechado, o
+                  // item nao pode ser selecionado e exibe o horario da proxima abertura.
+                  const status = getMarketStatus(asset, new Date(clockTick))
+                  const closed = !status.open
+                  const openLabel = status.nextOpen
+                    ? status.nextOpen.toLocaleString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
+                        weekday: "long",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : null
+                  return (
+                    <button
+                      key={asset.symbol}
+                      disabled={closed}
+                      aria-disabled={closed}
+                      onClick={() => {
+                        if (closed) return
+                        setSelectedSymbol(asset.symbol)
+                        setShowAssetModal(false)
+                        setAssetSearch("")
+                      }}
+                      className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors ${
+                        closed
+                          ? "cursor-not-allowed opacity-50"
+                          : selectedSymbol === asset.symbol
+                            ? "bg-[#26a69a]/20 border border-[#26a69a]/50"
+                            : "hover:bg-[#222226]"
+                      }`}
+                      style={{
+                        backgroundColor:
+                          !closed && selectedSymbol === asset.symbol ? undefined : "#1a1a1e",
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-10 h-10 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
+                          <Image
+                            src={asset.logo || "/placeholder.svg"}
+                            alt={asset.name}
+                            width={40}
+                            height={40}
+                            className={`w-full h-full object-cover ${closed ? "grayscale" : ""}`}
+                          />
+                          {closed && (
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/50">
+                              <Lock className="w-4 h-4 text-yellow-400" />
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-left">
+                          <p className="text-white font-semibold text-sm">{asset.name}</p>
+                          {closed ? (
+                            <p className="flex items-center gap-1 text-yellow-500 text-xs">
+                              <Clock className="w-3 h-3 shrink-0" />
+                              {openLabel ? `Abre ${openLabel}` : "Mercado fechado"}
+                            </p>
+                          ) : (
+                            assetMarketTab === "otc" && <p className="text-gray-400 text-xs">Opção binária</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <p className="text-white font-semibold text-sm">{asset.name}</p>
-                        {assetMarketTab === "otc" && <p className="text-gray-400 text-xs">Opção binária</p>}
-                      </div>
-                    </div>
-                    <span className="text-orange-500 font-semibold text-sm">{asset.payout}%</span>
-                  </button>
-                ))}
+                      {closed ? (
+                        <span className="rounded-md bg-yellow-500/15 px-2 py-1 text-[11px] font-semibold text-yellow-500">
+                          Fechado
+                        </span>
+                      ) : (
+                        <span className="text-orange-500 font-semibold text-sm">{asset.payout}%</span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </div>

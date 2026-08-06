@@ -16,11 +16,38 @@ export interface MarketStatus {
 const CLOSE_BUFFER_SECONDS = 30
 
 /**
- * Forex opera de domingo 21:00 UTC até sexta 21:00 UTC (fecha nos fins de semana).
+ * Janela de funcionamento do "Mercado aberto": segunda a sexta, das 08:00 às 18:00
+ * no horário de Brasília (America/Sao_Paulo). Fora disso (noite, madrugada e fins de
+ * semana) os ativos ficam bloqueados.
+ *
  * Cripto opera 24/7. OTC está sempre disponível.
  *
- * A referência de horário é UTC para não depender do fuso do dispositivo.
+ * Todo o cálculo é feito em horário de Brasília, independentemente do fuso do dispositivo
+ * ou do servidor.
  */
+const MARKET_OPEN_HOUR = 8 // 08:00 (Brasília)
+const MARKET_CLOSE_HOUR = 18 // 18:00 (Brasília)
+/** Brasília não observa horário de verão desde 2019: offset fixo de UTC-3. */
+const BR_OFFSET_HOURS = 3
+
+/** Partes do relógio de parede de Brasília para um instante qualquer. */
+function brasiliaParts(now: Date): { year: number; month: number; day: number; hour: number; weekday: number } {
+  // Deslocamento fixo -3h a partir do UTC.
+  const shifted = new Date(now.getTime() - BR_OFFSET_HOURS * 60 * 60 * 1000)
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth(),
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    weekday: shifted.getUTCDay(), // 0 = domingo ... 6 = sábado
+  }
+}
+
+/** Constrói um Date (UTC real) a partir de uma hora de parede de Brasília. */
+function fromBrasilia(year: number, month: number, day: number, hour: number): Date {
+  return new Date(Date.UTC(year, month, day, hour + BR_OFFSET_HOURS, 0, 0, 0))
+}
+
 export function getMarketStatus(
   asset: { market?: string; category?: string } | undefined,
   now: Date = new Date(),
@@ -28,41 +55,46 @@ export function getMarketStatus(
   // Sem info do ativo ou ativo OTC: sempre disponível.
   if (!asset || asset.market !== "open") return { open: true }
 
-  // Mercado aberto de cripto funciona 24 horas, todos os dias.
-  if (asset.category === "crypto") return { open: true }
+  // Todos os ativos da aba "Mercado aberto" — inclusive cripto como BTC/USD — seguem a
+  // mesma janela: Seg–Sex, 08:00–18:00 (Brasília). Cripto so opera 24h na versao OTC.
+  const { weekday, hour } = brasiliaParts(now)
+  const isWeekday = weekday >= 1 && weekday <= 5
+  const isWithinHours = hour >= MARKET_OPEN_HOUR && hour < MARKET_CLOSE_HOUR
 
-  // Demais (forex / ações do mercado aberto): respeita a janela do forex.
-  const day = now.getUTCDay() // 0 = domingo ... 6 = sábado
-  const hour = now.getUTCHours()
-
-  const isClosed =
-    day === 6 || // sábado inteiro
-    (day === 5 && hour >= 21) || // sexta a partir das 21:00 UTC
-    (day === 0 && hour < 21) // domingo antes das 21:00 UTC
-
-  if (!isClosed) return { open: true, nextClose: getNextForexClose(now) }
+  if (isWeekday && isWithinHours) {
+    return { open: true, nextClose: getNextMarketClose(now) }
+  }
 
   return {
     open: false,
-    reason: "Mercado fechado (fim de semana)",
-    nextOpen: getNextForexOpen(now),
+    reason: weekday === 0 || weekday === 6 ? "Mercado fechado (fim de semana)" : "Mercado fechado (fora do horário)",
+    nextOpen: getNextMarketOpen(now),
   }
 }
 
-/** Calcula o próximo fechamento do forex: sexta 21:00 UTC. */
-function getNextForexClose(now: Date): Date {
-  const d = new Date(now)
-  while (d.getUTCDay() !== 5) {
-    d.setUTCDate(d.getUTCDate() + 1)
-    d.setUTCHours(0, 0, 0, 0)
+/** Próximo fechamento: 18:00 (Brasília) do dia útil em que o mercado está aberto. */
+function getNextMarketClose(now: Date): Date {
+  const { year, month, day } = brasiliaParts(now)
+  return fromBrasilia(year, month, day, MARKET_CLOSE_HOUR)
+}
+
+/** Próxima abertura: 08:00 (Brasília) do próximo dia útil (ou de hoje, se ainda antes das 08:00). */
+function getNextMarketOpen(now: Date): Date {
+  const { year, month, day, hour, weekday } = brasiliaParts(now)
+
+  // Ainda é dia útil e antes das 08:00 → abre hoje às 08:00.
+  if (weekday >= 1 && weekday <= 5 && hour < MARKET_OPEN_HOUR) {
+    return fromBrasilia(year, month, day, MARKET_OPEN_HOUR)
   }
-  d.setUTCHours(21, 0, 0, 0)
-  // Se já passou das 21:00 desta sexta, o fechamento relevante é o da semana seguinte.
-  if (d.getTime() <= now.getTime()) {
-    d.setUTCDate(d.getUTCDate() + 7)
-    d.setUTCHours(21, 0, 0, 0)
+
+  // Caso contrário, avança para o próximo dia útil às 08:00.
+  let offset = 1
+  let nextWeekday = (weekday + offset) % 7
+  while (nextWeekday === 0 || nextWeekday === 6) {
+    offset += 1
+    nextWeekday = (weekday + offset) % 7
   }
-  return d
+  return fromBrasilia(year, month, day + offset, MARKET_OPEN_HOUR)
 }
 
 export interface TradeWindowCheck {
@@ -99,19 +131,3 @@ export function canOpenTrade(
   return { allowed: true }
 }
 
-/** Calcula a próxima abertura do forex: domingo 21:00 UTC. */
-function getNextForexOpen(now: Date): Date {
-  const d = new Date(now)
-  // Avança dia a dia até o próximo domingo.
-  while (d.getUTCDay() !== 0) {
-    d.setUTCDate(d.getUTCDate() + 1)
-    d.setUTCHours(0, 0, 0, 0)
-  }
-  d.setUTCHours(21, 0, 0, 0)
-  // Se já for domingo depois das 21:00, o mercado já estaria aberto — protege o cálculo.
-  if (d.getTime() <= now.getTime()) {
-    d.setUTCDate(d.getUTCDate() + 7)
-    d.setUTCHours(21, 0, 0, 0)
-  }
-  return d
-}

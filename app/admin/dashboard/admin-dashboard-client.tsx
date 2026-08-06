@@ -684,7 +684,14 @@ export default function AdminDashboardClient() {
         <button onClick={() => setSidebarOpen(true)}>
           <Menu className="w-6 h-6 text-white" />
         </button>
-        <Image src="/images/kodilex-logo.png" alt="URYN BROKER" width={120} height={30} />
+        <Image
+          src="/images/uryn-fox-logo.png"
+          alt="URYNBROKER"
+          width={130}
+          height={35}
+          priority
+          className="h-auto w-[130px]"
+        />
         <button onClick={handleLogout}>
           <LogOut className="w-6 h-6 text-red-500" />
         </button>
@@ -695,7 +702,14 @@ export default function AdminDashboardClient() {
         <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setSidebarOpen(false)}>
           <div className="w-64 h-full bg-[#0B0F14] border-r border-[#1E2633] p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-8">
-              <Image src="/images/kodilex-logo.png" alt="URYN BROKER" width={120} height={30} />
+              <Image
+          src="/images/uryn-fox-logo.png"
+          alt="URYNBROKER"
+          width={130}
+          height={35}
+          priority
+          className="h-auto w-[130px]"
+        />
               <button onClick={() => setSidebarOpen(false)}>
                 <X className="w-6 h-6 text-white" />
               </button>
@@ -730,7 +744,14 @@ export default function AdminDashboardClient() {
         {/* Desktop Sidebar */}
         <div className="hidden lg:flex lg:flex-col w-64 min-h-screen border-r border-[#1E2633] p-4">
           <div className="mb-8">
-            <Image src="/images/kodilex-logo.png" alt="URYN BROKER" width={150} height={40} />
+            <Image
+              src="/images/uryn-fox-logo.png"
+              alt="URYNBROKER"
+              width={180}
+              height={48}
+              priority
+              className="h-auto w-[180px]"
+            />
             <p className="text-gray-400 text-sm mt-2">Painel Admin</p>
           </div>
           <nav className="space-y-2 flex-1">

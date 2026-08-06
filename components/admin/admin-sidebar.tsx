@@ -68,11 +68,12 @@ export function AdminSidebar({ activeSection, onSectionChange }: AdminSidebarPro
       {/* Logo */}
       <div className="p-4 border-b border-[#1E2430]">
         <Image
-          src="/images/kodilex-logo.png"
-          alt="URYN BROKER"
+          src="/images/uryn-fox-logo.png"
+          alt="URYNBROKER"
           width={150}
           height={40}
-          className="mx-auto"
+          priority
+          className="mx-auto h-auto w-[150px]"
         />
       </div>
 

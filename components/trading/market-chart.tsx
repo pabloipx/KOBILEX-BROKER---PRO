@@ -61,10 +61,6 @@ interface ActiveTrade {
   timestamp: number
   amount?: number
 }
-interface TradeResult {
-  type: "win" | "loss"
-  amount: number
-}
 interface Props {
   candles: Candle[]
   currentPrice: number
@@ -72,7 +68,6 @@ interface Props {
   timeframe: 60 | 300 | 600 | 900
   symbol: string
   payout?: number
-  result?: TradeResult | null
   // Muda quando dados externos (ex.: feed real de BTC) ficam prontos, forcando recarga do
   // historico na serie existente sem recriar o grafico.
   reloadKey?: number
@@ -341,7 +336,7 @@ if (typeof window !== "undefined") {
 }
 
 // ========== CHART CORE ==========
-function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol, payout = 0.96, result, reloadKey = 0 }: Props) {
+function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol, payout = 0.96, reloadKey = 0 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const countdownRef = useRef<HTMLDivElement>(null)
@@ -352,7 +347,6 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
   const [seriesReady, setSeriesReady] = useState(0)
   const [flash, setFlash] = useState<{ id: string; dir: "call" | "put" } | null>(null)
   const [pnlOverlays, setPnlOverlays] = useState<PnlOverlay[]>([])
-  const [resultBurst, setResultBurst] = useState<{ type: "win" | "loss"; amount: number; key: number } | null>(null)
   const [clock, setClock] = useState("")
 
   // Relogio (horario de Brasilia, UTC-3) exibido minimizado no canto do grafico
@@ -1521,14 +1515,6 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     return () => clearInterval(iv)
   }, [activeTrades, payout, seriesReady])
 
-  // ===== WIN/LOSS result burst animation =====
-  useEffect(() => {
-    if (!result) return
-    setResultBurst({ type: result.type, amount: result.amount, key: Date.now() })
-    const to = setTimeout(() => setResultBurst(null), 2200)
-    return () => clearTimeout(to)
-  }, [result])
-
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ backgroundColor: "#0d0d0f" }}>
       {/* Marca d'agua URYN BROKER no fundo do grafico */}
@@ -1776,36 +1762,6 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         )
       })}
 
-      {/* WIN / LOSS result animation */}
-      {resultBurst && (
-        <div
-          key={resultBurst.key}
-          className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
-        >
-          <div
-            className="flex flex-col items-center gap-2"
-            style={{ animation: "resultBurst 2.2s ease-out forwards" }}
-          >
-            <span
-              className="text-5xl font-black tracking-tight"
-              style={{
-                color: resultBurst.type === "win" ? "#00E676" : "#FF5252",
-                textShadow: `0 0 30px ${resultBurst.type === "win" ? "#00E676" : "#FF5252"}`,
-              }}
-            >
-              {resultBurst.type === "win" ? "WIN" : "LOSS"}
-            </span>
-            <span
-              className="text-2xl font-bold"
-              style={{ color: resultBurst.type === "win" ? "#00E676" : "#FF5252" }}
-            >
-              {resultBurst.type === "win" ? "+" : "-"}R${" "}
-              {resultBurst.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Loading */}
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center z-30" style={{ backgroundColor: "#0d0d0f" }}>
@@ -1840,13 +1796,6 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         @keyframes pnlPop {
           0% { transform: scale(0.7); opacity: 0; }
           100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes resultBurst {
-          0% { transform: scale(0.4); opacity: 0; }
-          15% { transform: scale(1.15); opacity: 1; }
-          30% { transform: scale(1); opacity: 1; }
-          75% { transform: scale(1); opacity: 1; }
-          100% { transform: scale(1.1); opacity: 0; }
         }
       `}</style>
     </div>

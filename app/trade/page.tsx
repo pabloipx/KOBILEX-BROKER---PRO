@@ -1017,7 +1017,6 @@ export default function TradePage() {
               timeframe={timeframe as 60 | 300 | 600 | 900}
               symbol={selectedSymbol}
               payout={payout / 100}
-              result={tradeResult}
               reloadKey={(realReady ? 1 : 0) + (realHistoryReady ? 2 : 0)}
             />
           </div>

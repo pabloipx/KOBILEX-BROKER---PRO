@@ -1,12 +1,23 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Upload, Camera, CheckCircle, Clock, XCircle, Loader2, AlertTriangle } from "lucide-react"
-import Image from "next/image"
+import {
+  ArrowLeft,
+  Upload,
+  Camera,
+  CheckCircle,
+  Clock,
+  XCircle,
+  Loader2,
+  AlertTriangle,
+  Check,
+  IdCard,
+  ScanFace,
+} from "lucide-react"
 
 export default function KYCPage() {
   const router = useRouter()
@@ -235,6 +246,9 @@ export default function KYCPage() {
     }
   }
 
+  const uploadedCount = [documentFrontPath, documentBackPath, selfiePath].filter(Boolean).length
+  const allUploaded = uploadedCount === 3
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -368,221 +382,203 @@ export default function KYCPage() {
         {/* Upload Form - Show only if unverified or rejected (not when pending/in analysis) */}
         {(kycStatus === "unverified" || kycStatus === "rejected") && !success && (
           <>
-            {/* Document Front */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Frente do Documento</CardTitle>
-                <CardDescription>RG, CNH ou Passaporte</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <input
-                  ref={frontInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadFile("front", file)
-                  }}
-                />
-                {documentFrontPreview ? (
-                  <div className="relative">
-                    <Image
-                      src={documentFrontPreview || "/placeholder.svg"}
-                      alt="Frente do documento"
-                      width={400}
-                      height={250}
-                      className="w-full h-48 object-cover rounded-lg"
-                    />
-                    {documentFrontPath && (
-                      <div className="absolute top-2 right-2 bg-orange-500 rounded-full p-1">
-                        <CheckCircle className="h-4 w-4 text-white" />
-                      </div>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="absolute bottom-2 right-2 bg-transparent"
-                      onClick={() => frontInputRef.current?.click()}
-                      disabled={uploadingFront}
-                    >
-                      {uploadingFront ? <Loader2 className="h-4 w-4 animate-spin" /> : "Trocar"}
-                    </Button>
+            {/* Inputs de arquivo ocultos, acionados pelos cards abaixo */}
+            <input
+              ref={frontInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) uploadFile("front", file)
+              }}
+            />
+            <input
+              ref={backInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) uploadFile("back", file)
+              }}
+            />
+            <input
+              ref={selfieInputRef}
+              type="file"
+              accept="image/*"
+              capture="user"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) uploadFile("selfie", file)
+              }}
+            />
+
+            <DocumentStep
+              step={1}
+              icon={<IdCard className="h-5 w-5" />}
+              title="Frente do Documento"
+              description="RG, CNH ou Passaporte. Foto nítida, sem reflexos e com todas as bordas visíveis."
+              actionLabel="Tirar foto ou escolher arquivo"
+              alt="Frente do documento"
+              preview={documentFrontPreview}
+              uploaded={!!documentFrontPath}
+              uploading={uploadingFront}
+              onPick={() => frontInputRef.current?.click()}
+            />
+
+            <DocumentStep
+              step={2}
+              icon={<IdCard className="h-5 w-5" />}
+              title="Verso do Documento"
+              description="Parte de trás do mesmo documento enviado acima."
+              actionLabel="Tirar foto ou escolher arquivo"
+              alt="Verso do documento"
+              preview={documentBackPreview}
+              uploaded={!!documentBackPath}
+              uploading={uploadingBack}
+              onPick={() => backInputRef.current?.click()}
+            />
+
+            <DocumentStep
+              step={3}
+              icon={<ScanFace className="h-5 w-5" />}
+              title="Selfie com Documento"
+              description="Tire uma foto segurando o documento ao lado do rosto, em local bem iluminado."
+              actionLabel="Tirar selfie"
+              alt="Selfie com documento"
+              preview={selfiePreview}
+              uploaded={!!selfiePath}
+              uploading={uploadingSelfie}
+              onPick={() => selfieInputRef.current?.click()}
+            />
+
+            {/* Barra de envio fixa no rodapé com contador e progresso */}
+            <div className="sticky bottom-0 -mx-4 mt-2 border-t border-border bg-background/90 px-4 pb-4 pt-3 backdrop-blur">
+              <div className="mx-auto max-w-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {uploadedCount}/3 documentos enviados
+                  </span>
+                  <div className="flex gap-1.5">
+                    {[documentFrontPath, documentBackPath, selfiePath].map((p, i) => (
+                      <span
+                        key={i}
+                        className={`h-1.5 w-8 rounded-full transition-colors ${p ? "bg-orange-500" : "bg-muted"}`}
+                      />
+                    ))}
                   </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full h-32 border-dashed flex flex-col gap-2 bg-transparent"
-                    onClick={() => frontInputRef.current?.click()}
-                    disabled={uploadingFront}
-                  >
-                    {uploadingFront ? (
-                      <Loader2 className="h-8 w-8 animate-spin" />
-                    ) : (
-                      <>
-                        <Camera className="h-8 w-8" />
-                        <span>Tirar foto ou escolher arquivo</span>
-                      </>
-                    )}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Document Back */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Verso do Documento</CardTitle>
-                <CardDescription>Parte de trás do documento</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <input
-                  ref={backInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadFile("back", file)
-                  }}
-                />
-                {documentBackPreview ? (
-                  <div className="relative">
-                    <Image
-                      src={documentBackPreview || "/placeholder.svg"}
-                      alt="Verso do documento"
-                      width={400}
-                      height={250}
-                      className="w-full h-48 object-cover rounded-lg"
-                    />
-                    {documentBackPath && (
-                      <div className="absolute top-2 right-2 bg-orange-500 rounded-full p-1">
-                        <CheckCircle className="h-4 w-4 text-white" />
-                      </div>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="absolute bottom-2 right-2 bg-transparent"
-                      onClick={() => backInputRef.current?.click()}
-                      disabled={uploadingBack}
-                    >
-                      {uploadingBack ? <Loader2 className="h-4 w-4 animate-spin" /> : "Trocar"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full h-32 border-dashed flex flex-col gap-2 bg-transparent"
-                    onClick={() => backInputRef.current?.click()}
-                    disabled={uploadingBack}
-                  >
-                    {uploadingBack ? (
-                      <Loader2 className="h-8 w-8 animate-spin" />
-                    ) : (
-                      <>
-                        <Camera className="h-8 w-8" />
-                        <span>Tirar foto ou escolher arquivo</span>
-                      </>
-                    )}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Selfie with Document */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Selfie com Documento</CardTitle>
-                <CardDescription>Tire uma foto segurando o documento ao lado do rosto</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <input
-                  ref={selfieInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="user"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadFile("selfie", file)
-                  }}
-                />
-                {selfiePreview ? (
-                  <div className="relative">
-                    <Image
-                      src={selfiePreview || "/placeholder.svg"}
-                      alt="Selfie com documento"
-                      width={400}
-                      height={250}
-                      className="w-full h-48 object-cover rounded-lg"
-                    />
-                    {selfiePath && (
-                      <div className="absolute top-2 right-2 bg-orange-500 rounded-full p-1">
-                        <CheckCircle className="h-4 w-4 text-white" />
-                      </div>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="absolute bottom-2 right-2 bg-transparent"
-                      onClick={() => selfieInputRef.current?.click()}
-                      disabled={uploadingSelfie}
-                    >
-                      {uploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : "Trocar"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full h-32 border-dashed flex flex-col gap-2 bg-transparent"
-                    onClick={() => selfieInputRef.current?.click()}
-                    disabled={uploadingSelfie}
-                  >
-                    {uploadingSelfie ? (
-                      <Loader2 className="h-8 w-8 animate-spin" />
-                    ) : (
-                      <>
-                        <Camera className="h-8 w-8" />
-                        <span>Tirar selfie</span>
-                      </>
-                    )}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Submit Button */}
-            <Button
-              className="w-full h-14 bg-orange-600 hover:bg-orange-700 text-lg font-semibold"
-              onClick={handleSubmit}
-              disabled={submitting || !documentFrontPath || !documentBackPath || !selfiePath}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  Enviando...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-5 w-5 mr-2" />
-                  Enviar Documentos
-                </>
-              )}
-            </Button>
-
-            {/* Progress indicator */}
-            <div className="flex justify-center gap-2 pt-2">
-              <div className={`h-2 w-16 rounded-full ${documentFrontPath ? "bg-orange-500" : "bg-muted"}`} />
-              <div className={`h-2 w-16 rounded-full ${documentBackPath ? "bg-orange-500" : "bg-muted"}`} />
-              <div className={`h-2 w-16 rounded-full ${selfiePath ? "bg-orange-500" : "bg-muted"}`} />
+                </div>
+                <Button
+                  className="h-13 w-full bg-orange-600 py-4 text-base font-semibold hover:bg-orange-700 disabled:opacity-50"
+                  onClick={handleSubmit}
+                  disabled={submitting || !allUploaded}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-5 w-5" />
+                      {allUploaded ? "Enviar Documentos" : `Envie os ${3 - uploadedCount} documentos restantes`}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-            <p className="text-center text-sm text-muted-foreground">
-              {[documentFrontPath, documentBackPath, selfiePath].filter(Boolean).length}/3 documentos enviados
-            </p>
           </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DocumentStep({
+  step,
+  icon,
+  title,
+  description,
+  actionLabel,
+  alt,
+  preview,
+  uploaded,
+  uploading,
+  onPick,
+}: {
+  step: number
+  icon: ReactNode
+  title: string
+  description: string
+  actionLabel: string
+  alt: string
+  preview: string | null
+  uploaded: boolean
+  uploading: boolean
+  onPick: () => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="flex items-start gap-3 p-4 pb-3">
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+            uploaded ? "bg-orange-500 text-white" : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {uploaded ? <Check className="h-4 w-4" /> : step}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-foreground">
+            <span className="text-muted-foreground">{icon}</span>
+            <h3 className="font-semibold leading-tight">{title}</h3>
+          </div>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground text-pretty">{description}</p>
+        </div>
+      </div>
+
+      <div className="px-4 pb-4">
+        {preview ? (
+          <div className="relative overflow-hidden rounded-xl border border-border">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={preview || "/placeholder.svg"} alt={alt} className="h-48 w-full object-cover" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+            <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-orange-500 px-2.5 py-1 text-xs font-medium text-white shadow">
+              <CheckCircle className="h-3.5 w-3.5" />
+              Enviado
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute bottom-3 right-3 bg-white/90 text-black hover:bg-white"
+              onClick={onPick}
+              disabled={uploading}
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Trocar"}
+            </Button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onPick}
+            disabled={uploading}
+            className="group flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border bg-muted/30 py-8 transition-colors hover:border-orange-500 hover:bg-orange-500/5 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {uploading ? (
+              <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+            ) : (
+              <>
+                <span className="rounded-full bg-orange-500/10 p-3 transition-colors group-hover:bg-orange-500/20">
+                  <Camera className="h-6 w-6 text-orange-500" />
+                </span>
+                <span className="text-sm font-medium text-foreground">{actionLabel}</span>
+                <span className="text-xs text-muted-foreground">Formatos aceitos: JPG, PNG, WEBP</span>
+              </>
+            )}
+          </button>
         )}
       </div>
     </div>

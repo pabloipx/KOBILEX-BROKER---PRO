@@ -31,6 +31,16 @@ export default function WithdrawPage() {
     remaining: number
     cancelOnWithdrawal: boolean
   } | null>(null)
+  // Trava do valor depositado: dinheiro do proprio usuario, preso ate cumprir o volume exigido.
+  const [depositRollover, setDepositRollover] = useState<{
+    lockedAmount: number
+    rolloverRequired: number
+    rolloverProgress: number
+    remaining: number
+    progressPercent: number
+    depositsCount: number
+  } | null>(null)
+  const [withdrawalHours, setWithdrawalHours] = useState(72)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState("")
@@ -103,6 +113,12 @@ export default function WithdrawPage() {
               cancelOnWithdrawal: promo.cancelsOnWithdrawal,
             })
           }
+          if (promo.depositRollover) {
+            setDepositRollover(promo.depositRollover)
+          }
+          if (promo.withdrawalHours) {
+            setWithdrawalHours(promo.withdrawalHours)
+          }
         }
       } catch {
         // Sem bloquear a tela: na falha, o servidor ainda aplica a trava no envio do saque.
@@ -114,8 +130,9 @@ export default function WithdrawPage() {
     loadData()
   }, [router, supabase])
 
-  // Saldo realmente sacavel: o total menos a parte travada por bonus em rollover.
-  const availableBalance = Math.max(0, balance - lockedBalance)
+  // Saldo realmente sacavel: o total menos o bonus em rollover e menos os depositos travados.
+  const depositLocked = depositRollover?.lockedAmount || 0
+  const availableBalance = Math.max(0, balance - lockedBalance - depositLocked)
 
   const isKycApproved = kycStatus === "approved" || isVerified === true
   const needsKyc = !isKycApproved
@@ -380,8 +397,8 @@ export default function WithdrawPage() {
   <p className="text-3xl font-bold text-white">
   R$ {availableBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
   </p>
-  {/* Com bonus ativo, o saldo total nao e todo sacavel: mostramos a parte travada. */}
-  {lockedBalance > 0 && (
+  {/* Com rollover ativo, o saldo total nao e todo sacavel: mostramos cada parte travada. */}
+  {(lockedBalance > 0 || depositLocked > 0) && (
   <div className="mt-3 pt-3 border-t border-[#1F2933] flex flex-col gap-1">
   <div className="flex items-center justify-between text-xs">
   <span className="text-[#9CA3AF]">Saldo total</span>
@@ -389,12 +406,22 @@ export default function WithdrawPage() {
   R$ {balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
   </span>
   </div>
+  {lockedBalance > 0 && (
   <div className="flex items-center justify-between text-xs">
   <span className="text-[#fb923c]">Bônus travado (rollover)</span>
   <span className="text-[#fb923c] font-medium">
   R$ {lockedBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
   </span>
   </div>
+  )}
+  {depositLocked > 0 && (
+  <div className="flex items-center justify-between text-xs">
+  <span className="text-[#fb923c]">Depósito travado (rollover)</span>
+  <span className="text-[#fb923c] font-medium">
+  R$ {depositLocked.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+  </span>
+  </div>
+  )}
   </div>
   )}
   </div>
@@ -429,6 +456,38 @@ export default function WithdrawPage() {
   </div>
   </div>
   )}
+
+          {/* Progresso do rollover do valor depositado. Diferente do bonus, este valor nunca e
+              perdido: fica apenas indisponivel para saque ate o volume ser cumprido. */}
+          {depositRollover && (
+            <div className="p-4 rounded-2xl bg-[#f97316]/5 border border-[#f97316]/30 flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-[#fb923c] shrink-0 mt-0.5" />
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium text-[#fb923c]">
+                    {depositRollover.depositsCount > 1
+                      ? "Depósitos com rollover pendente"
+                      : "Depósito com rollover pendente"}
+                  </p>
+                  <p className="text-xs text-[#9CA3AF] leading-relaxed">
+                    {`Faltam R$ ${depositRollover.remaining.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} de volume negociado para liberar R$ ${depositRollover.lockedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} para saque. O valor continua disponível para operar.`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="h-2 rounded-full bg-[#1F2933] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#f97316] transition-all"
+                    style={{ width: `${depositRollover.progressPercent}%` }}
+                  />
+                </div>
+                <p className="text-xs text-[#6B7280]">
+                  R$ {depositRollover.rolloverProgress.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} de R${" "}
+                  {depositRollover.rolloverRequired.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} negociados
+                </p>
+              </div>
+            </div>
+          )}
 
         <div>
           <label className="block text-sm text-white mb-2 font-medium">Valor do saque</label>
@@ -660,7 +719,7 @@ export default function WithdrawPage() {
               <Clock className="w-4 h-4 text-[#f97316]" />
               <p className="text-xs font-medium text-white">Prazo</p>
             </div>
-            <p className="text-xs text-[#9CA3AF]">Até 24 horas úteis</p>
+            <p className="text-xs text-[#9CA3AF]">{`Até ${withdrawalHours} horas úteis`}</p>
           </div>
           <div className="p-4 rounded-xl bg-[#121826] border border-[#1F2933]">
             <div className="flex items-center gap-2 mb-2">

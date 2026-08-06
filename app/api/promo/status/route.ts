@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes"
+import { getDepositRolloverSummary, getWithdrawalProcessingHours } from "@/lib/deposit-rollover"
 
 /**
  * Situacao do rollover do usuario logado: quanto de bonus esta travado, quanto de volume falta e
@@ -25,8 +26,33 @@ export async function GET() {
     const supabaseAdmin = createAdminClient()
     const bonus = await getActiveBonus(supabaseAdmin, user.id)
 
+    // Rollover do valor depositado e prazo de saque acompanham a resposta em qualquer caso: a tela
+    // de saque precisa deles mesmo quando o usuario nao tem bonus de codigo promocional.
+    const [depositRollover, withdrawalHours] = await Promise.all([
+      getDepositRolloverSummary(supabaseAdmin, user.id),
+      getWithdrawalProcessingHours(supabaseAdmin),
+    ])
+
+    const depositRolloverPayload = depositRollover
+      ? {
+          lockedAmount: depositRollover.locked,
+          rolloverRequired: depositRollover.required,
+          rolloverProgress: depositRollover.progress,
+          remaining: depositRollover.remaining,
+          progressPercent:
+            depositRollover.required > 0
+              ? Math.min(100, Math.round((depositRollover.progress / depositRollover.required) * 100))
+              : 100,
+          depositsCount: depositRollover.count,
+        }
+      : null
+
     if (!bonus) {
-      return NextResponse.json({ hasActiveBonus: false })
+      return NextResponse.json({
+        hasActiveBonus: false,
+        depositRollover: depositRolloverPayload,
+        withdrawalHours,
+      })
     }
 
     const required = Number(bonus.rollover_required || 0)
@@ -34,6 +60,8 @@ export async function GET() {
 
     return NextResponse.json({
       hasActiveBonus: true,
+      depositRollover: depositRolloverPayload,
+      withdrawalHours,
       code: bonus.code,
       bonusAmount: Number(bonus.bonus_amount),
       lockedAmount: Number(bonus.bonus_amount),

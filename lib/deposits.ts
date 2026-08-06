@@ -7,6 +7,7 @@ import {
   round2,
 } from "@/lib/affiliate-commission"
 import { grantDepositBonus } from "@/lib/promo-codes"
+import { grantDepositRollover } from "@/lib/deposit-rollover"
 
 /**
  * Aprova um deposito de forma idempotente: marca como "approved", credita o saldo do usuario,
@@ -117,6 +118,15 @@ export async function approveDeposit(
   } catch (bonusError) {
     console.error("[v0] Erro ao conceder bonus do deposito:", bonusError)
   }
+
+  // 4b. Criar a trava de rollover do valor depositado, se o admin tiver ativado a regra.
+  // Nao move saldo: o valor segue disponivel para operar e a trava e aplicada apenas no saque.
+  // O UNIQUE em deposit_rollovers.deposit_id garante idempotencia com webhook reenviado.
+  await grantDepositRollover(supabaseAdmin, {
+    id: deposit.id,
+    user_id: deposit.user_id,
+    amount: deposit.amount,
+  })
 
   // 5. Processar comissao do afiliado
   try {

@@ -140,8 +140,8 @@ Simples assim! Alguma dúvida específica?`,
 Informações importantes:
 
 📌 Valor mínimo: R$ 100,00
-📌 Primeiro saque: até 24h (verificação de segurança)
-📌 Saques seguintes: até 12h úteis
+📌 Prazo de processamento: até 72h úteis
+📌 Primeiro saque passa por verificação de segurança
 📌 KYC aprovado é obrigatório
 
 Qual sua situação?`,
@@ -155,7 +155,7 @@ Qual sua situação?`,
   WITHDRAW_PENDING: {
     message: `{name}, se seu saque está em análise, significa que está na fila de processamento. 📋
 
-Se for seu primeiro saque, passa por uma verificação de segurança que leva até 24h úteis. Isso protege você e a plataforma!
+O processamento leva até 72h úteis, e o primeiro saque passa por uma verificação de segurança. Isso protege você e a plataforma!
 
 Seu KYC (verificação de identidade) está aprovado?`,
     options: [
@@ -167,8 +167,7 @@ Seu KYC (verificação de identidade) está aprovado?`,
   WITHDRAW_KYC_OK: {
     message: `Perfeito, {name}! Com KYC aprovado, seu saque será processado dentro do prazo normal. ⏳
 
-Se for primeiro saque: até 24h úteis
-Saques seguintes: até 12h úteis
+Prazo de processamento: até 72h úteis
 
 Recomendo aguardar o prazo completo. Você será notificado assim que for processado!
 
@@ -207,8 +206,8 @@ Verifique se seus dados PIX estão corretos no perfil!`,
   WITHDRAW_INFO: {
     message: `{name}, aqui estão todos os prazos de saque: 📋
 
-🔹 Primeiro saque: até 24 horas úteis
-🔹 Saques seguintes: até 12 horas úteis
+🔹 Processamento: até 72 horas úteis
+🔹 Primeiro saque: verificação de segurança adicional
 🔹 Contas VIP: processamento prioritário
 
 Os prazos contam apenas em dias úteis (seg-sex).

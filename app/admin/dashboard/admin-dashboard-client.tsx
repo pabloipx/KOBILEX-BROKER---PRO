@@ -25,6 +25,7 @@ import {
   CandlestickChart,
   Zap,
   Gift,
+  Repeat,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -160,6 +161,14 @@ export default function AdminDashboardClient() {
   const [cardDepositEnabled, setCardDepositEnabled] = useState(true)
   const [cryptoDepositEnabled, setCryptoDepositEnabled] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(false)
+
+  // Rollover de deposito e prazo de saque. Guardados como texto para nao atrapalhar a digitacao
+  // (um campo numerico controlado nao deixa apagar o ultimo digito nem escrever "1,").
+  const [depositRolloverEnabled, setDepositRolloverEnabled] = useState(false)
+  const [depositRolloverMultiplier, setDepositRolloverMultiplier] = useState("1")
+  const [withdrawalHours, setWithdrawalHours] = useState("72")
+  const [savingRollover, setSavingRollover] = useState(false)
+  const [rolloverMsg, setRolloverMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
   const [imageModal, setImageModal] = useState<{ open: boolean; url: string; title: string }>({
@@ -533,6 +542,18 @@ export default function AdminDashboardClient() {
       if (data.crypto_deposit_enabled !== undefined) {
         setCryptoDepositEnabled(data.crypto_deposit_enabled === "true" || data.crypto_deposit_enabled === true)
       }
+      // setting_value e jsonb: o valor pode voltar como boolean/number real ou como string.
+      if (data.deposit_rollover_enabled !== undefined) {
+        setDepositRolloverEnabled(
+          data.deposit_rollover_enabled === "true" || data.deposit_rollover_enabled === true,
+        )
+      }
+      if (data.deposit_rollover_multiplier !== undefined) {
+        setDepositRolloverMultiplier(String(data.deposit_rollover_multiplier).replace(/"/g, ""))
+      }
+      if (data.withdrawal_processing_hours !== undefined) {
+        setWithdrawalHours(String(data.withdrawal_processing_hours).replace(/"/g, ""))
+      }
     } catch (err) {
       console.error("Error fetching settings:", err)
     } finally {
@@ -575,6 +596,84 @@ export default function AdminDashboardClient() {
       console.error("Error toggling crypto deposit:", err)
     } finally {
       setSettingsLoading(false)
+    }
+  }
+
+  /**
+   * Liga/desliga o rollover de deposito. Salvo na hora (como os outros toggles) para o admin nao
+   * precisar apertar "Salvar" so para desativar a regra.
+   */
+  const toggleDepositRollover = async () => {
+    setSavingRollover(true)
+    setRolloverMsg(null)
+    try {
+      const newValue = !depositRolloverEnabled
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({ deposit_rollover_enabled: newValue }),
+      })
+      if (res.ok) {
+        setDepositRolloverEnabled(newValue)
+        setRolloverMsg({
+          type: "ok",
+          text: newValue ? "Rollover de deposito ativado." : "Rollover de deposito desativado.",
+        })
+      } else {
+        setRolloverMsg({ type: "err", text: "Nao foi possivel salvar. Tente novamente." })
+      }
+    } catch (err) {
+      console.error("[v0] Erro ao alternar rollover de deposito:", err)
+      setRolloverMsg({ type: "err", text: "Erro de conexao ao salvar." })
+    } finally {
+      setSavingRollover(false)
+    }
+  }
+
+  /** Salva o multiplicador do rollover e o prazo de saque. */
+  const saveRolloverSettings = async () => {
+    setSavingRollover(true)
+    setRolloverMsg(null)
+
+    // Aceita virgula como separador decimal, comum em pt-BR.
+    const multiplier = Number(depositRolloverMultiplier.replace(",", "."))
+    const hours = Number(withdrawalHours)
+
+    if (!Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 100) {
+      setRolloverMsg({ type: "err", text: "O multiplicador deve ser um numero entre 0,1 e 100." })
+      setSavingRollover(false)
+      return
+    }
+
+    if (!Number.isInteger(hours) || hours <= 0 || hours > 720) {
+      setRolloverMsg({ type: "err", text: "O prazo de saque deve ser um numero inteiro de 1 a 720 horas." })
+      setSavingRollover(false)
+      return
+    }
+
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({
+          deposit_rollover_multiplier: multiplier,
+          withdrawal_processing_hours: hours,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (res.ok) {
+        setDepositRolloverMultiplier(String(multiplier))
+        setWithdrawalHours(String(hours))
+        setRolloverMsg({ type: "ok", text: "Configuracoes salvas." })
+      } else {
+        setRolloverMsg({ type: "err", text: data.error || "Nao foi possivel salvar." })
+      }
+    } catch (err) {
+      console.error("[v0] Erro ao salvar configuracoes de rollover:", err)
+      setRolloverMsg({ type: "err", text: "Erro de conexao ao salvar." })
+    } finally {
+      setSavingRollover(false)
     }
   }
 
@@ -1337,6 +1436,111 @@ export default function AdminDashboardClient() {
 
                 <p className="text-gray-500 text-xs mt-4">
                   As alteracoes sao aplicadas imediatamente para todos os usuarios.
+                </p>
+              </div>
+
+              {/* Rollover de deposito e prazo de saque */}
+              <div className="bg-[#1A1F2E] rounded-xl p-6 border border-[#2A3142]">
+                <h3 className="text-lg font-semibold text-white mb-4">Rollover e Saques</h3>
+
+                <div className="space-y-4">
+                  {/* Liga/desliga o rollover de deposito */}
+                  <div className="flex items-center justify-between gap-4 p-4 bg-[#0B0F14] rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0">
+                        <Repeat className="w-5 h-5 text-orange-500" />
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">Rollover de Deposito</p>
+                        <p className="text-gray-400 text-sm">
+                          Exigir volume negociado antes de liberar o valor depositado para saque
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={toggleDepositRollover}
+                      disabled={savingRollover}
+                      role="switch"
+                      aria-checked={depositRolloverEnabled}
+                      aria-label="Ativar rollover de deposito"
+                      className={`relative w-14 h-7 rounded-full transition-colors shrink-0 ${
+                        depositRolloverEnabled ? "bg-green-500" : "bg-gray-600"
+                      } ${savingRollover ? "opacity-50" : ""}`}
+                    >
+                      <span
+                        className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
+                          depositRolloverEnabled ? "right-1" : "left-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="p-4 bg-[#0B0F14] rounded-lg">
+                      <label htmlFor="rollover-multiplier" className="text-white font-medium text-sm">
+                        Multiplicador do rollover
+                      </label>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Input
+                          id="rollover-multiplier"
+                          type="text"
+                          inputMode="decimal"
+                          value={depositRolloverMultiplier}
+                          onChange={(e) => setDepositRolloverMultiplier(e.target.value)}
+                          disabled={savingRollover}
+                          className="bg-[#1A1F2E] border-[#2A3142] text-white"
+                        />
+                        <span className="text-gray-400 text-sm shrink-0">x o deposito</span>
+                      </div>
+                      <p className="text-gray-500 text-xs mt-2">
+                        {"Com 2x, um deposito de R$ 100 exige R$ 200 em operacoes reais."}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-[#0B0F14] rounded-lg">
+                      <label htmlFor="withdrawal-hours" className="text-white font-medium text-sm">
+                        Prazo de processamento do saque
+                      </label>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Input
+                          id="withdrawal-hours"
+                          type="text"
+                          inputMode="numeric"
+                          value={withdrawalHours}
+                          onChange={(e) => setWithdrawalHours(e.target.value)}
+                          disabled={savingRollover}
+                          className="bg-[#1A1F2E] border-[#2A3142] text-white"
+                        />
+                        <span className="text-gray-400 text-sm shrink-0">horas</span>
+                      </div>
+                      <p className="text-gray-500 text-xs mt-2">
+                        Prazo exibido ao usuario na tela de saque.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Button
+                      onClick={saveRolloverSettings}
+                      disabled={savingRollover}
+                      className="bg-orange-500 hover:bg-orange-600 text-white"
+                    >
+                      {savingRollover ? "Salvando..." : "Salvar"}
+                    </Button>
+                    {rolloverMsg && (
+                      <p
+                        role="status"
+                        className={`text-sm ${rolloverMsg.type === "ok" ? "text-green-400" : "text-red-400"}`}
+                      >
+                        {rolloverMsg.text}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-gray-500 text-xs mt-4">
+                  O multiplicador vale para depositos novos: quem ja depositou mantem a regra do
+                  momento do deposito.
                 </p>
               </div>
             </div>

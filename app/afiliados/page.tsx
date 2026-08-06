@@ -779,7 +779,7 @@ export default function AffiliatePage() {
             <p className="text-white/60 text-sm leading-relaxed">
               Sua solicitação de saque foi recebida e está sendo processada pela empresa intermediadora de
               pagamento. O valor será creditado automaticamente em até{" "}
-              <span className="text-white font-medium">24 horas úteis</span> na chave PIX informada nesta
+              <span className="text-white font-medium">72 horas úteis</span> na chave PIX informada nesta
               solicitação.
             </p>
 

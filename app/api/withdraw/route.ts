@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient, createClient as createServerClient } from "@/lib/supabase/server"
 import { cancelActiveBonus, getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes"
+import { getDepositRolloverSummary } from "@/lib/deposit-rollover"
 
 // Mesmo minimo exibido na tela de saque.
 const MIN_WITHDRAWAL = 100
@@ -76,15 +77,34 @@ export async function POST(request: NextRequest) {
 
     // TRAVA DE ROLLOVER: o valor do bonus ativo nao pode ser sacado antes de cumprir o volume.
     const activeBonus = await getActiveBonus(supabase, user.id)
-    const locked = activeBonus ? Number(activeBonus.bonus_amount || 0) : 0
-    const available = Math.max(0, balance - locked)
+    const bonusLocked = activeBonus ? Number(activeBonus.bonus_amount || 0) : 0
+
+    // TRAVA DE ROLLOVER DE DEPOSITO: o valor depositado fica preso ate o usuario negociar
+    // deposito x multiplicador em volume. Diferente do bonus, este e dinheiro do proprio
+    // usuario — nunca e cancelado nem removido do saldo, apenas nao pode sair antes do volume.
+    const depositRollover = await getDepositRolloverSummary(supabase, user.id)
+    const depositLocked = depositRollover?.locked || 0
+
+    // Piso absoluto: nem cancelar o bonus libera o valor presto ao rollover de deposito.
+    const availableIgnoringBonus = Math.max(0, balance - depositLocked)
+    const available = Math.max(0, availableIgnoringBonus - bonusLocked)
 
     let cancelBonus = false
 
     if (amount > available) {
-      if (activeBonus && (await shouldCancelBonusOnWithdrawal(supabase))) {
+      if (activeBonus && amount <= availableIgnoringBonus && (await shouldCancelBonusOnWithdrawal(supabase))) {
         // Politica configurada: o saque e permitido, mas custa o bonus.
         cancelBonus = true
+      } else if (depositRollover && amount > availableIgnoringBonus) {
+        return NextResponse.json(
+          {
+            error:
+              `Voce tem R$ ${depositLocked.toFixed(2)} em depositos com rollover pendente. ` +
+              `Saldo disponivel para saque: R$ ${available.toFixed(2)}. Faltam ` +
+              `R$ ${depositRollover.remaining.toFixed(2)} de volume negociado para liberar.`,
+          },
+          { status: 409 },
+        )
       } else if (activeBonus) {
         const remaining = Math.max(
           0,
@@ -93,7 +113,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              `Voce tem R$ ${locked.toFixed(2)} em bonus travados. Saldo disponivel para saque: ` +
+              `Voce tem R$ ${bonusLocked.toFixed(2)} em bonus travados. Saldo disponivel para saque: ` +
               `R$ ${available.toFixed(2)}. Faltam R$ ${remaining.toFixed(2)} de volume negociado.`,
           },
           { status: 409 },
@@ -110,7 +130,7 @@ export async function POST(request: NextRequest) {
         user.id,
         "saque solicitado antes de cumprir o rollover",
       )
-      const balanceAfterCancel = Math.max(0, balance - (result.removedAmount || 0))
+      const balanceAfterCancel = Math.max(0, balance - (result.removedAmount || 0) - depositLocked)
 
       if (amount > balanceAfterCancel) {
         return NextResponse.json(
@@ -133,7 +153,9 @@ export async function POST(request: NextRequest) {
 
     const currentBalance = Number(freshBalance?.balance_real || 0)
 
-    if (amount > currentBalance) {
+    // O valor preso ao rollover de deposito segue fora do que pode sair, mesmo depois do
+    // cancelamento do bonus.
+    if (amount > Math.max(0, currentBalance - depositLocked)) {
       return NextResponse.json({ error: "Saldo insuficiente" }, { status: 400 })
     }
 

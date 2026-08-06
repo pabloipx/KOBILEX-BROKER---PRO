@@ -472,3 +472,174 @@ body {
     font-size: 16px !important;
   }
 }
+
+/* ==========================================================================
+   Animacao de resultado da operacao (estilo Avalon)
+   Card central que entra com um "pop" elastico, segura, e sai subindo.
+   No ganho sobem moedas; na perda o card treme levemente.
+   ========================================================================== */
+
+@keyframes result-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.6) translateY(24px);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.08) translateY(0);
+  }
+  75% {
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-result-pop-in {
+  animation: result-pop-in 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes result-out {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.92) translateY(-40px);
+  }
+}
+
+.animate-result-out {
+  animation: result-out 460ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+/* Tremida curta e seca aplicada ao card de perda */
+@keyframes result-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-9px);
+  }
+  30% {
+    transform: translateX(8px);
+  }
+  45% {
+    transform: translateX(-6px);
+  }
+  60% {
+    transform: translateX(4px);
+  }
+  80% {
+    transform: translateX(-2px);
+  }
+}
+
+.animate-result-shake {
+  animation: result-shake 480ms ease-out 460ms both;
+}
+
+/* Anel de energia que se expande a partir do badge */
+@keyframes result-ring {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+.animate-result-ring {
+  animation: result-ring 1.4s ease-out infinite;
+}
+
+/* Brilho radial pulsando atras do card */
+@keyframes result-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.12);
+  }
+}
+
+.animate-result-glow {
+  animation: result-glow 1.8s ease-in-out infinite;
+}
+
+/* Badge do icone dando um leve salto ao aparecer */
+@keyframes result-badge {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-25deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.18) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.animate-result-badge {
+  animation: result-badge 560ms cubic-bezier(0.34, 1.56, 0.64, 1) 120ms both;
+}
+
+/* Valor entra depois do badge, deslizando de baixo */
+@keyframes result-amount {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.86);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-result-amount {
+  animation: result-amount 420ms cubic-bezier(0.22, 1, 0.36, 1) 260ms both;
+}
+
+/* Moedas subindo no ganho */
+@keyframes result-coin {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.5) rotate(0deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-150px) scale(1.05) rotate(320deg);
+  }
+}
+
+.animate-result-coin {
+  animation: result-coin 1.5s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-result-pop-in,
+  .animate-result-out,
+  .animate-result-shake,
+  .animate-result-ring,
+  .animate-result-glow,
+  .animate-result-badge,
+  .animate-result-amount,
+  .animate-result-coin {
+    animation: none !important;
+  }
+}

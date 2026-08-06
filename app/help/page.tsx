@@ -62,7 +62,7 @@ const faqs: FAQItem[] = [
     category: "saque",
     question: "Como solicitar um saque?",
     answer:
-      "Vá em Perfil > Saque, informe o valor e sua chave PIX. O saque é processado em até 24 horas úteis após a solicitação.",
+      "Vá em Perfil > Saque, informe o valor e sua chave PIX. O saque é processado em até 72 horas úteis após a solicitação.",
   },
   {
     category: "saque",

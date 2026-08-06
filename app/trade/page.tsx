@@ -8,6 +8,7 @@ import { SidebarMenu } from "@/components/trading/sidebar-menu"
 import { TraderIAModal } from "@/components/trading/trader-ia-modal"
 import { TraderIAWatermark } from "@/components/trading/trader-ia-watermark"
 import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
+import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
 import { useGlobalOTC } from "@/lib/hooks/use-global-otc"
 import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { playCallSound, playPutSound, playWinSound, playLossSound, unlockAudio } from "@/lib/sounds"
@@ -1471,19 +1472,9 @@ export default function TradePage() {
         </div>
       )}
 
-      {/* Trade Result Notification */}
+      {/* Animacao de resultado da operacao (estilo Avalon) */}
       {tradeResult && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-pulse">
-          <div
-            className={`px-6 py-3 rounded-xl font-bold text-white shadow-2xl ${
-              tradeResult.type === "win" ? "bg-orange-500" : "bg-red-500"
-            }`}
-          >
-            {tradeResult.type === "win"
-              ? `+R$ ${formatCurrency(tradeResult.amount)}`
-              : `-R$ ${formatCurrency(tradeResult.amount)}`}
-          </div>
-        </div>
+        <TradeResultOverlay type={tradeResult.type} amount={tradeResult.amount} durationMs={3000} />
       )}
     </div>
   )

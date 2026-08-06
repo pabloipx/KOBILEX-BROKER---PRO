@@ -10,15 +10,14 @@ export const dynamic = "force-dynamic"
  * no motor de precos. Retornamos tambem as agendadas (start no futuro) para que o motor as
  * aplique automaticamente quando chegar a hora.
  *
- * IMPORTANTE: continuamos retornando manipulacoes JA terminadas durante a janela de "release".
- * Ao terminar, o motor dissolve o deslocamento aos poucos (cauda de ate 900s) para o preco
- * voltar ao normal sem salto. Se removessemos a manipulacao no instante do end_time, o motor
- * perderia a referencia e o drift cairia de todo o deslocamento para zero de uma vez — era isso
- * que fazia o grafico "subir/descer de uma vez" quando a manipulacao acabava. O motor ignora
- * sozinho (drift 0) qualquer manipulacao alem de end_time + release, entao basta olhar para tras
- * o release maximo (900s).
+ * IMPORTANTE: retornamos TODAS as manipulacoes com active = true, inclusive as ja terminadas.
+ * Ao terminar, o motor CONGELA o deslocamento no nivel alcancado e o preco segue a partir dali
+ * (nao volta ao normal). Esse nivel so existe enquanto a manipulacao continua na lista: se a
+ * removessemos no end_time, o drift cairia para zero de uma vez e o grafico daria o salto de
+ * "subir/desce de uma vez" que o usuario relatou. Quem encerra o efeito e o admin, desativando a
+ * manipulacao (active = false) — e nesse momento o deslocamento sai da lista.
+ * Limite de 200 protege a performance (o motor percorre esta lista por vela do historico).
  */
-const MAX_RELEASE_SECONDS = 900
 export async function GET() {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -29,14 +28,14 @@ export async function GET() {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    // Inclui manipulacoes que terminaram ha ate MAX_RELEASE_SECONDS, para o motor conseguir
-    // dissolver o deslocamento gradualmente (cauda de release) em vez de zerar de uma vez.
-    const releaseCutoffIso = new Date(Date.now() - MAX_RELEASE_SECONDS * 1000).toISOString()
+    // Sem filtro por end_time: uma manipulacao ativa e terminada mantem o preco no nivel congelado.
+    // As mais recentes primeiro, limitadas a 200 para nao pesar no motor.
     const { data, error } = await supabase
       .from("otc_manipulations")
       .select("symbol, direction, start_time, end_time, strength, style")
       .eq("active", true)
-      .gte("end_time", releaseCutoffIso)
+      .order("start_time", { ascending: false })
+      .limit(200)
 
     if (error) return NextResponse.json({ manipulations: [] })
 

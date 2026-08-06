@@ -218,14 +218,17 @@ function manipulationDrift(asset: OTCAsset, timestamp: number): number {
     if (m.symbol !== asset.symbol) continue
 
     const duration = Math.max(1, m.endTime - m.startTime)
-    // Cauda de liberacao: ao terminar, o deslocamento se dissolve aos poucos em vez de o preco
-    // dar um salto de volta ao normal (o salto era a pista mais obvia de manipulacao).
-    // A liberacao dura o MESMO tempo que a manipulacao, para o preco voltar ao normal na mesma
-    // velocidade com que subiu — parece um pullback comum. Com uma cauda curta (o que havia
-    // antes), todo o deslocamento era devolvido em um minuto e criava justamente o candle
-    // gigante que denunciava a manipulacao.
-    const release = Math.min(900, Math.max(90, duration))
-    if (timestamp < m.startTime || timestamp > m.endTime + release) continue
+    if (timestamp < m.startTime) continue
+
+    // CONGELAMENTO NO FIM DA JANELA: quando a manipulacao termina, o deslocamento NAO volta ao
+    // normal — ele congela no valor que tinha no ultimo instante e o preco segue a partir dali,
+    // como numa corretora real. Antes existia uma "cauda" que devolvia o deslocamento ao natural,
+    // e era ela que gerava a rajada de candles rapidos assim que a janela acabava.
+    // Para congelar, avaliamos TODOS os termos que dependem do tempo no instante `te`: durante a
+    // janela `te` acompanha o relogio; depois do fim ele fica preso em endTime, entao o resultado
+    // deste bloco vira uma constante. Como a compensacao (`counter`) tambem congela, a tendencia
+    // natural lenta volta a mover o preco a partir do nivel — transicao continua, sem salto.
+    const te = Math.min(timestamp, m.endTime)
 
     const dir = m.direction === "up" ? 1 : -1
     const strength = Math.max(0, Math.min(100, m.strength)) / 100
@@ -239,7 +242,7 @@ function manipulationDrift(asset: OTCAsset, timestamp: number): number {
       pathCache.set(key, path)
     }
 
-    const p = Math.min(1, (timestamp - m.startTime) / duration)
+    const p = Math.min(1, (te - m.startTime) / duration)
 
     // O deslocamento total nasce de uma VELOCIDADE (velas por minuto) multiplicada pela duracao,
     // em vez de um tamanho fixo. E isso que garante que os candles manipulados tenham o mesmo
@@ -253,33 +256,27 @@ function manipulationDrift(asset: OTCAsset, timestamp: number): number {
     const total = Math.min(unit * 10, Math.max(unit * 1.6, unit * prof.pace * (0.4 + 1.2 * strength) * minutes))
     const value = shapeAt(path, p)
 
-    // Depois do fim da janela tudo se dissolve junto, na mesma proporcao, para o preco nao dar
-    // nenhum salto ao voltar ao normal.
-    let fade = 1
-    if (timestamp > m.endTime) {
-      const f = (timestamp - m.endTime) / release
-      fade = 1 - f * f * (3 - 2 * f)
-    }
-
     // Compensacao: cancela o quanto a tendencia natural lenta andou desde o inicio da janela.
     // Sem isso o mercado sintetico podia empurrar o preco para o lado oposto com mais forca do
-    // que a manipulacao e a operacao perdia apesar da direcao forcada.
-    const counter = (slowNaturalDev(symSeed, timestamp) - slowNaturalDev(symSeed, m.startTime)) * band
+    // que a manipulacao e a operacao perdia apesar da direcao forcada. Congela em `te`: depois do
+    // fim, deixa de cancelar e a tendencia natural volta a andar a partir do nivel alcancado.
+    const counter = (slowNaturalDev(symSeed, te) - slowNaturalDev(symSeed, m.startTime)) * band
 
     // Ruido rapido sobreposto: pavios e candles de cor contraria dentro de cada perna. Nao muda
     // o destino (media zero), so tira a aparencia de linha desenhada.
     // Perto do fim da janela o ruido e reduzido: assim o fechamento e definido pelo caminho
     // controlado e nao por um pavio aleatorio que poderia inverter o resultado da operacao.
-    const easeIn = Math.min(1, (timestamp - m.startTime) / 20) * (1 - 0.75 * Math.max(0, (p - 0.85) / 0.15))
+    const easeIn = Math.min(1, (te - m.startTime) / 20) * (1 - 0.75 * Math.max(0, (p - 0.85) / 0.15))
     const wick =
-      0.5 * valueNoise(timestamp / 34 + symSeed, symSeed + 21) +
-      0.3 * valueNoise(timestamp / 13 + symSeed, symSeed + 41) +
-      0.2 * valueNoise(timestamp / 5 + symSeed, symSeed + 61)
+      0.5 * valueNoise(te / 34 + symSeed, symSeed + 21) +
+      0.3 * valueNoise(te / 13 + symSeed, symSeed + 41) +
+      0.2 * valueNoise(te / 5 + symSeed, symSeed + 61)
 
     // O ruido tambem e medido em velas normais (antes usava a banda inteira, o que sozinho ja
     // gerava pavios de 2,5 velas). Nao tem direcao: e simetrico e de media zero.
-    drift +=
-      fade * (dir * total * value - counter + unit * prof.wick * (0.8 + 0.5 * strength) * wick * easeIn)
+    // Sem `fade`: apos o fim da janela todos os termos acima ja estao congelados em `te`, entao
+    // esta contribuicao vira uma constante e o deslocamento permanece no nivel — sem retorno.
+    drift += dir * total * value - counter + unit * prof.wick * (0.8 + 0.5 * strength) * wick * easeIn
   }
   return drift
 }

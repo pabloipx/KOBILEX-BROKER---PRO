@@ -220,15 +220,13 @@ export async function POST(req: NextRequest) {
       const balanceReal = payload.balanceReal ?? payload.balance_real
       const balanceDemo = payload.balanceDemo ?? payload.balance_demo
       
-      const { error } = await supabase.from("user_balances").upsert(
-        {
-          user_id: userId,
-          balance_real: Number(balanceReal) || 0,
-          balance_demo: Number(balanceDemo) || 0,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      )
+      // Grava somente o saldo informado. Antes um `Number(undefined) || 0` zerava o outro saldo.
+      const balanceRow = buildBalanceUpsert(userId, balanceReal, balanceDemo)
+      if (!balanceRow) {
+        return NextResponse.json({ error: "Informe um valor de saldo válido" }, { status: 400 })
+      }
+
+      const { error } = await supabase.from("user_balances").upsert(balanceRow, { onConflict: "user_id" })
       if (error) throw error
       return NextResponse.json({ success: true })
     }
@@ -284,17 +282,12 @@ export async function POST(req: NextRequest) {
         .eq("id", userId)
       if (error) throw error
       
-      // Also update balance if provided
-      if (balanceReal !== undefined || balanceDemo !== undefined) {
-        const { error: balanceError } = await supabase.from("user_balances").upsert(
-          {
-            user_id: userId,
-            balance_real: Number(balanceReal) || 0,
-            balance_demo: Number(balanceDemo) || 0,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        )
+      // Atualiza o saldo apenas quando enviado, e apenas as contas realmente informadas.
+      const userBalanceRow = buildBalanceUpsert(userId, balanceReal, balanceDemo)
+      if (userBalanceRow) {
+        const { error: balanceError } = await supabase
+          .from("user_balances")
+          .upsert(userBalanceRow, { onConflict: "user_id" })
         if (balanceError) throw balanceError
       }
       

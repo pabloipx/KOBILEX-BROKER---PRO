@@ -189,7 +189,8 @@ export async function GET(request: NextRequest) {
       status: deposit.status,
       amount: deposit.amount,
       created_at: deposit.created_at,
-      completed_at: deposit.completed_at,
+      // A coluna chama-se `paid_at`; `completed_at` nao existe na tabela e voltava sempre undefined.
+      completed_at: deposit.paid_at,
     })
   } catch {
     return NextResponse.json({ error: "Erro interno" }, { status: 500 })

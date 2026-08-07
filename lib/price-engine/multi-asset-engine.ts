@@ -509,6 +509,25 @@ class MultiAssetEngine {
     return getLivePrice(asset, Date.now() / 1000)
   }
 
+  /**
+   * Preco do ativo em um instante ESPECIFICO (timestamp em segundos).
+   *
+   * Serve para liquidar operacoes exatamente no vencimento. Antes a liquidacao usava o preco do
+   * momento em que o verificador rodava (ate meio segundo DEPOIS do vencimento), entao o resultado
+   * dependia de sorte de timing: o grafico mostrava a operacao ganhando no segundo final e o
+   * sistema apurava com um preco posterior, ja em queda — era a causa do "deu win e mostrou loss".
+   * Para OTC a curva e deterministica, ou seja, este valor e sempre o mesmo para o mesmo instante,
+   * o que torna a apuracao reproduzivel e auditavel.
+   *
+   * Para ativos de mercado real nao existe historico intra-tick, entao caimos no preco atual.
+   */
+  getPriceAtTime(symbol: string, timestampSeconds: number): number {
+    const asset = OTC_ASSETS.find((a) => a.symbol === symbol)
+    if (!asset) return 0
+    if (isRealSymbol(symbol)) return this.getCurrentPrice(symbol)
+    return getLivePrice(asset, timestampSeconds)
+  }
+
   /** Repassa as velas reais encadeando as aberturas. Sem nenhum valor sintetizado. */
   private anchoredCandles(asset: OTCAsset, real: RealCandle[]): OTCCandle[] {
     const out: OTCCandle[] = []

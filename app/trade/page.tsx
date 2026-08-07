@@ -425,7 +425,13 @@ export default function TradePage() {
         // perda decidido por sorteio, com desvio de ate 0,5% sobre a entrada. Agora, sem preco a
         // operacao permanece pendente e e liquidada no proximo ciclo (roda a cada 3s), quando
         // houver cotacao real.
-        const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
+        // Amostra o preco no INSTANTE DO VENCIMENTO, nao no momento em que esta rede de seguranca
+        // roda (a cada 3s). Sem isso os dois caminhos de liquidacao podiam chegar a resultados
+        // diferentes para a mesma operacao, dependendo de qual rodasse primeiro.
+        const expirySeconds = (new Date(trade.entry_time).getTime() + (trade.timeframe || 60) * 1000) / 1000
+        const enginePrice =
+          multiAssetEngine.getPriceAtTime(trade.symbol, expirySeconds) ||
+          multiAssetEngine.getCurrentPrice(trade.symbol)
         if (!enginePrice || enginePrice <= 0) continue
         const exitPrice = enginePrice
         const isWin =
@@ -536,8 +542,16 @@ export default function TradePage() {
         try {
           // Resultado REAL baseado no movimento do preco, para TODOS os usuarios
           // (sem vitoria forcada para demo nem para afiliado)
+          //
+          // O preco de saida e amostrado no INSTANTE EXATO do vencimento, nao no momento em que
+          // este verificador rodou. O verificador roda a cada 500ms, entao antes a apuracao usava
+          // um preco de ate meio segundo depois do vencimento: o grafico mostrava a operacao
+          // ganhando quando o tempo zerou e o sistema apurava com um preco posterior, ja em queda.
+          // Era exatamente isso que produzia "deu win e mostrou loss".
+          const expirySeconds = (trade.timestamp + trade.expiryTime * 1000) / 1000
+          const settlePrice = multiAssetEngine.getPriceAtTime(trade.symbol, expirySeconds) || price
           const isWin =
-            trade.direction === "CALL" ? price > trade.entryPrice : price < trade.entryPrice
+            trade.direction === "CALL" ? settlePrice > trade.entryPrice : settlePrice < trade.entryPrice
           const result = isWin ? "win" : "loss"
           const profitAmount = isWin ? Math.round(trade.amount * (payout / 100) * 100) / 100 : 0
 
@@ -574,7 +588,10 @@ export default function TradePage() {
           const { data: closedRows, error: updateError } = await supabaseRef.current
             .from("trades")
             .update({
-              exit_price: price,
+              // Grava o MESMO preco que decidiu o resultado. Antes salvava o preco ao vivo, que
+              // podia divergir do usado na apuracao e deixava o historico contraditorio: um "win"
+              // com exit_price abaixo da entrada.
+              exit_price: settlePrice,
               closed_at: new Date().toISOString(),
               status: "closed",
               result,

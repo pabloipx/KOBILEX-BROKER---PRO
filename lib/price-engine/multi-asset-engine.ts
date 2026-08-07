@@ -464,6 +464,33 @@ class MultiAssetEngine {
     return getLivePrice(asset, Date.now() / 1000)
   }
 
+  /**
+   * Preco em um instante ESPECIFICO (segundos), e nao "agora".
+   *
+   * Usado para liquidar operacoes exatamente no vencimento. Antes a liquidacao lia o preco do
+   * momento em que a verificacao rodava -- ate 500 ms depois do vencimento -- e como o preco
+   * agora oscila varias vezes por segundo, ele podia ter cruzado a linha de entrada nesse
+   * intervalo: o grafico mostrava WIN e o resultado gravado saia LOSS.
+   *
+   * E deterministico: o mesmo instante sempre devolve o mesmo preco, no cliente ou no servidor.
+   */
+  getPriceAtTime(symbol: string, tSec: number): number {
+    const asset = OTC_ASSETS.find(a => a.symbol === symbol)
+    if (!asset) return 0
+
+    if (hasRealPrice(symbol)) {
+      const real = getRealCandles(symbol, 60) ?? []
+      // Ancora: o fechamento real do minuto que contem o instante pedido. Para o minuto em
+      // formacao, o ultimo preco real conhecido -- a mesma ancora que o grafico esta usando.
+      const cs = Math.floor(tSec / 60) * 60
+      const candle = real.find(c => c.time === cs)
+      const anchor = candle ? candle.close : getRealPrice(symbol)
+      const band = measuredBand(asset, real, anchor)
+      return realDisplayPrice(asset, anchor, tSec, band)
+    }
+    return getLivePrice(asset, tSec)
+  }
+
   /** Repassa as velas reais preservando abertura e fechamento de mercado. */
   private anchoredCandles(asset: OTCAsset, real: RealCandle[], tf: number): OTCCandle[] {
     const nowSec = Date.now() / 1000

@@ -40,6 +40,12 @@ import {
 
 interface ActiveTrade {
   id: string
+  /**
+   * Id real da linha em `trades`. Antes a liquidacao nao guardava esse id e precisava
+   * "adivinhar" qual linha encerrar buscando a operacao pendente mais recente do ativo.
+   * Com duas ou mais operacoes pendentes no mesmo ativo isso escolhia a linha errada.
+   */
+  dbId?: string
   symbol: string
   direction: "CALL" | "PUT"
   amount: number
@@ -145,7 +151,27 @@ export default function TradePage() {
   const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>([])
   const [isTrading, setIsTrading] = useState(false)
   const [showSidebar, setSidebarOpen] = useState(false)
-  const [tradeResult, setTradeResult] = useState<{ type: "win" | "loss"; amount: number } | null>(null)
+  // Fila de animacoes de resultado.
+  //
+  // Antes isto era um unico estado. Quando duas operacoes eram liquidadas no mesmo ciclo de
+  // verificacao (o intervalo roda a cada 500ms), a segunda sobrescrevia a primeira e apenas uma
+  // animacao aparecia. Pior: cada liquidacao agendava seu proprio `setTimeout` de 3s para limpar
+  // o estado compartilhado, entao o timer da primeira apagava a animacao da segunda no meio.
+  // Com uma fila, cada resultado e exibido por inteiro, um apos o outro.
+  const [resultQueue, setResultQueue] = useState<Array<{ key: string; type: "win" | "loss"; amount: number }>>([])
+  const currentResult = resultQueue[0]
+
+  // Quando ha varios resultados aguardando, encurta a exibicao para a fila nao demorar demais.
+  const resultDurationMs = resultQueue.length > 1 ? 1600 : 3000
+
+  // Um unico timer, sempre ligado ao resultado que esta na frente da fila.
+  useEffect(() => {
+    if (!currentResult) return
+    const timer = setTimeout(() => {
+      setResultQueue((prev) => prev.slice(1))
+    }, resultDurationMs)
+    return () => clearTimeout(timer)
+  }, [currentResult?.key, resultDurationMs])
   const [tradeError, setTradeError] = useState<string | null>(null)
   const [historyRefresh, setHistoryRefresh] = useState(0)
   const [accountType, setAccountType] = useState<"demo" | "real">("real")
@@ -392,6 +418,15 @@ export default function TradePage() {
     }
   }, [router])
 
+  // Ids (no banco) das operacoes que a pagina esta acompanhando em memoria e que, portanto,
+  // serao liquidadas pelo caminho que exibe a animacao. A rede de seguranca abaixo precisa
+  // ignora-las: antes ela encerrava essas mesmas operacoes por conta propria — creditando o
+  // saldo, porem sem animacao nenhuma — e o caminho da animacao, ao encontrar a operacao ja
+  // encerrada, apenas a descartava em silencio. Como a rede roda a cada 3s e a verificacao com
+  // animacao a cada 500ms, era uma corrida: com varias operacoes abertas a rede ganhava com
+  // frequencia, e era por isso que a animacao "quase sempre" nao aparecia.
+  const trackedDbIdsRef = useRef<Set<string>>(new Set())
+
   const finalizeExpiredTrades = useCallback(async (userId: string) => {
     try {
       const supabase = supabaseRef.current
@@ -409,6 +444,8 @@ export default function TradePage() {
       // Filter only truly expired trades
       const now = Date.now()
       const expiredTrades = pendingTrades.filter((t: any) => {
+        // Operacao acompanhada na tela: deixa para o caminho que mostra a animacao.
+        if (trackedDbIdsRef.current.has(t.id)) return false
         const entryMs = new Date(t.entry_time).getTime()
         const expiryMs = (t.timeframe || 60) * 1000
         return now >= entryMs + expiryMs
@@ -503,6 +540,15 @@ export default function TradePage() {
     return () => clearInterval(interval)
   }, [user, finalizeExpiredTrades])
 
+  // Mantem `trackedDbIdsRef` espelhando as operacoes ativas, para a rede de seguranca saber
+  // quais operacoes ja tem dono. Se a aba for fechada no meio, a lista em memoria desaparece e
+  // a rede volta a cuidar delas normalmente no proximo carregamento.
+  useEffect(() => {
+    trackedDbIdsRef.current = new Set(
+      activeTrades.map((t) => t.dbId).filter((id): id is string => !!id),
+    )
+  }, [activeTrades])
+
   // Track processed trade IDs to prevent double-processing
   const processedTradesRef = useRef<Set<string>>(new Set())
 
@@ -541,18 +587,42 @@ export default function TradePage() {
           const result = isWin ? "win" : "loss"
           const profitAmount = isWin ? Math.round(trade.amount * (payout / 100) * 100) / 100 : 0
 
-          // Find the pending trade - robust query by user + symbol + pending + is_demo
-          const { data: pendingTrades, error: fetchError } = await supabaseRef.current
-            .from("trades")
-            .select("id, result")
-            .eq("user_id", user.id)
-            .eq("symbol", trade.symbol)
-            .eq("is_demo", trade.isDemo)
-            .in("result", ["pending", "PENDING"])
-            .order("created_at", { ascending: false })
-            .limit(1)
+          // Localiza a linha desta operacao.
+          //
+          // Antes esta consulta pegava a operacao pendente MAIS RECENTE do ativo
+          // (`order created_at desc limit 1`), sem qualquer vinculo com a operacao que
+          // realmente expirou. Com duas ou mais pendentes no mesmo ativo isso causava os dois
+          // sintomas relatados: a operacao que expirou encerrava a linha da outra (resultado
+          // trocado) e, quando a segunda expirava, sua linha ja tinha sido consumida — caia no
+          // `!existingTrade` abaixo e era removida em silencio, sem nenhuma animacao.
+          //
+          // Agora usamos o id real gravado na criacao, entao cada operacao encerra a sua propria
+          // linha. O caminho antigo continua como reserva apenas para operacoes que ja estavam
+          // ativas antes desta correcao (sem `dbId`).
+          let existingTrade: { id: string; result: string } | undefined
+          let fetchError: unknown = null
 
-          const existingTrade = pendingTrades?.[0]
+          if (trade.dbId) {
+            const { data, error } = await supabaseRef.current
+              .from("trades")
+              .select("id, result")
+              .eq("id", trade.dbId)
+              .maybeSingle()
+            existingTrade = data ?? undefined
+            fetchError = error
+          } else {
+            const { data, error } = await supabaseRef.current
+              .from("trades")
+              .select("id, result")
+              .eq("user_id", user.id)
+              .eq("symbol", trade.symbol)
+              .eq("is_demo", trade.isDemo)
+              .in("result", ["pending", "PENDING"])
+              .order("created_at", { ascending: true })
+              .limit(1)
+            existingTrade = data?.[0]
+            fetchError = error
+          }
 
           if (fetchError || !existingTrade) {
             // Trade not found in DB - remove from active list to prevent zombie
@@ -621,17 +691,17 @@ export default function TradePage() {
           }
 
           if (mountedRef.current) {
-            setTradeResult({ type: result, amount: isWin ? profitAmount : trade.amount })
+            // Entra na fila em vez de sobrescrever o resultado anterior.
+            setResultQueue((prev) => [
+              ...prev,
+              { key: trade.id, type: result, amount: isWin ? profitAmount : trade.amount },
+            ])
             setActiveTrades((prev) => prev.filter((t) => t.id !== trade.id))
             setHistoryRefresh((prev) => prev + 1)
 
             // Play win/loss sound
             if (isWin) playWinSound()
             else playLossSound()
-
-            setTimeout(() => {
-              if (mountedRef.current) setTradeResult(null)
-            }, 3000)
           }
         } catch (err) {
           processedTradesRef.current.delete(trade.id)
@@ -735,7 +805,13 @@ export default function TradePage() {
           result: "pending",
         }
 
-        const { error: insertError } = await supabaseRef.current.from("trades").insert(tradeData)
+        // `.select()` devolve a linha criada. Precisamos do id dela para encerrar exatamente
+        // esta operacao depois, em vez de procurar "a pendente mais recente" do ativo.
+        const { data: insertedTrade, error: insertError } = await supabaseRef.current
+          .from("trades")
+          .insert(tradeData)
+          .select("id")
+          .single()
 
         if (insertError) {
           // Rollback balance
@@ -756,6 +832,7 @@ export default function TradePage() {
         // Add to active trades for chart display
         const activeTrade: ActiveTrade = {
           id: tradeId,
+          dbId: insertedTrade?.id,
           symbol: selectedSymbol,
           direction: direction, // UPPERCASE
           amount,
@@ -1471,9 +1548,17 @@ export default function TradePage() {
         </div>
       )}
 
-      {/* Animacao de resultado da operacao (estilo Avalon) */}
-      {tradeResult && (
-        <TradeResultOverlay type={tradeResult.type} amount={tradeResult.amount} durationMs={3000} />
+      {/* Animacao de resultado da operacao (estilo Avalon).
+          O `key` e essencial: sem ele o React reaproveitaria a mesma instancia entre um resultado
+          e o seguinte, e a animacao de entrada nao seria reexecutada — o card apenas trocaria de
+          numero. Com o key, cada resultado da fila anima do inicio. */}
+      {currentResult && (
+        <TradeResultOverlay
+          key={currentResult.key}
+          type={currentResult.type}
+          amount={currentResult.amount}
+          durationMs={resultDurationMs}
+        />
       )}
     </div>
   )

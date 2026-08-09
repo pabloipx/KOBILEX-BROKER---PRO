@@ -672,7 +672,11 @@ export default function TradePage() {
           result: "pending",
         }
 
-        const { error: insertError } = await supabaseRef.current.from("trades").insert(tradeData)
+        const { data: insertedRow, error: insertError } = await supabaseRef.current
+          .from("trades")
+          .insert(tradeData)
+          .select("id")
+          .single()
 
         if (insertError) {
           // Rollback balance
@@ -690,9 +694,12 @@ export default function TradePage() {
           throw new Error(insertError.message || "Erro ao criar operação")
         }
 
-        // Add to active trades for chart display
+        // Add to active trades for chart display.
+        // Usa o id REAL da linha do banco (nao mais um id fabricado no cliente): a liquidacao
+        // precisa casar a operacao exata, senao ela podia liquidar a linha errada quando havia
+        // mais de uma operacao aberta no mesmo ativo.
         const activeTrade: ActiveTrade = {
-          id: tradeId,
+          id: insertedRow?.id ?? tradeId,
           symbol: selectedSymbol,
           direction: direction, // UPPERCASE
           amount,

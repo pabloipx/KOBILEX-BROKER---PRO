@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { approveDeposit } from "@/lib/deposits"
+import { buildBalanceUpsert } from "@/lib/admin-balance"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -102,10 +103,19 @@ export async function GET(req: NextRequest) {
 
       const users = profiles.map((profile: any) => {
         const balance = balances?.find((b: any) => b.user_id === profile.id)
+
+        // `profiles.balance` e uma coluna legada que ficou parada em 0 — os saldos de verdade estao
+        // em `user_balances`. Ela era espalhada aqui pelo `...profile` e chegava na tela como
+        // "balance: 0", o que fazia o saldo aparecer zerado/sumido ao recarregar a pagina.
+        const { balance: _legacyBalance, ...profileFields } = profile
+
         return {
-          ...profile,
-          balance_real: balance?.balance_real || 0,
-          balance_demo: balance?.balance_demo || 100,
+          ...profileFields,
+          // `?? 0` em vez de `|| 0`: preserva um saldo legitimamente zero sem trocar por outro valor.
+          balance_real: Number(balance?.balance_real ?? 0),
+          // Antes havia `|| 100`, que INVENTAVA 100 de saldo demo quando o valor real era 0 — o
+          // admin zerava o demo, recarregava e via 100 de volta.
+          balance_demo: Number(balance?.balance_demo ?? 0),
         }
       })
 
@@ -220,15 +230,13 @@ export async function POST(req: NextRequest) {
       const balanceReal = payload.balanceReal ?? payload.balance_real
       const balanceDemo = payload.balanceDemo ?? payload.balance_demo
       
-      const { error } = await supabase.from("user_balances").upsert(
-        {
-          user_id: userId,
-          balance_real: Number(balanceReal) || 0,
-          balance_demo: Number(balanceDemo) || 0,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      )
+      // Grava somente o saldo informado. Antes um `Number(undefined) || 0` zerava o outro saldo.
+      const balanceRow = buildBalanceUpsert(userId, balanceReal, balanceDemo)
+      if (!balanceRow) {
+        return NextResponse.json({ error: "Informe um valor de saldo válido" }, { status: 400 })
+      }
+
+      const { error } = await supabase.from("user_balances").upsert(balanceRow, { onConflict: "user_id" })
       if (error) throw error
       return NextResponse.json({ success: true })
     }
@@ -284,17 +292,12 @@ export async function POST(req: NextRequest) {
         .eq("id", userId)
       if (error) throw error
       
-      // Also update balance if provided
-      if (balanceReal !== undefined || balanceDemo !== undefined) {
-        const { error: balanceError } = await supabase.from("user_balances").upsert(
-          {
-            user_id: userId,
-            balance_real: Number(balanceReal) || 0,
-            balance_demo: Number(balanceDemo) || 0,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        )
+      // Atualiza o saldo apenas quando enviado, e apenas as contas realmente informadas.
+      const userBalanceRow = buildBalanceUpsert(userId, balanceReal, balanceDemo)
+      if (userBalanceRow) {
+        const { error: balanceError } = await supabase
+          .from("user_balances")
+          .upsert(userBalanceRow, { onConflict: "user_id" })
         if (balanceError) throw balanceError
       }
       

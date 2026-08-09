@@ -23,10 +23,31 @@ const PUBLIC_KEY = process.env.AMPLOPAY_PUBLIC_KEY || ""
 const SECRET_KEY = process.env.AMPLOPAY_SECRET_KEY_V2 || ""
 
 // URL do webhook que a AmploPay chama quando o pagamento e confirmado.
-// IMPORTANTE: deve apontar para o dominio REAL de producao deste site, senao a AmploPay
-// envia a confirmacao para o lugar errado e o deposito nunca e aprovado automaticamente.
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://kodilexbroker.com").replace(/\/$/, "")
-const CALLBACK_URL = APP_URL + "/api/webhook/amplopay"
+//
+// IMPORTANTE: precisa apontar para o dominio REAL deste deploy. Antes havia um dominio fixo no
+// codigo como padrao ("kodilexbroker.com"): como NEXT_PUBLIC_APP_URL nao esta configurada, TODA
+// confirmacao de pagamento era enviada para aquele endereco, que nao e este site. O webhook nunca
+// chegava e por isso o PIX nao confirmava sozinho — so era aprovado depois, quando a verificacao
+// ativa (polling da tela ou cron) consultava a AmploPay, o que podia demorar muito.
+//
+// Agora a URL e deduzida automaticamente na Vercel, sem precisar cadastrar variavel nenhuma:
+// VERCEL_PROJECT_PRODUCTION_URL e o dominio estavel de producao do projeto (preferido, porque nao
+// muda a cada deploy); VERCEL_URL e o do deploy atual, usado como reserva.
+function resolveAppUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL
+  if (explicit) return explicit.replace(/\/$/, "")
+
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
+  if (vercelHost) return `https://${vercelHost.replace(/\/$/, "")}`
+
+  return ""
+}
+
+const APP_URL = resolveAppUrl()
+// Vazio quando nao ha como descobrir o dominio (ex.: rodando fora da Vercel sem configurar).
+// Nesse caso o campo e OMITIDO do payload: mandar uma URL relativa faria a AmploPay recusar ou
+// simplesmente nunca chamar de volta, escondendo o problema.
+const CALLBACK_URL = APP_URL ? APP_URL + "/api/webhook/amplopay" : ""
 
 // Split automático: uma porcentagem de todos os depósitos é repassada para outra conta AmploPay.
 // producerId = ID da conta que recebe o split (copiado da página da AmploPay).
@@ -127,7 +148,11 @@ class AmploPayClient {
     const payload: Record<string, any> = {
       amount: params.amount,
       identifier: params.identifier,
-      callbackUrl: CALLBACK_URL,
+      ...(CALLBACK_URL ? { callbackUrl: CALLBACK_URL } : {}),
+      // O metadata era recebido nesta funcao mas nunca chegava a ser enviado. Sem ele o webhook
+      // ficava sem userId/depositId e perdia varios criterios de identificacao do deposito,
+      // dependendo apenas do identifier.
+      ...(params.metadata ? { metadata: params.metadata } : {}),
       client: {
         name: params.client.name,
         email: params.client.email,

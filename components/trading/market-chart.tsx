@@ -1480,7 +1480,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     const update = () => {
       const series = seriesRef.current
       if (!series) return
-      const price = smoothPriceRef.current || latest.current.currentPrice
+      // Julga "no lucro" pelo preco REAL, nao pelo suavizado. O suavizado existe para a animacao
+      // da linha ficar fluida e chega a ficar atrasado em relacao ao preco de verdade; usando ele
+      // aqui, o balao podia mostrar verde/lucro enquanto o preco real ja havia virado — e a
+      // liquidacao entregava loss. O suavizado continua sendo usado para desenhar.
+      const price = latest.current.currentPrice || smoothPriceRef.current
       const now = Date.now()
       const next: PnlOverlay[] = []
       activeTrades.forEach((t) => {

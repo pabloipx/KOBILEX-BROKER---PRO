@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { buildBalanceUpsert } from "@/lib/admin-balance"
 
 const ADMIN_EMAILS = ["pablotrader1790@gmail.com", "pabloandrade1790@gmail.com", "admin@atlasinvest.com"]
 const ADMIN_PASSWORD = "Admin123!"
@@ -17,21 +18,26 @@ export async function GET(request: Request) {
 
     const adminClient = createAdminClient()
 
-    // Buscar todos os usuários usando admin client (ignora RLS)
+    // Buscar todos os usuários usando admin client (ignora RLS).
+    // Nao usamos join embutido (`user_balances ( ... )`): nao existe foreign key entre `profiles` e
+    // `user_balances`, entao o PostgREST recusava a consulta com "Could not find a relationship" e
+    // esta rota devolvia erro em vez da lista — a tela de usuarios ficava sem saldo nenhum.
     const { data: users, error: usersError } = await adminClient
       .from("profiles")
-      .select(`
-        *,
-        user_balances (
-          balance_real,
-          balance_demo
-        )
-      `)
+      .select("*")
       .order("created_at", { ascending: false })
 
     if (usersError) {
       return NextResponse.json({ error: "Failed to fetch users", details: usersError.message }, { status: 500 })
     }
+
+    // Busca os saldos em uma consulta separada e associa em memoria por user_id.
+    const userIds = (users || []).map((u: any) => u.id)
+    const { data: balances } = userIds.length
+      ? await adminClient.from("user_balances").select("user_id, balance_real, balance_demo").in("user_id", userIds)
+      : { data: [] as any[] }
+
+    const balanceByUser = new Map((balances || []).map((b: any) => [b.user_id, b]))
 
     const mappedUsers = (users || []).map((u: any) => ({
       id: u.id,
@@ -42,8 +48,9 @@ export async function GET(request: Request) {
       is_verified: u.is_verified || false,
       is_admin: u.is_admin || false,
       created_at: u.created_at,
-      balance_real: u.user_balances?.[0]?.balance_real || 0,
-      balance_demo: u.user_balances?.[0]?.balance_demo || 0,
+      // `?? 0` preserva saldo zero legitimo em vez de trocar por outro valor.
+      balance_real: Number(balanceByUser.get(u.id)?.balance_real ?? 0),
+      balance_demo: Number(balanceByUser.get(u.id)?.balance_demo ?? 0),
     }))
 
     return NextResponse.json(mappedUsers)
@@ -82,19 +89,17 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Failed to update profile", details: profileError.message }, { status: 500 })
     }
 
-    // Update or insert balance
-    const { error: balanceError } = await adminClient.from("user_balances").upsert(
-      {
-        user_id: userId,
-        balance_real: Number(balance_real) || 0,
-        balance_demo: Number(balance_demo) || 0,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" },
-    )
+    // Atualiza o saldo somente com as contas realmente informadas. Antes um `Number(undefined) || 0`
+    // zerava o saldo que nao veio no formulario, e o valor "sumia" ao recarregar a pagina.
+    const balanceRow = buildBalanceUpsert(userId, balance_real, balance_demo)
+    if (balanceRow) {
+      const { error: balanceError } = await adminClient
+        .from("user_balances")
+        .upsert(balanceRow, { onConflict: "user_id" })
 
-    if (balanceError) {
-      return NextResponse.json({ error: "Failed to update balance", details: balanceError.message }, { status: 500 })
+      if (balanceError) {
+        return NextResponse.json({ error: "Failed to update balance", details: balanceError.message }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ success: true })

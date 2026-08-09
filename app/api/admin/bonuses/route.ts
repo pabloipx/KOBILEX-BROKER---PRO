@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { cancelActiveBonus } from "@/lib/promo-codes"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 
-function verifyAdminToken(request: Request): boolean {
-  return request.headers.get("x-admin-token") === ADMIN_TOKEN
+async function verifyAdminToken(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 /**
@@ -15,7 +15,7 @@ function verifyAdminToken(request: Request): boolean {
  */
 export async function GET(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -88,7 +88,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

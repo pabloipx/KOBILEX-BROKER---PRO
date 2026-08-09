@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { type NextRequest, NextResponse } from "next/server"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
@@ -16,8 +16,7 @@ function getAdminClient() {
 }
 
 export async function POST(req: NextRequest) {
-  const token = req.headers.get("x-admin-token")
-  if (token !== ADMIN_TOKEN) {
+  if (!(await isAdminRequest())) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
   }
 

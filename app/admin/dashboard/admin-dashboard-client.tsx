@@ -39,7 +39,9 @@ import { AdminAssets } from "@/components/admin/sections/admin-assets"
 import { AdminManipulation } from "@/components/admin/sections/admin-manipulation"
 import { AdminPromotions } from "@/components/admin/sections/admin-promotions"
 
-const ADMIN_TOKEN = "Admin123!"
+// A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
+// pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
+const ADMIN_TOKEN = ""
 
 interface Stats {
   totalUsers: number
@@ -180,11 +182,28 @@ export default function AdminDashboardClient() {
   const adminToken = ADMIN_TOKEN // Use a const for clarity
 
   useEffect(() => {
-    const auth = sessionStorage.getItem("admin_authenticated")
-    if (auth !== "true") {
-      router.replace("/admin001")
-    } else {
-      setIsAuthenticated(true)
+    // A sessao e confirmada no servidor, que le o cookie HttpOnly assinado. O
+    // sessionStorage nao serve como prova de acesso: ele e gravavel pelo proprio
+    // visitante e nao tem qualquer efeito sobre as rotas /api/admin.
+    let active = true
+
+    fetch("/api/admin/session")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return
+        if (data?.authenticated) {
+          setIsAuthenticated(true)
+        } else {
+          sessionStorage.removeItem("admin_authenticated")
+          router.replace("/admin001")
+        }
+      })
+      .catch(() => {
+        if (active) router.replace("/admin001")
+      })
+
+    return () => {
+      active = false
     }
   }, [router])
 
@@ -249,8 +268,10 @@ export default function AdminDashboardClient() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     sessionStorage.removeItem("admin_authenticated")
+    // O cookie e HttpOnly, entao apenas o servidor pode apaga-lo.
+    await fetch("/api/admin/logout", { method: "POST" }).catch(() => {})
     router.replace("/admin001")
   }
 

@@ -2,14 +2,14 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ADMIN_EMAILS } from "@/lib/admin/check-admin"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 
 async function verifyAdmin(request?: Request) {
   const adminClient = createAdminClient()
 
-  // Painel /admin001 autentica por token de cabecalho
-  if (request?.headers.get("x-admin-token") === ADMIN_TOKEN) {
+  // Painel /admin001 autentica pelo cookie de sessao assinado
+  if (await isAdminRequest()) {
     return { isAdmin: true, adminClient }
   }
 

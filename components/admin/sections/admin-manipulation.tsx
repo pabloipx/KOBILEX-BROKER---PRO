@@ -15,7 +15,9 @@ import {
   Activity,
 } from "lucide-react"
 
-const ADMIN_TOKEN = "Admin123!"
+// A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
+// pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
+const ADMIN_TOKEN = ""
 
 const TIMEFRAMES = [
   { value: 60, label: "1m" },

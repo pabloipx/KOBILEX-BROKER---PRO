@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ASSET_CATALOG } from "@/lib/asset-catalog"
+import { isAdminRequest } from "@/lib/admin/session"
 
 export const dynamic = "force-dynamic"
 
-const ADMIN_TOKEN = "Admin123!"
 
-function verifyAdminToken(request: Request): boolean {
-  return request.headers.get("x-admin-token") === ADMIN_TOKEN
+async function verifyAdminToken(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 export async function GET(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

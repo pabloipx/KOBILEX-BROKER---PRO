@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_PASSWORD = "Admin123!"
 
-function isAdminAuthenticated(request: Request): boolean {
-  const adminToken = request.headers.get("x-admin-token")
-  return adminToken === ADMIN_PASSWORD
+async function isAdminAuthenticated(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 export async function GET(request: Request) {
   try {
-    if (!isAdminAuthenticated(request)) {
+    if (!(await isAdminAuthenticated())) {
       return NextResponse.json({ error: "Unauthorized", details: "Invalid admin token" }, { status: 401 })
     }
 

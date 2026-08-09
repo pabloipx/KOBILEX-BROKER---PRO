@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 
-function verifyAdminToken(request: Request): boolean {
-  const token = request.headers.get("x-admin-token")
-  return token === ADMIN_TOKEN
+async function verifyAdminToken(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 export async function GET(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -46,7 +45,7 @@ async function upsertSetting(adminClient: any, key: string, value: string) {
 
 export async function POST(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

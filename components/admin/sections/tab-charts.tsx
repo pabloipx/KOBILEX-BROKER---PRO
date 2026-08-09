@@ -14,7 +14,7 @@ import {
   YAxis,
 } from "recharts"
 
-const ADMIN_PASSWORD = "Admin123!"
+const ADMIN_PASSWORD = ""
 
 interface AnalyticsData {
   cashFlow: { date: string; depositos: number; depositosTotal: number; saques: number }[]

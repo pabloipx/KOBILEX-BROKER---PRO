@@ -57,7 +57,7 @@ export function TradeEditor({ users, onRefresh }: TradeEditorProps) {
     setLoading(true)
     try {
       const res = await fetch(`/api/admin/trades/edit?userId=${userId}`, {
-        headers: { "x-admin-token": "Admin123!" },
+        headers: { "x-admin-token": "" },
       })
       const data = await res.json()
       if (data.trades) {
@@ -83,7 +83,7 @@ export function TradeEditor({ users, onRefresh }: TradeEditorProps) {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": "Admin123!",
+          "x-admin-token": "",
         },
         body: JSON.stringify({
           tradeId: trade.id,
@@ -140,7 +140,7 @@ export function TradeEditor({ users, onRefresh }: TradeEditorProps) {
     try {
       const res = await fetch(`/api/admin/trades/edit?userId=${selectedUserId}`, {
         method: "DELETE",
-        headers: { "x-admin-token": "Admin123!" },
+        headers: { "x-admin-token": "" },
       })
 
       const data = await res.json()

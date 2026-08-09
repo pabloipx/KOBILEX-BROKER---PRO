@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { approveDeposit } from "@/lib/deposits"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
@@ -16,13 +16,12 @@ function getAdminClient() {
   })
 }
 
-function checkAuth(req: NextRequest): boolean {
-  const token = req.headers.get("x-admin-token")
-  return token === ADMIN_TOKEN
+async function checkAuth(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 export async function GET(req: NextRequest) {
-  if (!checkAuth(req)) {
+  if (!(await checkAuth())) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   }
 
@@ -194,7 +193,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!checkAuth(req)) {
+  if (!(await checkAuth())) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   }
 

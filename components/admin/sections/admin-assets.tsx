@@ -6,7 +6,9 @@ import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { RefreshCw, Search, TrendingUp, Layers, Check, Pencil } from "lucide-react"
 
-const ADMIN_TOKEN = "Admin123!"
+// A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
+// pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
+const ADMIN_TOKEN = ""
 
 interface AdminAsset {
   symbol: string

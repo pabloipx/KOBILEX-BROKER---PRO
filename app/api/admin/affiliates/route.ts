@@ -7,11 +7,11 @@ import {
   type AffiliateGlobalSettings,
   type CommissionModel,
 } from "@/lib/affiliate-commission"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 
-function checkToken(request: Request) {
-  return request.headers.get("x-admin-token") === ADMIN_TOKEN
+async function checkToken(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 const AFFILIATE_FIELDS =
@@ -148,7 +148,7 @@ function buildMetrics(input: {
 
 export async function GET(request: Request) {
   try {
-    if (!checkToken(request)) {
+    if (!(await checkToken())) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 403 })
     }
 
@@ -324,7 +324,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    if (!checkToken(request)) {
+    if (!(await checkToken())) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 403 })
     }
 

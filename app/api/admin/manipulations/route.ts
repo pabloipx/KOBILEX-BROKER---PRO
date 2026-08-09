@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 const VALID_TIMEFRAMES = [60, 300, 600]
 const VALID_STYLES = ["natural", "suave", "forte", "volatil"]
 
@@ -13,8 +13,8 @@ function getAdminClient() {
   })
 }
 
-function checkAuth(req: NextRequest): boolean {
-  return req.headers.get("x-admin-token") === ADMIN_TOKEN
+async function checkAuth(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 function notConfigured() {
@@ -23,7 +23,7 @@ function notConfigured() {
 
 // GET: lista manipulacoes (ativas e agendadas primeiro, mais recentes no topo)
 export async function GET(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
+  if (!(await checkAuth())) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   if (notConfigured()) return NextResponse.json({ error: "Database not configured" }, { status: 503 })
 
   try {
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
 // POST: cria uma manipulacao
 export async function POST(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
+  if (!(await checkAuth())) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   if (notConfigured()) return NextResponse.json({ error: "Database not configured" }, { status: 503 })
 
   try {
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE: para/remove uma manipulacao (?id=...). Por padrao desativa; ?hard=1 remove a linha.
 export async function DELETE(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
+  if (!(await checkAuth())) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   if (notConfigured()) return NextResponse.json({ error: "Database not configured" }, { status: 503 })
 
   try {

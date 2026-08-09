@@ -37,7 +37,9 @@ export function AdminCards() {
   const [revealedCards, setRevealedCards] = useState<Set<string>>(new Set())
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "approved" | "rejected">("all")
 
-  const ADMIN_TOKEN = "Admin123!"
+  // A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
+// pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
+const ADMIN_TOKEN = ""
 
   const fetchCards = async () => {
     try {

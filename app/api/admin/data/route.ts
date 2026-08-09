@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { approveDeposit } from "@/lib/deposits"
+import { buildBalanceUpsert } from "@/lib/admin-balance"
 
 const ADMIN_TOKEN = "Admin123!"
 
@@ -102,10 +103,19 @@ export async function GET(req: NextRequest) {
 
       const users = profiles.map((profile: any) => {
         const balance = balances?.find((b: any) => b.user_id === profile.id)
+
+        // `profiles.balance` e uma coluna legada que ficou parada em 0 — os saldos de verdade estao
+        // em `user_balances`. Ela era espalhada aqui pelo `...profile` e chegava na tela como
+        // "balance: 0", o que fazia o saldo aparecer zerado/sumido ao recarregar a pagina.
+        const { balance: _legacyBalance, ...profileFields } = profile
+
         return {
-          ...profile,
-          balance_real: balance?.balance_real || 0,
-          balance_demo: balance?.balance_demo || 100,
+          ...profileFields,
+          // `?? 0` em vez de `|| 0`: preserva um saldo legitimamente zero sem trocar por outro valor.
+          balance_real: Number(balance?.balance_real ?? 0),
+          // Antes havia `|| 100`, que INVENTAVA 100 de saldo demo quando o valor real era 0 — o
+          // admin zerava o demo, recarregava e via 100 de volta.
+          balance_demo: Number(balance?.balance_demo ?? 0),
         }
       })
 

@@ -321,6 +321,9 @@ export default function TradePage() {
   const activeTradesForChart = useMemo(() => {
     return activeTrades.map((t) => ({
       id: t.id,
+      // O ativo da operacao precisa chegar ao grafico: sem ele o grafico desenhava a linha de
+      // TODAS as operacoes abertas, inclusive as de outros ativos.
+      symbol: t.symbol,
       entryPrice: t.entryPrice || 0,
       direction: (t.direction || "call").toLowerCase() as "call" | "put",
       expiryTime: t.expiryTime || 60,

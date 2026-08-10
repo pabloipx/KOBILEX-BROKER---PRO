@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 import { getBars, subscribeBars, unsubscribeBars } from "@/lib/price-engine/datafeed"
@@ -55,6 +55,9 @@ interface Candle {
 }
 interface ActiveTrade {
   id: string
+  // Ativo em que a operacao foi aberta. Opcional para nao quebrar chamadas antigas: quando vem
+  // ausente a operacao e tratada como pertencente ao ativo exibido.
+  symbol?: string
   entryPrice: number
   direction: "call" | "put"
   expiryTime: number
@@ -763,10 +766,26 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     setDrawings((prev) => [...prev, draft])
   }
 
+  // Operacoes que pertencem ao ativo exibido AGORA.
+  //
+  // O grafico recebe todas as operacoes abertas da conta, mas ele desenha um unico ativo. Sem
+  // este filtro a linha de uma operacao de outro ativo era criada nesta serie: o preco de entrada
+  // vive numa escala completamente diferente (ex.: BTC em 43.590 sobre o EUR/USD em 1,08), entao
+  // ela caia fora da area visivel e o cronometro/P&L flutuante era projetado por
+  // `priceToCoordinate` para uma coordenada fora do grafico, aparecendo grudado na borda e por
+  // cima do rotulo da operacao do ativo atual — que foi o efeito de "a entrada nao marcou" ao
+  // trocar de aba.
+  //
+  // Operacoes sem `symbol` (chamadas antigas) continuam sendo desenhadas, para nao esconder nada.
+  const chartTrades = useMemo(
+    () => activeTrades.filter((t) => !t.symbol || t.symbol === symbol),
+    [activeTrades, symbol],
+  )
+
   // ===== Detect new trades -> flash animation =====
   useEffect(() => {
-    const ids = activeTrades.map((t) => t.id)
-    const newOnes = activeTrades.filter((t) => !prevTradeIdsRef.current.includes(t.id))
+    const ids = chartTrades.map((t) => t.id)
+    const newOnes = chartTrades.filter((t) => !prevTradeIdsRef.current.includes(t.id))
     if (newOnes.length > 0) {
       const t = newOnes[newOnes.length - 1]
       setFlash({ id: t.id, dir: t.direction })
@@ -775,18 +794,18 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       return () => clearTimeout(to)
     }
     prevTradeIdsRef.current = ids
-  }, [activeTrades])
+  }, [chartTrades])
 
   // ===== Countdown timer =====
   useEffect(() => {
-    if (!activeTrades.length) {
+    if (!chartTrades.length) {
       setCds({})
       return
     }
     const tick = () => {
       const now = Date.now()
       const r: Record<string, number> = {}
-      activeTrades.forEach((t) => {
+      chartTrades.forEach((t) => {
         r[t.id] = Math.max(0, Math.ceil((t.timestamp + t.expiryTime * 1000 - now) / 1000))
       })
       setCds(r)
@@ -794,7 +813,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     tick()
     const iv = setInterval(tick, 250)
     return () => clearInterval(iv)
-  }, [activeTrades])
+  }, [chartTrades])
 
   // ===== Update header (OHLC + price) =====
   function updateHeader(c: Candle, price: number) {
@@ -1499,7 +1518,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     const LS = lwc?.LineStyle
     const markers: any[] = []
 
-    activeTrades.forEach((trade) => {
+    chartTrades.forEach((trade) => {
       if (trade.entryPrice <= 0) return
       const cd = cds[trade.id] ?? -1
       if (cd <= 0) return
@@ -1539,11 +1558,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         series.setMarkers(markers)
       }
     } catch {}
-  }, [activeTrades, cds, seriesReady])
+  }, [chartTrades, cds, seriesReady])
 
   // ===== Live floating P&L overlays (IQ Option style) =====
   useEffect(() => {
-    if (!activeTrades.length) {
+    if (!chartTrades.length) {
       setPnlOverlays([])
       return
     }
@@ -1554,7 +1573,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       const price = smoothPriceRef.current || latest.current.currentPrice
       const now = Date.now()
       const next: PnlOverlay[] = []
-      activeTrades.forEach((t) => {
+      chartTrades.forEach((t) => {
         if (t.entryPrice <= 0) return
         const remaining = Math.max(0, Math.ceil((t.timestamp + t.expiryTime * 1000 - now) / 1000))
         if (remaining <= 0) return
@@ -1584,7 +1603,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     update()
     const iv = setInterval(update, 60)
     return () => clearInterval(iv)
-  }, [activeTrades, payout, seriesReady])
+  }, [chartTrades, payout, seriesReady])
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ backgroundColor: "#0d0d0f" }}>

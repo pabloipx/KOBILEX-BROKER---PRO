@@ -134,6 +134,13 @@ export function AffiliateSidebar({ active, onChange, onSignOut }: AffiliateSideb
           <div className="flex flex-col gap-1">
             <button
               type="button"
+              onClick={() => onChange("account")}
+              className={`${itemClass(active === "account")} pl-12`}
+            >
+              Geral
+            </button>
+            <button
+              type="button"
               onClick={() => onChange("account-security")}
               className={`${itemClass(active === "account-security")} pl-12`}
             >

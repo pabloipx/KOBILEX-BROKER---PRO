@@ -174,6 +174,8 @@ export default function TradePage() {
     return () => clearTimeout(timer)
   }, [currentResult?.key, resultDurationMs])
   const [tradeError, setTradeError] = useState<string | null>(null)
+  // Direcao apenas pre-visualizada: setada no hover de Comprar/Vender para tingir o grafico.
+  const [hoverDirection, setHoverDirection] = useState<"call" | "put" | null>(null)
   const [historyRefresh, setHistoryRefresh] = useState(0)
   const [accountType, setAccountType] = useState<"demo" | "real">("real")
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
@@ -1102,8 +1104,9 @@ export default function TradePage() {
               symbol={selectedSymbol}
               payout={payout / 100}
               reloadKey={(realReady ? 1 : 0) + (realHistoryReady ? 2 : 0)}
-            />
-          </div>
+                  hoverDirection={hoverDirection}
+                />
+                </div>
         </div>
 
       </div>
@@ -1226,6 +1229,10 @@ export default function TradePage() {
             <button
               onClick={() => executeTrade("CALL")}
               disabled={amount > currentBalance || entryBlocked}
+              onMouseEnter={() => {
+                if (!(amount > currentBalance || entryBlocked)) setHoverDirection("call")
+              }}
+              onMouseLeave={() => setHoverDirection(null)}
               className="w-full py-4 rounded-xl font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: "linear-gradient(135deg, #00B35A 0%, #00E676 100%)",
@@ -1238,6 +1245,10 @@ export default function TradePage() {
             <button
               onClick={() => executeTrade("PUT")}
               disabled={amount > currentBalance || entryBlocked}
+              onMouseEnter={() => {
+                if (!(amount > currentBalance || entryBlocked)) setHoverDirection("put")
+              }}
+              onMouseLeave={() => setHoverDirection(null)}
               className="w-full py-4 rounded-xl font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)",

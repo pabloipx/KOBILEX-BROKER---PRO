@@ -74,6 +74,9 @@ interface Props {
   // Muda quando dados externos (ex.: feed real de BTC) ficam prontos, forcando recarga do
   // historico na serie existente sem recriar o grafico.
   reloadKey?: number
+  // Direcao pre-visualizada enquanto o mouse esta sobre Comprar/Vender. Pinta a metade do
+  // grafico correspondente ao lucro daquela direcao. `null` = sem preview.
+  hoverDirection?: "call" | "put" | null
 }
 interface PnlOverlay {
   id: string
@@ -409,7 +412,16 @@ if (typeof window !== "undefined") {
 }
 
 // ========== CHART CORE ==========
-function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol, payout = 0.96, reloadKey = 0 }: Props) {
+function ChartCore({
+  candles,
+  currentPrice,
+  activeTrades = [],
+  timeframe,
+  symbol,
+  payout = 0.96,
+  reloadKey = 0,
+  hoverDirection = null,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const countdownRef = useRef<HTMLDivElement>(null)
@@ -420,6 +432,9 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
   const [seriesReady, setSeriesReady] = useState(0)
   const [flash, setFlash] = useState<{ id: string; dir: "call" | "put" } | null>(null)
   const [pnlOverlays, setPnlOverlays] = useState<PnlOverlay[]>([])
+  // Geometria do preview de hover: y do preco atual e largura do eixo de precos,
+  // para o tingimento cobrir so a area do grafico (nunca a escala da direita).
+  const [hoverGeom, setHoverGeom] = useState<{ y: number; axis: number } | null>(null)
   const [clock, setClock] = useState("")
 
   // Relogio (horario de Brasilia, UTC-3) exibido minimizado no canto do grafico
@@ -1605,6 +1620,51 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     return () => clearInterval(iv)
   }, [chartTrades, payout, seriesReady])
 
+  // ===== Preview de direcao no hover de Comprar/Vender =====
+  // Acompanha a altura do preco atual enquanto o mouse esta sobre um dos botoes, para que a
+  // faixa colorida e a linha tracejada fiquem colados no preco mesmo com o grafico se movendo.
+  useEffect(() => {
+    if (!hoverDirection) {
+      setHoverGeom(null)
+      return
+    }
+    const measure = () => {
+      const series = seriesRef.current
+      const chart = chartRef.current
+      if (!series) return
+      const price = smoothPriceRef.current || latest.current.currentPrice
+      let y: number | null = null
+      try {
+        const c = series.priceToCoordinate(price)
+        if (typeof c === "number" && Number.isFinite(c)) y = c
+      } catch {}
+      if (y == null) return
+      let axis = 62
+      try {
+        const w = chart?.priceScale("right")?.width?.()
+        if (typeof w === "number" && Number.isFinite(w) && w > 0) axis = w
+      } catch {}
+      setHoverGeom((prev) =>
+        prev && Math.abs(prev.y - y!) < 0.5 && prev.axis === axis ? prev : { y: y!, axis },
+      )
+    }
+    measure()
+    const iv = setInterval(measure, 60)
+    return () => clearInterval(iv)
+  }, [hoverDirection, seriesReady])
+
+  // Realca a linha do preco atual na cor da direcao enquanto o botao esta sob o mouse.
+  useEffect(() => {
+    const series = seriesRef.current
+    if (!series) return
+    try {
+      series.applyOptions({
+        priceLineColor: hoverDirection === "call" ? "#00E676" : hoverDirection === "put" ? "#FF5252" : "#787B86",
+        priceLineStyle: hoverDirection ? 2 : 0,
+      })
+    } catch {}
+  }, [hoverDirection, seriesReady])
+
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ backgroundColor: "#0d0d0f" }}>
       {/* Marca d'agua URYN BROKER no fundo do grafico */}
@@ -1660,6 +1720,75 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         onPointerMove={handleDrawPointerMove}
         onPointerUp={handleDrawPointerUp}
       />
+
+      {/* Preview da direcao no hover: tinge a metade do grafico onde a operacao daria lucro */}
+      {hoverDirection && hoverGeom && (
+        <div
+          className="absolute inset-0 z-[16] pointer-events-none"
+          style={{ right: `${hoverGeom.axis}px`, animation: "hoverDirFade 180ms ease-out" }}
+          aria-hidden="true"
+        >
+          {/* Faixa tingida, esmaecendo conforme se afasta do preco de entrada */}
+          <div
+            className="absolute left-0 right-0"
+            style={
+              hoverDirection === "call"
+                ? {
+                    top: 0,
+                    height: `${Math.max(0, hoverGeom.y)}px`,
+                    background: "linear-gradient(to top, rgba(0,230,118,0.20), rgba(0,230,118,0.02))",
+                  }
+                : {
+                    top: `${Math.max(0, hoverGeom.y)}px`,
+                    bottom: 0,
+                    background: "linear-gradient(to bottom, rgba(255,82,82,0.20), rgba(255,82,82,0.02))",
+                  }
+            }
+          />
+          {/* Linha tracejada no preco atual */}
+          <div
+            className="absolute left-0 right-0"
+            style={{
+              top: `${hoverGeom.y}px`,
+              borderTop: `1px dashed ${hoverDirection === "call" ? "#00E676" : "#FF5252"}`,
+              opacity: 0.9,
+            }}
+          />
+          {/* Seta indicando o sentido da aposta */}
+          <div
+            className="absolute right-1 flex items-center justify-center"
+            style={{
+              top: `${hoverGeom.y}px`,
+              transform: hoverDirection === "call" ? "translateY(-115%)" : "translateY(15%)",
+              color: hoverDirection === "call" ? "#00E676" : "#FF5252",
+            }}
+          >
+            <svg
+              style={{ animation: "hoverDirArrow 900ms ease-in-out infinite" }}
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {hoverDirection === "call" ? (
+                <>
+                  <path d="M5 17 L19 5" />
+                  <path d="M13 5 h6 v6" />
+                </>
+              ) : (
+                <>
+                  <path d="M5 5 L19 17" />
+                  <path d="M19 11 v6 h-6" />
+                </>
+              )}
+            </svg>
+          </div>
+        </div>
+      )}
 
       {/* Barra de ferramentas de desenho (estilo IQ Option) */}
       <div className="absolute top-1/2 left-2 z-30 -translate-y-1/2 flex flex-col items-center gap-1 rounded-xl border border-[#2A2E39] bg-[#0d0d0f]/90 p-1 backdrop-blur-sm">
@@ -1886,6 +2015,14 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         @keyframes pnlPop {
           0% { transform: scale(0.7); opacity: 0; }
           100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes hoverDirFade {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes hoverDirArrow {
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(3px); }
         }
       `}</style>
     </div>

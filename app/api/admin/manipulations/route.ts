@@ -1,9 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { isAdminRequest } from "@/lib/admin/session"
+import { OTC_ASSETS } from "@/lib/price-engine/multi-asset-engine"
 
 const VALID_TIMEFRAMES = [60, 300, 600]
 const VALID_STYLES = ["natural", "suave", "forte", "volatil"]
+
+// Somente ativos OTC podem ser manipulados. Os ativos de mercado aberto (BTCUSD, EURUSD, ...)
+// tem preco vindo do feed real: `getCurrentPrice` retorna o tick recebido e nunca passa por
+// `manipulationDrift`, entao uma manipulacao neles seria gravada, apareceria como "ativa" no
+// painel e nao teria absolutamente nenhum efeito. Recusar aqui evita esse falso positivo —
+// sem esta validacao a API aceitava qualquer string, inclusive ativos inexistentes.
+const MANIPULABLE_SYMBOLS = new Set(
+  OTC_ASSETS.filter((a) => a.symbol.endsWith("_OTC")).map((a) => a.symbol),
+)
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
@@ -53,6 +63,12 @@ export async function POST(req: NextRequest) {
 
     if (!symbol || typeof symbol !== "string") {
       return NextResponse.json({ error: "Ativo invalido" }, { status: 400 })
+    }
+    if (!MANIPULABLE_SYMBOLS.has(symbol)) {
+      return NextResponse.json(
+        { error: "Ativo nao manipulavel: apenas ativos OTC (o preco dos demais vem do mercado real)" },
+        { status: 400 },
+      )
     }
     if (!["up", "down"].includes(direction)) {
       return NextResponse.json({ error: "Direcao invalida" }, { status: 400 })

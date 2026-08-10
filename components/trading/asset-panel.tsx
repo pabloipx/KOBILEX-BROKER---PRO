@@ -281,11 +281,15 @@ export function AssetPanel({
                     />
 
                     <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-gray-700 ring-1 ring-white/10">
+                      {/* `eager`: a lista e curta e as logos pesam poucos KB, entao esperar o
+                          lazy-loading disparar por scroll so faria os icones aparecerem em
+                          cascata depois da gaveta abrir. */}
                       <Image
                         src={asset.logo || "/placeholder.svg"}
                         alt=""
                         width={32}
                         height={32}
+                        loading="eager"
                         className={`h-full w-full object-cover ${closed ? "grayscale" : ""}`}
                       />
                       {closed && (

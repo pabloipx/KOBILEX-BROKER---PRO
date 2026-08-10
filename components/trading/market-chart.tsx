@@ -1450,18 +1450,10 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         if (line) tradeLinesRef.current.set(trade.id, line)
       } catch {}
 
-      // Marcador da entrada, no candle.
-      //
-      // Usa um ponto discreto em vez da seta grande (arrowUp/arrowDown), que cobria os candles
-      // ao redor do preco de entrada e poluia a leitura do grafico. A direcao continua clara
-      // pelo texto CALL/PUT e pela cor, entao a seta nao carregava informacao propria.
-      markers.push({
-        time: (Math.floor(trade.timestamp / 1000 / latest.current.timeframe) * latest.current.timeframe) as any,
-        position: isCall ? "belowBar" : "aboveBar",
-        color: baseColor,
-        shape: "circle",
-        text: label,
-      })
+      // Nenhum marcador e desenhado no candle da entrada, por escolha do usuario: a seta grande
+      // (arrowUp/arrowDown) cobria os candles vizinhos e o ponto que a substituiu continuava
+      // poluindo o grafico. A entrada segue identificada pela linha tracejada de preco acima,
+      // que ja traz direcao, cor, cronometro e valor.
     })
 
     // Apply markers

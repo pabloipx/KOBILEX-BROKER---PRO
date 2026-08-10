@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
-import { getAffiliateSettings, resolveTerms, calculateCommission, round2 } from "@/lib/affiliate-commission"
+import { getAffiliateSettings, resolveTerms, round2 } from "@/lib/affiliate-commission"
+import { accrueTradeRevshare } from "@/lib/affiliate-revshare"
 
 // GET - Obter dados do afiliado
 export async function GET() {
@@ -56,6 +57,20 @@ export async function GET() {
 
     const settings = await getAffiliateSettings(admin)
 
+    // Reapura o RevShare das operacoes antes de montar a resposta, para o painel refletir as
+    // operacoes encerradas desde a ultima visita. A funcao e idempotente e nunca lanca excecao.
+    await accrueTradeRevshare(admin, profile, settings)
+
+    // Relê o perfil: a apuracao acima pode ter ajustado saldo e total ganho.
+    const { data: refreshedProfile } = await admin
+      .from("profiles")
+      .select("affiliate_balance, affiliate_total_earned")
+      .eq("id", user.id)
+      .maybeSingle()
+
+    const balance = refreshedProfile?.affiliate_balance ?? profile.affiliate_balance ?? 0
+    const totalEarnedStored = refreshedProfile?.affiliate_total_earned ?? profile.affiliate_total_earned ?? 0
+
     // Buscar referidos via admin (cross-user query)
     const { data: referredUsers } = await admin
       .from("profiles")
@@ -64,6 +79,25 @@ export async function GET() {
       .order("created_at", { ascending: false })
 
     const terms = resolveTerms(profile, settings)
+
+    // Comissoes efetivamente registradas, que sao a fonte da verdade.
+    //
+    // Antes esta rota recalculava a comissao a partir dos depositos a cada leitura. Isso passou a
+    // divergir do que o afiliado realmente recebeu, porque o RevShare agora nasce das operacoes e
+    // nao do valor depositado — recalcular pelos depositos mostraria RevShare zero.
+    const { data: commissionRows } = await admin
+      .from("affiliate_commissions")
+      .select("referred_user_id, amount, revshare_amount, cpa_amount")
+      .eq("affiliate_id", user.id)
+
+    const commissionByReferral = new Map<string, { total: number; revshare: number; cpa: number }>()
+    for (const row of commissionRows ?? []) {
+      const acc = commissionByReferral.get(row.referred_user_id) ?? { total: 0, revshare: 0, cpa: 0 }
+      acc.total += Number(row.amount || 0)
+      acc.revshare += Number(row.revshare_amount || 0)
+      acc.cpa += Number(row.cpa_amount || 0)
+      commissionByReferral.set(row.referred_user_id, acc)
+    }
 
     // Para cada referido, buscar depositos aprovados e aplicar o modelo de comissao vigente
     const referralsWithDeposits = await Promise.all(
@@ -78,20 +112,10 @@ export async function GET() {
         const rows = deposits || []
         const totalDeposits = rows.reduce((sum, d) => sum + Number(d.amount), 0)
 
-        // O CPA e pago uma unica vez, no primeiro deposito que atinge o minimo
-        let cpaConsumed = false
-        let commission = 0
-        let revshareTotal = 0
-        let cpaTotal = 0
-
-        for (const deposit of rows) {
-          const isFirstQualifiedDeposit = !cpaConsumed && Number(deposit.amount) >= terms.cpaMinDeposit
-          const breakdown = calculateCommission(Number(deposit.amount), terms, { isFirstQualifiedDeposit })
-          if (breakdown.cpaAmount > 0) cpaConsumed = true
-          commission += breakdown.total
-          revshareTotal += breakdown.revshareAmount
-          cpaTotal += breakdown.cpaAmount
-        }
+        const earned = commissionByReferral.get(referredUser.id) ?? { total: 0, revshare: 0, cpa: 0 }
+        const commission = earned.total
+        const revshareTotal = earned.revshare
+        const cpaTotal = earned.cpa
 
         return {
           id: referredUser.id,
@@ -134,9 +158,9 @@ export async function GET() {
         sub_percent: terms.subPercent,
         min_withdrawal: settings.min_withdrawal,
         withdrawal_fee_percent: settings.withdrawal_fee_percent,
-        balance: profile.affiliate_balance || 0,
+        balance,
         status: profile.affiliate_status || "active",
-        total_earned: profile.affiliate_total_earned || totalEarned,
+        total_earned: totalEarnedStored || totalEarned,
         total_referrals: totalReferrals,
         referrals_with_deposit: referralsWithDeposit,
       },

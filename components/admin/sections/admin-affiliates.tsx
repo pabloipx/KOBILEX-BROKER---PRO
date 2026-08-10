@@ -535,7 +535,10 @@ export function AdminAffiliates() {
                 <th className={thClass}>Data</th>
                 <th className={thClass}>Afiliado</th>
                 <th className={thClass}>Referido</th>
-                <th className={thClass}>Depósito</th>
+                {/* As duas origens tem bases diferentes: o CPA vem do valor depositado e o
+                    RevShare vem da receita liquida das operacoes. Rotular so como "Deposito"
+                    fazia a receita das operacoes parecer um deposito que nunca existiu. */}
+                <th className={thClass}>Base de cálculo</th>
                 <th className={thClass}>Origem</th>
                 <th className={thClass}>Comissão</th>
               </tr>
@@ -556,7 +559,12 @@ export function AdminAffiliates() {
                       <p className="text-[11px] text-[#f97316]">{c.affiliate_code}</p>
                     </td>
                     <td className="px-3 py-3 text-white/70">{c.referred_name}</td>
-                    <td className="px-3 py-3 text-white/70">{money(c.deposit_amount)}</td>
+                    <td className="px-3 py-3 text-white/70">
+                      <p>{money(c.deposit_amount)}</p>
+                      <p className="text-[11px] text-white/40">
+                        {c.cpa_amount > 0 ? "depósito" : "receita das operações"}
+                      </p>
+                    </td>
                     <td className="px-3 py-3 text-[11px] text-white/50">
                       {c.cpa_amount > 0 ? `CPA ${money(c.cpa_amount)}` : `RevShare ${c.commission_percent}%`}
                     </td>
@@ -711,7 +719,7 @@ function SettingsPanel({ settings, onSaved }: { settings: AdminSettings; onSaved
               onChange={(v) => set("usd_rate", v)}
               hint={
                 form.display_currency === "USD"
-                  ? "Os valores em real são divididos por esta cotação"
+                  ? "Os valores em real são divididos por esta cota��ão"
                   : "Usada apenas quando a moeda é dólar"
               }
             />

@@ -23,9 +23,30 @@ const PUBLIC_KEY = process.env.AMPLOPAY_PUBLIC_KEY || ""
 const SECRET_KEY = process.env.AMPLOPAY_SECRET_KEY_V2 || ""
 
 // URL do webhook que a AmploPay chama quando o pagamento e confirmado.
-// IMPORTANTE: deve apontar para o dominio REAL de producao deste site, senao a AmploPay
-// envia a confirmacao para o lugar errado e o deposito nunca e aprovado automaticamente.
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://kodilexbroker.com").replace(/\/$/, "")
+//
+// IMPORTANTE: tem que ser o dominio canonico REAL de producao e responder direto com HTTP 200,
+// sem redirecionamento.
+//
+// Bug corrigido: aqui havia o dominio fixo "https://kodilexbroker.com", que NAO EXISTE (nao
+// resolve DNS - o dominio de producao e urynbrokertrade.com). Como NEXT_PUBLIC_APP_URL nao esta
+// definida no projeto, esse fallback morto era sempre usado: a AmploPay mandava a confirmacao de
+// pagamento para o vazio e o deposito NUNCA era creditado automaticamente. So era aprovado quando
+// o cliente deixava a tela do PIX aberta (verificacao ativa do polling) ou, no pior caso, quando
+// o cron diario rodava - por isso "pagou e nao caiu na corretora".
+//
+// Usamos o subdominio www porque o apex urynbrokertrade.com responde 308 redirecionando para ele,
+// e nao se deve depender de o provedor seguir redirecionamento em POST de webhook.
+//
+// Para trocar de dominio, basta definir NEXT_PUBLIC_APP_URL - ela tem prioridade sobre este valor.
+const CANONICAL_APP_URL = "https://www.urynbrokertrade.com"
+
+function resolveAppUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (fromEnv) return fromEnv.replace(/\/+$/, "")
+  return CANONICAL_APP_URL
+}
+
+const APP_URL = resolveAppUrl()
 const CALLBACK_URL = APP_URL + "/api/webhook/amplopay"
 
 // Split automático: uma porcentagem de todos os depósitos é repassada para outra conta AmploPay.
@@ -148,6 +169,10 @@ class AmploPayClient {
         console.log(`[v0] AmploPay split: R$${splitAmount} (${SPLIT_PERCENT}%) -> ${SPLIT_PRODUCER_ID}`)
       }
     }
+
+    // Registra para qual URL a confirmacao de pagamento foi pedida. Se um deposito pago nao
+    // creditar, esta linha mostra na hora se a AmploPay recebeu o endereco certo do webhook.
+    console.log(`[v0] AmploPay callbackUrl: ${CALLBACK_URL}`)
 
     const result = await this.request("POST", "/gateway/pix/receive", payload)
 

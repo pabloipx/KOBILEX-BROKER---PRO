@@ -1445,7 +1445,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           lineWidth: 2,
           lineStyle: LS?.Dashed ?? 1,
           axisLabelVisible: true,
-          title: ` ${isCall ? "▲" : "▼"} ${label} ${timeStr}${amount} `,
+          title: ` ${label} ${timeStr}${amount} `,
         })
         if (line) tradeLinesRef.current.set(trade.id, line)
       } catch {}
@@ -1759,7 +1759,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
                   fontFamily: "'SF Mono',Consolas,monospace",
                 }}
               >
-                {o.isCall ? "▲" : "▼"} {o.time}
+                {o.time}
               </div>
             </div>
           </div>

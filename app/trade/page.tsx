@@ -9,6 +9,7 @@ import { TraderIAModal } from "@/components/trading/trader-ia-modal"
 import { TraderIAWatermark } from "@/components/trading/trader-ia-watermark"
 import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
 import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
+import { AssetPanel } from "@/components/trading/asset-panel"
 import { useGlobalOTC } from "@/lib/hooks/use-global-otc"
 import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { playCallSound, playPutSound, playWinSound, playLossSound, unlockAudio } from "@/lib/sounds"
@@ -177,7 +178,10 @@ export default function TradePage() {
   const [accountType, setAccountType] = useState<"demo" | "real">("real")
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
   const [amount, setAmount] = useState(10)
+  // Modal centralizado: usado somente no mobile.
   const [showAssetModal, setShowAssetModal] = useState(false)
+  // Gaveta lateral de ativos: usada somente no desktop (ver components/trading/asset-panel).
+  const [showAssetPanel, setShowAssetPanel] = useState(false)
   const [assetSearch, setAssetSearch] = useState("")
   // Aba do modal de ativos: "otc" (sempre aberto) ou "open" (mercado aberto)
   const [assetMarketTab, setAssetMarketTab] = useState<"otc" | "open">("otc")
@@ -942,7 +946,7 @@ export default function TradePage() {
           <div className="hidden lg:flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto scrollbar-hide">
             {/* Botao de grade - abre a lista de todos os ativos */}
             <button
-              onClick={() => setShowAssetModal(true)}
+              onClick={() => setShowAssetPanel(true)}
               aria-label="Todos os ativos"
               className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] transition-all duration-200 active:scale-95 shrink-0"
             >
@@ -1008,7 +1012,7 @@ export default function TradePage() {
 
             {/* Botao adicionar nova aba */}
             <button
-              onClick={() => setShowAssetModal(true)}
+              onClick={() => setShowAssetPanel(true)}
               aria-label="Adicionar ativo"
               className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] transition-all duration-200 active:scale-95 shrink-0 border border-white/[0.06]"
             >
@@ -1417,9 +1421,21 @@ export default function TradePage() {
         />
       )}
 
-      {/* Asset Selection Modal */}
+      {/* Gaveta lateral de ativos (desktop) */}
+      <AssetPanel
+        open={showAssetPanel}
+        assets={availableAssets}
+        selectedSymbol={selectedSymbol}
+        openTabs={openTabs}
+        onSelect={setSelectedSymbol}
+        onClose={() => setShowAssetPanel(false)}
+        clockTick={clockTick}
+      />
+
+      {/* Modal de ativos (mobile). No desktop quem responde e a gaveta lateral acima, por isso
+          este bloco fica restrito ao breakpoint pequeno. */}
       {showAssetModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 lg:hidden">
           <div className="w-full max-w-md mx-4 rounded-2xl overflow-hidden" style={{ backgroundColor: "#0e0e0e" }}>
             <div className="flex items-center justify-between p-4 border-b border-gray-800">
               <h3 className="text-white font-semibold text-lg">Selecionar Ativo</h3>

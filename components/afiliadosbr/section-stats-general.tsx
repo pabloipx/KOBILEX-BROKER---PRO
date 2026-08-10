@@ -17,12 +17,30 @@ const groupLabels: Record<GroupBy, string> = {
   total: "Total",
 }
 
+/** Valor sentinela para indicacoes que chegaram sem subID na URL. */
+const NO_SUBID = "__none__"
+
 export function SectionStatsGeneral({ referrals }: SectionStatsGeneralProps) {
   const brl = useMoney()
   const [groupBy, setGroupBy] = useState<GroupBy>("day")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
-  const [applied, setApplied] = useState({ groupBy: "day" as GroupBy, from: "", to: "" })
+  const [subId, setSubId] = useState("all")
+  const [applied, setApplied] = useState({ groupBy: "day" as GroupBy, from: "", to: "", subId: "all" })
+
+  // Opcoes vindas das proprias indicacoes: so aparece o que o afiliado realmente usou.
+  const subIdOptions = useMemo(() => {
+    const named = new Set<string>()
+    let hasEmpty = false
+    for (const referral of referrals) {
+      const value = referral.subid?.trim()
+      if (value) named.add(value)
+      else hasEmpty = true
+    }
+    const sorted = Array.from(named).sort((a, b) => a.localeCompare(b, "pt-BR"))
+    // "Sem subID" so faz sentido como opcao se houver ao menos um subID nomeado para contrastar.
+    return hasEmpty && sorted.length > 0 ? [...sorted, NO_SUBID] : sorted
+  }, [referrals])
 
   const rows = useMemo(() => {
     const start = applied.from ? new Date(`${applied.from}T00:00:00`) : null
@@ -32,6 +50,10 @@ export function SectionStatsGeneral({ referrals }: SectionStatsGeneralProps) {
       const created = new Date(r.created_at)
       if (start && created < start) return false
       if (end && created > end) return false
+      if (applied.subId !== "all") {
+        const value = r.subid?.trim() || ""
+        if (applied.subId === NO_SUBID ? value !== "" : value !== applied.subId) return false
+      }
       return true
     })
 
@@ -80,13 +102,14 @@ export function SectionStatsGeneral({ referrals }: SectionStatsGeneralProps) {
     [rows],
   )
 
-  const hasFilters = Boolean(from || to || groupBy !== "day")
+  const hasFilters = Boolean(from || to || groupBy !== "day" || subId !== "all")
 
   const clearAll = () => {
     setGroupBy("day")
     setFrom("")
     setTo("")
-    setApplied({ groupBy: "day", from: "", to: "" })
+    setSubId("all")
+    setApplied({ groupBy: "day", from: "", to: "", subId: "all" })
   }
 
   return (
@@ -157,9 +180,25 @@ export function SectionStatsGeneral({ referrals }: SectionStatsGeneralProps) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="text-[15px] text-gray-700">Código de afiliado</span>
-            <div className="flex h-12 items-center rounded-lg border border-gray-300 bg-gray-50 px-4 text-[15px] text-gray-500">
-              Todos os subIDs
+            <label htmlFor="subid" className="text-[15px] text-gray-700">
+              Código de afiliado
+            </label>
+            <div className="relative">
+              <select
+                id="subid"
+                value={subId}
+                onChange={(e) => setSubId(e.target.value)}
+                disabled={subIdOptions.length === 0}
+                className="h-12 w-full appearance-none rounded-lg border border-gray-300 bg-white px-4 pr-10 text-[15px] text-gray-900 outline-none focus:border-emerald-500 disabled:bg-gray-50 disabled:text-gray-500"
+              >
+                <option value="all">Todos os subIDs</option>
+                {subIdOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option === NO_SUBID ? "Sem subID" : option}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
             </div>
           </div>
         </div>
@@ -180,7 +219,7 @@ export function SectionStatsGeneral({ referrals }: SectionStatsGeneralProps) {
             </button>
             <button
               type="button"
-              onClick={() => setApplied({ groupBy, from, to })}
+              onClick={() => setApplied({ groupBy, from, to, subId })}
               className="h-11 rounded-lg bg-emerald-400 px-5 text-[15px] font-medium text-gray-900 transition-colors hover:bg-emerald-500"
             >
               Aplicar filtros

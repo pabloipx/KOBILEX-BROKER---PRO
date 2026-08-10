@@ -16,10 +16,16 @@ function getSupabaseAdmin() {
 /**
  * Verificacao automatica de depositos pendentes (cron).
  *
- * Roda no servidor a cada minuto (ver vercel.json) e consulta o status de cada deposito PIX
- * pendente diretamente na AmploPay. Se estiver pago, credita o saldo automaticamente — sem
- * depender do webhook chegar nem do app do cliente estar aberto. Isso elimina a necessidade
- * de aprovar depositos manualmente.
+ * Consulta o status de cada deposito PIX pendente diretamente na AmploPay e, se estiver pago,
+ * credita o saldo — sem depender do webhook nem do app do cliente estar aberto.
+ *
+ * ATENCAO: este cron e apenas a ULTIMA rede de seguranca, nao o caminho principal. O comentario
+ * anterior dizia "roda a cada minuto", o que nunca foi verdade: o vercel.json agenda "0 3 * * *"
+ * (uma vez por dia, as 03:00) e o projeto esta no plano Hobby, que permite apenas 1 execucao
+ * diaria de cron. Quem credita o deposito em segundos e o webhook da AmploPay
+ * (/api/webhook/amplopay); a verificacao ativa no polling de /api/pix cobre o caso do cliente
+ * com a tela do PIX aberta. Se o credito automatico voltar a falhar, investigue o webhook
+ * primeiro - nao conte com este cron para resolver em minutos.
  */
 async function handler(request: NextRequest) {
   // Seguranca: se CRON_SECRET estiver configurado, exige o header Authorization da Vercel.

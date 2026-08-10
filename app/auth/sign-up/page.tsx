@@ -45,12 +45,16 @@ function SignUpForm() {
   const [showTerms, setShowTerms] = useState(false)
   const [showCountries, setShowCountries] = useState(false)
   const [referralCode, setReferralCode] = useState("")
+  const [referralSubId, setReferralSubId] = useState("")
   const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
     const ref = searchParams.get("ref")
     if (ref) setReferralCode(ref.toUpperCase())
+    // subid identifica a campanha do afiliado (?ref=CODE&subid=instagram)
+    const subid = searchParams.get("subid") ?? searchParams.get("sub_id")
+    if (subid) setReferralSubId(subid.slice(0, 64))
   }, [searchParams])
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,6 +86,7 @@ function SignUpForm() {
           fullName,
           phone: `${country.dial} ${phone}`.trim(),
           referralCode,
+          referralSubId,
         }),
       })
 

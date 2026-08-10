@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
-    const { email, password, fullName, phone, referralCode } = await request.json()
+    const { email, password, fullName, phone, referralCode, referralSubId } = await request.json()
 
     if (!email || !password || !fullName) {
       return NextResponse.json({ error: "Campos obrigatórios faltando" }, { status: 400 })
@@ -60,6 +60,7 @@ export async function POST(request: Request) {
       const { error: rpcError } = await supabaseAdmin.rpc("track_referral", {
         new_user_id: userId,
         ref_code: code,
+        sub_id: typeof referralSubId === "string" && referralSubId.trim() !== "" ? referralSubId.trim() : null,
       })
 
       if (rpcError) {

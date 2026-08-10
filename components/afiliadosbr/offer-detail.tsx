@@ -80,10 +80,14 @@ export function OfferDetail({ offer, affiliate, onBack }: OfferDetailProps) {
   const [copied, setCopied] = useState(false)
   const [activeRule, setActiveRule] = useState(RULE_SECTIONS[0].id)
 
+  // O cadastro le `ref` (codigo) e `subid` (campanha). Usar outros nomes de parametro
+  // faz a indicacao ser perdida silenciosamente, entao o link e montado com eles.
   const link = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : ""
-    return `${origin}/auth/sign-up?aff=${affiliate.code}&aff_model=${offer.model}&afftrack=${afftrack}`
-  }, [affiliate.code, offer.model, afftrack])
+    const params = new URLSearchParams({ ref: affiliate.code })
+    if (afftrack.trim()) params.set("subid", afftrack.trim())
+    return `${origin}/auth/sign-up?${params.toString()}`
+  }, [affiliate.code, afftrack])
 
   const copyLink = async () => {
     try {

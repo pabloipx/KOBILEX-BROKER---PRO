@@ -199,6 +199,76 @@ function fractalMarkers(candles: Candle[]) {
   return markers
 }
 
+// ===== Horario de Brasilia (UTC-3) no eixo de tempo =====
+//
+// O Lightweight Charts renderiza os rotulos do eixo em UTC por padrao. Como os candles usam
+// epoch real, as 21h de Brasilia o eixo mostrava "00:xx" (o UTC ja virou o dia seguinte),
+// batendo de frente com o relogio UTC-3 exibido no canto do grafico. Os formatadores abaixo
+// convertem para Brasilia, deixando eixo, crosshair e relogio no mesmo fuso.
+//
+// O Brasil nao adota mais horario de verao desde 2019, entao o offset fixo de -3h vale o ano
+// inteiro e mantem coerencia com o rotulo "UTC-3" da interface.
+const BRT_OFFSET_SEC = -3 * 60 * 60
+
+function brtParts(timeSec: number) {
+  const d = new Date((timeSec + BRT_OFFSET_SEC) * 1000)
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth(),
+    day: d.getUTCDate(),
+    hours: d.getUTCHours(),
+    minutes: d.getUTCMinutes(),
+    seconds: d.getUTCSeconds(),
+  }
+}
+
+const BRT_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+const pad2 = (n: number) => String(n).padStart(2, "0")
+
+// Normaliza o tempo do Lightweight Charts, que pode vir como number (epoch), string de data
+// ou objeto de data por partes, para epoch em segundos.
+function toEpochSec(time: any): number | null {
+  if (typeof time === "number" && Number.isFinite(time)) return time
+  if (typeof time === "string") {
+    const ms = Date.parse(time.includes("T") ? time : `${time}T00:00:00Z`)
+    return Number.isNaN(ms) ? null : ms / 1000
+  }
+  if (time && typeof time === "object" && "year" in time) {
+    return Date.UTC(time.year, (time.month ?? 1) - 1, time.day ?? 1) / 1000
+  }
+  return null
+}
+
+// TickMarkType do Lightweight Charts: 0=Year, 1=Month, 2=DayOfMonth, 3=Time, 4=TimeWithSeconds
+//
+// O tipo do tick e classificado pela biblioteca em UTC, entao a "virada de dia" que ela sinaliza
+// cai a meia-noite UTC — 21h em Brasilia. Se obedecessemos esse tipo cegamente, o eixo trocaria
+// o horario das 21h pelo numero do dia. Por isso a decisao de mostrar data e refeita a partir do
+// horario de Brasilia: rotulo de data so na meia-noite local, horario em todos os outros ticks.
+function formatTickBRT(time: any, tickMarkType: number): string {
+  const sec = toEpochSec(time)
+  if (sec === null) return ""
+  const p = brtParts(sec)
+  const isBrtMidnight = p.hours === 0 && p.minutes === 0
+
+  if (tickMarkType <= 2) {
+    if (!isBrtMidnight) return `${pad2(p.hours)}:${pad2(p.minutes)}`
+    if (tickMarkType === 0 && p.month === 0 && p.day === 1) return String(p.year)
+    if (tickMarkType === 1 && p.day === 1) return BRT_MONTHS[p.month]
+    return `${p.day} ${BRT_MONTHS[p.month]}`
+  }
+  if (tickMarkType === 4) return `${pad2(p.hours)}:${pad2(p.minutes)}:${pad2(p.seconds)}`
+  return `${pad2(p.hours)}:${pad2(p.minutes)}`
+}
+
+// Usado no rotulo do crosshair, onde a data ajuda a nao confundir sessoes de dias diferentes.
+function formatCrosshairBRT(time: any): string {
+  const sec = toEpochSec(time)
+  if (sec === null) return ""
+  const p = brtParts(sec)
+  return `${pad2(p.day)}/${pad2(p.month + 1)} ${pad2(p.hours)}:${pad2(p.minutes)}:${pad2(p.seconds)}`
+}
+
 const svgProps = {
   width: 16,
   height: 16,
@@ -832,10 +902,15 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           horzLine: { color: "rgba(255,255,255,0.35)", width: 1, style: LS.Dashed, labelBackgroundColor: "#2A2E39" },
         },
         rightPriceScale: { borderColor: "#363A45", autoScale: true, scaleMargins: { top: 0.12, bottom: 0.12 } },
+        localization: {
+          locale: "pt-BR",
+          timeFormatter: formatCrosshairBRT,
+        },
         timeScale: {
           borderColor: "#363A45",
           timeVisible: true,
           secondsVisible: tf0 <= 60,
+          tickMarkFormatter: formatTickBRT,
           barSpacing,
           minBarSpacing: 2,
           rightOffset: tf0 === 60 ? 12 : 8,

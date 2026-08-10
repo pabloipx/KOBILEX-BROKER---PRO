@@ -23,6 +23,8 @@ export interface AffiliateReferral {
   total_deposits: number
   total_commission: number
   created_at: string
+  /** subID da campanha que originou a indicacao (?ref=CODE&subid=...). */
+  subid?: string | null
   profiles?: {
     full_name?: string | null
     email?: string | null

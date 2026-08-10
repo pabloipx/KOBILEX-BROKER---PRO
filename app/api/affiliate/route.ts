@@ -74,7 +74,7 @@ export async function GET() {
     // Buscar referidos via admin (cross-user query)
     const { data: referredUsers } = await admin
       .from("profiles")
-      .select("id, full_name, email, created_at")
+      .select("id, full_name, email, created_at, referred_subid")
       .eq("referred_by", profile.affiliate_code)
       .order("created_at", { ascending: false })
 
@@ -126,6 +126,7 @@ export async function GET() {
           revshare_commission: round2(revshareTotal),
           cpa_commission: round2(cpaTotal),
           created_at: referredUser.created_at,
+          subid: referredUser.referred_subid ?? null,
           profiles: {
             full_name: referredUser.full_name,
             email: referredUser.email,

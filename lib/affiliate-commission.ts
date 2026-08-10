@@ -106,10 +106,19 @@ export interface CommissionBreakdown {
 }
 
 /**
- * Calcula a comissão de um depósito.
- * - revshare: percentual sobre todos os depósitos
- * - cpa: valor fixo, apenas no primeiro depósito que atinge o mínimo
- * - hybrid: CPA no primeiro depósito qualificado + RevShare em todos
+ * Calcula a comissão gerada por um depósito.
+ *
+ * Apenas o CPA nasce do depósito: um valor fixo, uma única vez por indicado, quando ele faz o
+ * primeiro depósito que atinge o mínimo exigido.
+ *
+ * O RevShare NÃO é mais calculado aqui. Antes ele era um percentual sobre o valor depositado, o
+ * que pagava o afiliado igual independente de o indicado ganhar ou perder — não acompanhava o
+ * resultado real da casa. Agora o RevShare é apurado sobre a receita líquida das operações, em
+ * `lib/affiliate-revshare.ts`.
+ *
+ * - cpa: valor fixo no primeiro depósito qualificado
+ * - revshare: nada no depósito (a comissão vem das operações)
+ * - hybrid: CPA no primeiro depósito qualificado + RevShare das operações
  */
 export function calculateCommission(
   depositAmount: number,
@@ -119,14 +128,11 @@ export function calculateCommission(
   const amount = num(depositAmount, 0)
   const qualifiesForCpa = options.isFirstQualifiedDeposit && amount >= terms.cpaMinDeposit
 
-  const revshareAmount =
-    terms.model === "revshare" || terms.model === "hybrid" ? amount * (terms.revsharePercent / 100) : 0
-
   const cpaAmount = (terms.model === "cpa" || terms.model === "hybrid") && qualifiesForCpa ? terms.cpaAmount : 0
 
   return {
-    total: round2(revshareAmount + cpaAmount),
-    revshareAmount: round2(revshareAmount),
+    total: round2(cpaAmount),
+    revshareAmount: 0,
     cpaAmount: round2(cpaAmount),
     appliedModel: terms.model,
   }

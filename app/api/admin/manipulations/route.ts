@@ -1,9 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { isAdminRequest } from "@/lib/admin/session"
+import { OTC_ASSETS } from "@/lib/price-engine/multi-asset-engine"
 
-const ADMIN_TOKEN = "Admin123!"
 const VALID_TIMEFRAMES = [60, 300, 600]
 const VALID_STYLES = ["natural", "suave", "forte", "volatil"]
+
+// Somente ativos OTC podem ser manipulados. Os ativos de mercado aberto (BTCUSD, EURUSD, ...)
+// tem preco vindo do feed real: `getCurrentPrice` retorna o tick recebido e nunca passa por
+// `manipulationDrift`, entao uma manipulacao neles seria gravada, apareceria como "ativa" no
+// painel e nao teria absolutamente nenhum efeito. Recusar aqui evita esse falso positivo —
+// sem esta validacao a API aceitava qualquer string, inclusive ativos inexistentes.
+const MANIPULABLE_SYMBOLS = new Set(
+  OTC_ASSETS.filter((a) => a.symbol.endsWith("_OTC")).map((a) => a.symbol),
+)
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
@@ -13,8 +23,8 @@ function getAdminClient() {
   })
 }
 
-function checkAuth(req: NextRequest): boolean {
-  return req.headers.get("x-admin-token") === ADMIN_TOKEN
+async function checkAuth(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 function notConfigured() {
@@ -23,7 +33,7 @@ function notConfigured() {
 
 // GET: lista manipulacoes (ativas e agendadas primeiro, mais recentes no topo)
 export async function GET(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
+  if (!(await checkAuth())) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   if (notConfigured()) return NextResponse.json({ error: "Database not configured" }, { status: 503 })
 
   try {
@@ -43,7 +53,7 @@ export async function GET(req: NextRequest) {
 
 // POST: cria uma manipulacao
 export async function POST(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
+  if (!(await checkAuth())) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   if (notConfigured()) return NextResponse.json({ error: "Database not configured" }, { status: 503 })
 
   try {
@@ -53,6 +63,12 @@ export async function POST(req: NextRequest) {
 
     if (!symbol || typeof symbol !== "string") {
       return NextResponse.json({ error: "Ativo invalido" }, { status: 400 })
+    }
+    if (!MANIPULABLE_SYMBOLS.has(symbol)) {
+      return NextResponse.json(
+        { error: "Ativo nao manipulavel: apenas ativos OTC (o preco dos demais vem do mercado real)" },
+        { status: 400 },
+      )
     }
     if (!["up", "down"].includes(direction)) {
       return NextResponse.json({ error: "Direcao invalida" }, { status: 400 })
@@ -102,7 +118,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE: para/remove uma manipulacao (?id=...). Por padrao desativa; ?hard=1 remove a linha.
 export async function DELETE(req: NextRequest) {
-  if (!checkAuth(req)) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
+  if (!(await checkAuth())) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   if (notConfigured()) return NextResponse.json({ error: "Database not configured" }, { status: 503 })
 
   try {

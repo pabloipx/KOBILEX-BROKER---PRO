@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 import { getBars, subscribeBars, unsubscribeBars } from "@/lib/price-engine/datafeed"
@@ -55,6 +55,9 @@ interface Candle {
 }
 interface ActiveTrade {
   id: string
+  // Ativo em que a operacao foi aberta. Opcional para nao quebrar chamadas antigas: quando vem
+  // ausente a operacao e tratada como pertencente ao ativo exibido.
+  symbol?: string
   entryPrice: number
   direction: "call" | "put"
   expiryTime: number
@@ -71,6 +74,9 @@ interface Props {
   // Muda quando dados externos (ex.: feed real de BTC) ficam prontos, forcando recarga do
   // historico na serie existente sem recriar o grafico.
   reloadKey?: number
+  // Direcao pre-visualizada enquanto o mouse esta sobre Comprar/Vender. Pinta a metade do
+  // grafico correspondente ao lucro daquela direcao. `null` = sem preview.
+  hoverDirection?: "call" | "put" | null
 }
 interface PnlOverlay {
   id: string
@@ -197,6 +203,76 @@ function fractalMarkers(candles: Candle[]) {
     }
   }
   return markers
+}
+
+// ===== Horario de Brasilia (UTC-3) no eixo de tempo =====
+//
+// O Lightweight Charts renderiza os rotulos do eixo em UTC por padrao. Como os candles usam
+// epoch real, as 21h de Brasilia o eixo mostrava "00:xx" (o UTC ja virou o dia seguinte),
+// batendo de frente com o relogio UTC-3 exibido no canto do grafico. Os formatadores abaixo
+// convertem para Brasilia, deixando eixo, crosshair e relogio no mesmo fuso.
+//
+// O Brasil nao adota mais horario de verao desde 2019, entao o offset fixo de -3h vale o ano
+// inteiro e mantem coerencia com o rotulo "UTC-3" da interface.
+const BRT_OFFSET_SEC = -3 * 60 * 60
+
+function brtParts(timeSec: number) {
+  const d = new Date((timeSec + BRT_OFFSET_SEC) * 1000)
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth(),
+    day: d.getUTCDate(),
+    hours: d.getUTCHours(),
+    minutes: d.getUTCMinutes(),
+    seconds: d.getUTCSeconds(),
+  }
+}
+
+const BRT_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+const pad2 = (n: number) => String(n).padStart(2, "0")
+
+// Normaliza o tempo do Lightweight Charts, que pode vir como number (epoch), string de data
+// ou objeto de data por partes, para epoch em segundos.
+function toEpochSec(time: any): number | null {
+  if (typeof time === "number" && Number.isFinite(time)) return time
+  if (typeof time === "string") {
+    const ms = Date.parse(time.includes("T") ? time : `${time}T00:00:00Z`)
+    return Number.isNaN(ms) ? null : ms / 1000
+  }
+  if (time && typeof time === "object" && "year" in time) {
+    return Date.UTC(time.year, (time.month ?? 1) - 1, time.day ?? 1) / 1000
+  }
+  return null
+}
+
+// TickMarkType do Lightweight Charts: 0=Year, 1=Month, 2=DayOfMonth, 3=Time, 4=TimeWithSeconds
+//
+// O tipo do tick e classificado pela biblioteca em UTC, entao a "virada de dia" que ela sinaliza
+// cai a meia-noite UTC — 21h em Brasilia. Se obedecessemos esse tipo cegamente, o eixo trocaria
+// o horario das 21h pelo numero do dia. Por isso a decisao de mostrar data e refeita a partir do
+// horario de Brasilia: rotulo de data so na meia-noite local, horario em todos os outros ticks.
+function formatTickBRT(time: any, tickMarkType: number): string {
+  const sec = toEpochSec(time)
+  if (sec === null) return ""
+  const p = brtParts(sec)
+  const isBrtMidnight = p.hours === 0 && p.minutes === 0
+
+  if (tickMarkType <= 2) {
+    if (!isBrtMidnight) return `${pad2(p.hours)}:${pad2(p.minutes)}`
+    if (tickMarkType === 0 && p.month === 0 && p.day === 1) return String(p.year)
+    if (tickMarkType === 1 && p.day === 1) return BRT_MONTHS[p.month]
+    return `${p.day} ${BRT_MONTHS[p.month]}`
+  }
+  if (tickMarkType === 4) return `${pad2(p.hours)}:${pad2(p.minutes)}:${pad2(p.seconds)}`
+  return `${pad2(p.hours)}:${pad2(p.minutes)}`
+}
+
+// Usado no rotulo do crosshair, onde a data ajuda a nao confundir sessoes de dias diferentes.
+function formatCrosshairBRT(time: any): string {
+  const sec = toEpochSec(time)
+  if (sec === null) return ""
+  const p = brtParts(sec)
+  return `${pad2(p.day)}/${pad2(p.month + 1)} ${pad2(p.hours)}:${pad2(p.minutes)}:${pad2(p.seconds)}`
 }
 
 const svgProps = {
@@ -336,7 +412,16 @@ if (typeof window !== "undefined") {
 }
 
 // ========== CHART CORE ==========
-function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol, payout = 0.96, reloadKey = 0 }: Props) {
+function ChartCore({
+  candles,
+  currentPrice,
+  activeTrades = [],
+  timeframe,
+  symbol,
+  payout = 0.96,
+  reloadKey = 0,
+  hoverDirection = null,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const countdownRef = useRef<HTMLDivElement>(null)
@@ -347,6 +432,9 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
   const [seriesReady, setSeriesReady] = useState(0)
   const [flash, setFlash] = useState<{ id: string; dir: "call" | "put" } | null>(null)
   const [pnlOverlays, setPnlOverlays] = useState<PnlOverlay[]>([])
+  // Geometria do preview de hover: y do preco atual e largura do eixo de precos,
+  // para o tingimento cobrir so a area do grafico (nunca a escala da direita).
+  const [hoverGeom, setHoverGeom] = useState<{ y: number; axis: number } | null>(null)
   const [clock, setClock] = useState("")
 
   // Relogio (horario de Brasilia, UTC-3) exibido minimizado no canto do grafico
@@ -693,10 +781,26 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     setDrawings((prev) => [...prev, draft])
   }
 
+  // Operacoes que pertencem ao ativo exibido AGORA.
+  //
+  // O grafico recebe todas as operacoes abertas da conta, mas ele desenha um unico ativo. Sem
+  // este filtro a linha de uma operacao de outro ativo era criada nesta serie: o preco de entrada
+  // vive numa escala completamente diferente (ex.: BTC em 43.590 sobre o EUR/USD em 1,08), entao
+  // ela caia fora da area visivel e o cronometro/P&L flutuante era projetado por
+  // `priceToCoordinate` para uma coordenada fora do grafico, aparecendo grudado na borda e por
+  // cima do rotulo da operacao do ativo atual — que foi o efeito de "a entrada nao marcou" ao
+  // trocar de aba.
+  //
+  // Operacoes sem `symbol` (chamadas antigas) continuam sendo desenhadas, para nao esconder nada.
+  const chartTrades = useMemo(
+    () => activeTrades.filter((t) => !t.symbol || t.symbol === symbol),
+    [activeTrades, symbol],
+  )
+
   // ===== Detect new trades -> flash animation =====
   useEffect(() => {
-    const ids = activeTrades.map((t) => t.id)
-    const newOnes = activeTrades.filter((t) => !prevTradeIdsRef.current.includes(t.id))
+    const ids = chartTrades.map((t) => t.id)
+    const newOnes = chartTrades.filter((t) => !prevTradeIdsRef.current.includes(t.id))
     if (newOnes.length > 0) {
       const t = newOnes[newOnes.length - 1]
       setFlash({ id: t.id, dir: t.direction })
@@ -705,18 +809,18 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       return () => clearTimeout(to)
     }
     prevTradeIdsRef.current = ids
-  }, [activeTrades])
+  }, [chartTrades])
 
   // ===== Countdown timer =====
   useEffect(() => {
-    if (!activeTrades.length) {
+    if (!chartTrades.length) {
       setCds({})
       return
     }
     const tick = () => {
       const now = Date.now()
       const r: Record<string, number> = {}
-      activeTrades.forEach((t) => {
+      chartTrades.forEach((t) => {
         r[t.id] = Math.max(0, Math.ceil((t.timestamp + t.expiryTime * 1000 - now) / 1000))
       })
       setCds(r)
@@ -724,7 +828,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     tick()
     const iv = setInterval(tick, 250)
     return () => clearInterval(iv)
-  }, [activeTrades])
+  }, [chartTrades])
 
   // ===== Update header (OHLC + price) =====
   function updateHeader(c: Candle, price: number) {
@@ -832,10 +936,15 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           horzLine: { color: "rgba(255,255,255,0.35)", width: 1, style: LS.Dashed, labelBackgroundColor: "#2A2E39" },
         },
         rightPriceScale: { borderColor: "#363A45", autoScale: true, scaleMargins: { top: 0.12, bottom: 0.12 } },
+        localization: {
+          locale: "pt-BR",
+          timeFormatter: formatCrosshairBRT,
+        },
         timeScale: {
           borderColor: "#363A45",
           timeVisible: true,
           secondsVisible: tf0 <= 60,
+          tickMarkFormatter: formatTickBRT,
           barSpacing,
           minBarSpacing: 2,
           rightOffset: tf0 === 60 ? 12 : 8,
@@ -1424,7 +1533,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     const LS = lwc?.LineStyle
     const markers: any[] = []
 
-    activeTrades.forEach((trade) => {
+    chartTrades.forEach((trade) => {
       if (trade.entryPrice <= 0) return
       const cd = cds[trade.id] ?? -1
       if (cd <= 0) return
@@ -1445,19 +1554,15 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
           lineWidth: 2,
           lineStyle: LS?.Dashed ?? 1,
           axisLabelVisible: true,
-          title: ` ${isCall ? "▲" : "▼"} ${label} ${timeStr}${amount} `,
+          title: ` ${label} ${timeStr}${amount} `,
         })
         if (line) tradeLinesRef.current.set(trade.id, line)
       } catch {}
 
-      // Entry marker on the candle
-      markers.push({
-        time: (Math.floor(trade.timestamp / 1000 / latest.current.timeframe) * latest.current.timeframe) as any,
-        position: isCall ? "belowBar" : "aboveBar",
-        color: baseColor,
-        shape: isCall ? "arrowUp" : "arrowDown",
-        text: label,
-      })
+      // Nenhum marcador e desenhado no candle da entrada, por escolha do usuario: a seta grande
+      // (arrowUp/arrowDown) cobria os candles vizinhos e o ponto que a substituiu continuava
+      // poluindo o grafico. A entrada segue identificada pela linha tracejada de preco acima,
+      // que ja traz direcao, cor, cronometro e valor.
     })
 
     // Apply markers
@@ -1468,11 +1573,11 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         series.setMarkers(markers)
       }
     } catch {}
-  }, [activeTrades, cds, seriesReady])
+  }, [chartTrades, cds, seriesReady])
 
   // ===== Live floating P&L overlays (IQ Option style) =====
   useEffect(() => {
-    if (!activeTrades.length) {
+    if (!chartTrades.length) {
       setPnlOverlays([])
       return
     }
@@ -1483,7 +1588,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
       const price = smoothPriceRef.current || latest.current.currentPrice
       const now = Date.now()
       const next: PnlOverlay[] = []
-      activeTrades.forEach((t) => {
+      chartTrades.forEach((t) => {
         if (t.entryPrice <= 0) return
         const remaining = Math.max(0, Math.ceil((t.timestamp + t.expiryTime * 1000 - now) / 1000))
         if (remaining <= 0) return
@@ -1513,7 +1618,52 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
     update()
     const iv = setInterval(update, 60)
     return () => clearInterval(iv)
-  }, [activeTrades, payout, seriesReady])
+  }, [chartTrades, payout, seriesReady])
+
+  // ===== Preview de direcao no hover de Comprar/Vender =====
+  // Acompanha a altura do preco atual enquanto o mouse esta sobre um dos botoes, para que a
+  // faixa colorida e a linha tracejada fiquem colados no preco mesmo com o grafico se movendo.
+  useEffect(() => {
+    if (!hoverDirection) {
+      setHoverGeom(null)
+      return
+    }
+    const measure = () => {
+      const series = seriesRef.current
+      const chart = chartRef.current
+      if (!series) return
+      const price = smoothPriceRef.current || latest.current.currentPrice
+      let y: number | null = null
+      try {
+        const c = series.priceToCoordinate(price)
+        if (typeof c === "number" && Number.isFinite(c)) y = c
+      } catch {}
+      if (y == null) return
+      let axis = 62
+      try {
+        const w = chart?.priceScale("right")?.width?.()
+        if (typeof w === "number" && Number.isFinite(w) && w > 0) axis = w
+      } catch {}
+      setHoverGeom((prev) =>
+        prev && Math.abs(prev.y - y!) < 0.5 && prev.axis === axis ? prev : { y: y!, axis },
+      )
+    }
+    measure()
+    const iv = setInterval(measure, 60)
+    return () => clearInterval(iv)
+  }, [hoverDirection, seriesReady])
+
+  // Realca a linha do preco atual na cor da direcao enquanto o botao esta sob o mouse.
+  useEffect(() => {
+    const series = seriesRef.current
+    if (!series) return
+    try {
+      series.applyOptions({
+        priceLineColor: hoverDirection === "call" ? "#00E676" : hoverDirection === "put" ? "#FF5252" : "#787B86",
+        priceLineStyle: hoverDirection ? 2 : 0,
+      })
+    } catch {}
+  }, [hoverDirection, seriesReady])
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ backgroundColor: "#0d0d0f" }}>
@@ -1570,6 +1720,75 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         onPointerMove={handleDrawPointerMove}
         onPointerUp={handleDrawPointerUp}
       />
+
+      {/* Preview da direcao no hover: tinge a metade do grafico onde a operacao daria lucro */}
+      {hoverDirection && hoverGeom && (
+        <div
+          className="absolute inset-0 z-[16] pointer-events-none"
+          style={{ right: `${hoverGeom.axis}px`, animation: "hoverDirFade 180ms ease-out" }}
+          aria-hidden="true"
+        >
+          {/* Faixa tingida, esmaecendo conforme se afasta do preco de entrada */}
+          <div
+            className="absolute left-0 right-0"
+            style={
+              hoverDirection === "call"
+                ? {
+                    top: 0,
+                    height: `${Math.max(0, hoverGeom.y)}px`,
+                    background: "linear-gradient(to top, rgba(0,230,118,0.20), rgba(0,230,118,0.02))",
+                  }
+                : {
+                    top: `${Math.max(0, hoverGeom.y)}px`,
+                    bottom: 0,
+                    background: "linear-gradient(to bottom, rgba(255,82,82,0.20), rgba(255,82,82,0.02))",
+                  }
+            }
+          />
+          {/* Linha tracejada no preco atual */}
+          <div
+            className="absolute left-0 right-0"
+            style={{
+              top: `${hoverGeom.y}px`,
+              borderTop: `1px dashed ${hoverDirection === "call" ? "#00E676" : "#FF5252"}`,
+              opacity: 0.9,
+            }}
+          />
+          {/* Seta indicando o sentido da aposta */}
+          <div
+            className="absolute right-1 flex items-center justify-center"
+            style={{
+              top: `${hoverGeom.y}px`,
+              transform: hoverDirection === "call" ? "translateY(-115%)" : "translateY(15%)",
+              color: hoverDirection === "call" ? "#00E676" : "#FF5252",
+            }}
+          >
+            <svg
+              style={{ animation: "hoverDirArrow 900ms ease-in-out infinite" }}
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {hoverDirection === "call" ? (
+                <>
+                  <path d="M5 17 L19 5" />
+                  <path d="M13 5 h6 v6" />
+                </>
+              ) : (
+                <>
+                  <path d="M5 5 L19 17" />
+                  <path d="M19 11 v6 h-6" />
+                </>
+              )}
+            </svg>
+          </div>
+        </div>
+      )}
 
       {/* Barra de ferramentas de desenho (estilo IQ Option) */}
       <div className="absolute top-1/2 left-2 z-30 -translate-y-1/2 flex flex-col items-center gap-1 rounded-xl border border-[#2A2E39] bg-[#0d0d0f]/90 p-1 backdrop-blur-sm">
@@ -1755,7 +1974,7 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
                   fontFamily: "'SF Mono',Consolas,monospace",
                 }}
               >
-                {o.isCall ? "▲" : "▼"} {o.time}
+                {o.time}
               </div>
             </div>
           </div>
@@ -1796,6 +2015,14 @@ function ChartCore({ candles, currentPrice, activeTrades = [], timeframe, symbol
         @keyframes pnlPop {
           0% { transform: scale(0.7); opacity: 0; }
           100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes hoverDirFade {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes hoverDirArrow {
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(3px); }
         }
       `}</style>
     </div>

@@ -20,7 +20,9 @@ interface AdminWithdrawalsProps {
   onUpdate: () => void
 }
 
-const ADMIN_TOKEN = "Admin123!"
+// A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
+// pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
+const ADMIN_TOKEN = ""
 
 export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])

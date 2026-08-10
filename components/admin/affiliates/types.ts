@@ -1,4 +1,6 @@
-export const ADMIN_TOKEN = "Admin123!"
+export // A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
+// pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
+const ADMIN_TOKEN = ""
 
 export type CommissionModel = "revshare" | "cpa" | "hybrid"
 

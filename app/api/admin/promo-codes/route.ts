@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { isAdminRequest } from "@/lib/admin/session"
 
 // Mesmo esquema de autenticacao das outras rotas de admin do projeto.
-const ADMIN_TOKEN = "Admin123!"
 
-function verifyAdminToken(request: Request): boolean {
-  return request.headers.get("x-admin-token") === ADMIN_TOKEN
+async function verifyAdminToken(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 /** Converte para numero aceitando vazio/nulo como null (campos opcionais da campanha). */
@@ -18,7 +18,7 @@ function toNumberOrNull(value: unknown): number | null {
 /** GET: lista as campanhas com um resumo de quanto cada uma ja custou em bonus. */
 export async function GET(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
 /** POST: cria uma campanha. */
 export async function POST(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 /** PATCH: edita uma campanha. */
 export async function PATCH(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -168,7 +168,7 @@ export async function PATCH(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    if (!verifyAdminToken(request)) {
+    if (!(await verifyAdminToken())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

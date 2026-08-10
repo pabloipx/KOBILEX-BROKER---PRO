@@ -7,12 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
 
-// Credenciais aceitas para acessar o painel administrativo
-const ADMIN_CREDENTIALS: { email: string; password: string }[] = [
-  { email: "samucarmo2024@gmail.com", password: "Sasa159753123@" },
-  { email: "admin@admin.com", password: "Admin123!" },
-]
-
+// As credenciais do painel ficam apenas no servidor, nas variaveis de ambiente
+// ADMIN_EMAIL e ADMIN_PASSWORD. Antes elas estavam escritas neste arquivo, que e um
+// componente de cliente: qualquer visitante conseguia le-las no bundle do navegador e,
+// com elas, chamar as rotas /api/admin que acessam o banco ignorando o RLS.
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -20,24 +18,46 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
-    setTimeout(() => {
-      const isValid = ADMIN_CREDENTIALS.some(
-        (c) => c.email === email.trim().toLowerCase() && c.password === password,
-      )
-      if (isValid) {
-        sessionStorage.setItem("admin_authenticated", "true")
-        sessionStorage.setItem("admin_token", "Admin123!")
-        window.location.href = "/admin/dashboard"
-      } else {
-        setError("Email ou senha incorretos")
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (res.ok && data?.success) {
+        // A sessao vive em um cookie HttpOnly definido pelo servidor. Antes de sair
+        // desta pagina confirmamos que o cookie realmente foi gravado: se o navegador
+        // o descartar (bloqueio de cookies de terceiros quando a pagina roda dentro de
+        // um iframe de outro dominio, por exemplo), o dashboard devolveria o usuario
+        // para ca sem qualquer mensagem, dando a impressao de "entra e sai".
+        const session = await fetch("/api/admin/session", { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => null)
+
+        if (session?.authenticated) {
+          window.location.href = "/admin/dashboard"
+          return
+        }
+
+        setError(
+          "Login aceito, mas o navegador nao guardou o cookie da sessao. Abra o painel em uma aba propria (fora do preview incorporado) ou libere os cookies deste site.",
+        )
+        return
       }
+
+      setError(data?.error || "Email ou senha incorretos")
+    } catch {
+      setError("Nao foi possivel conectar ao servidor")
+    } finally {
       setIsLoading(false)
-    }, 500)
+    }
   }
 
   return (

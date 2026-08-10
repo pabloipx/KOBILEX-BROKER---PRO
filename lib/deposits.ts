@@ -167,20 +167,22 @@ export async function approveDeposit(
               // Nomes reais das colunas: amount / percent / type / reference_id. As versoes
               // commission_* nao existem no banco, entao a comissao NUNCA era gravada e o
               // afiliado nao recebia nada por indicacao (o erro nao era verificado).
+              // O deposito gera apenas CPA. O RevShare e apurado sobre a receita liquida das
+              // operacoes do indicado, em lib/affiliate-revshare.ts.
               const { error: commissionError } = await supabaseAdmin.from("affiliate_commissions").insert({
                 affiliate_id: affiliate.id,
                 referred_user_id: deposit.user_id,
                 reference_id: deposit.id,
-                type: breakdown.appliedModel,
+                type: "cpa",
                 status: "approved",
                 base_amount: deposit.amount,
                 deposit_amount: deposit.amount,
-                percent: terms.revsharePercent,
+                percent: 0,
                 amount: breakdown.total,
-                revshare_amount: breakdown.revshareAmount,
+                revshare_amount: 0,
                 cpa_amount: breakdown.cpaAmount,
                 level: 1,
-                description: "Comissao de deposito de indicado",
+                description: "CPA do primeiro deposito de indicado",
               })
 
               if (commissionError) {

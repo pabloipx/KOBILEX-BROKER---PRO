@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { type NextRequest, NextResponse } from "next/server"
+import { isAdminRequest } from "@/lib/admin/session"
 
-const ADMIN_TOKEN = "Admin123!"
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
@@ -14,8 +14,7 @@ const supabaseAdmin = getSupabaseAdmin()
 export async function GET(request: NextRequest) {
   
   try {
-    const authHeader = request.headers.get("x-admin-token")
-    if (authHeader !== ADMIN_TOKEN) {
+    if (!(await isAdminRequest())) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
     }
 
@@ -57,8 +56,7 @@ export async function PUT(request: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin()
   
   try {
-    const authHeader = request.headers.get("x-admin-token")
-    if (authHeader !== ADMIN_TOKEN) {
+    if (!(await isAdminRequest())) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
     }
 
@@ -232,8 +230,7 @@ export async function DELETE(request: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin()
   
   try {
-    const authHeader = request.headers.get("x-admin-token")
-    if (authHeader !== ADMIN_TOKEN) {
+    if (!(await isAdminRequest())) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
     }
 

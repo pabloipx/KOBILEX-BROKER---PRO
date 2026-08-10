@@ -19,7 +19,9 @@ interface AdminDepositsProps {
   onUpdate: () => void
 }
 
-const ADMIN_TOKEN = "Admin123!"
+// A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
+// pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
+const ADMIN_TOKEN = ""
 
 export function AdminDeposits({ onUpdate }: AdminDepositsProps) {
   const [deposits, setDeposits] = useState<Deposit[]>([])

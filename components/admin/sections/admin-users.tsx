@@ -26,7 +26,7 @@ interface User {
   balance_demo: number
 }
 
-const ADMIN_PASSWORD = "Admin123!"
+const ADMIN_PASSWORD = ""
 
 export function AdminUsers() {
   const [users, setUsers] = useState<User[]>([])

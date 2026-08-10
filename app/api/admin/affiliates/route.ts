@@ -7,11 +7,12 @@ import {
   type AffiliateGlobalSettings,
   type CommissionModel,
 } from "@/lib/affiliate-commission"
+import { isAdminRequest } from "@/lib/admin/session"
+import { accrueTradeRevshareForAll } from "@/lib/affiliate-revshare"
 
-const ADMIN_TOKEN = "Admin123!"
 
-function checkToken(request: Request) {
-  return request.headers.get("x-admin-token") === ADMIN_TOKEN
+async function checkToken(): Promise<boolean> {
+  return isAdminRequest()
 }
 
 const AFFILIATE_FIELDS =
@@ -101,7 +102,10 @@ function buildMetrics(input: {
     // A coluna do valor da comissao e `amount` (nao `commission_amount`), por isso o total
     // aparecia sempre zerado no painel mesmo havendo comissoes registradas.
     const commissionTotal = sum(myCommissions, "amount")
-    const revshareEarned = round2(commissionTotal - cpaEarned)
+    // Le a coluna `revshare_amount` direto, em vez de deduzir por subtracao: com o RevShare
+    // vindo das operacoes, as duas parcelas vivem em linhas separadas e a subtracao poderia
+    // mascarar divergencias.
+    const revshareEarned = sum(myCommissions, "revshare_amount")
     const paidOut = sum(
       myWithdrawals.filter((w) => ["approved", "completed"].includes(String(w.status || "").toLowerCase())),
       "amount",
@@ -148,7 +152,7 @@ function buildMetrics(input: {
 
 export async function GET(request: Request) {
   try {
-    if (!checkToken(request)) {
+    if (!(await checkToken())) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 403 })
     }
 
@@ -157,6 +161,10 @@ export async function GET(request: Request) {
     const affiliateId = url.searchParams.get("affiliateId")
 
     const settings = await getAffiliateSettings(supabase)
+
+    // Reapura o RevShare das operacoes de todos os afiliados ativos antes de montar o relatorio,
+    // para o admin ver valores atualizados. Idempotente e nunca lanca excecao.
+    await accrueTradeRevshareForAll(supabase)
 
     const [{ data: affiliates }, { data: referrals }, { data: commissions }, { data: withdrawals }] = await Promise.all(
       [
@@ -324,7 +332,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    if (!checkToken(request)) {
+    if (!(await checkToken())) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 403 })
     }
 

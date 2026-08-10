@@ -33,8 +33,15 @@ export const config = {
   },
 
   // Admin
+  //
+  // O painel administrativo autentica por cookie HttpOnly assinado (lib/admin/session.ts).
+  // O fallback de senha que existia aqui era uma credencial no fonte e, por ser lida
+  // tambem em componentes de cliente, era publicada no bundle enviado ao navegador.
   admin: {
-    token: process.env.ADMIN_TOKEN || "Admin123!",
+    email: process.env.ADMIN_EMAIL || "",
+    get isConfigured() {
+      return !!(process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD)
+    },
   },
 
   // App

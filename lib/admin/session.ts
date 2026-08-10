@@ -7,7 +7,7 @@
 // a service role key (que ignora o RLS), qualquer pessoa que abrisse o DevTools
 // tinha acesso total ao banco. Agora o segredo nunca sai do servidor.
 
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 
 export const ADMIN_COOKIE = "admin_session"
 
@@ -89,12 +89,55 @@ export async function verifyAdminSessionValue(value: string | undefined): Promis
 }
 
 /**
+ * Devolve TODAS as ocorrencias do cookie de sessao presentes na requisicao.
+ *
+ * O navegador pode enviar mais de um cookie com o mesmo nome quando existe um
+ * valor antigo gravado com outro `path`/`domain` (deploy anterior) ou assinado
+ * com um segredo que ja mudou -- trocar ADMIN_PASSWORD, por exemplo, invalida
+ * os cookies emitidos antes. `cookies().get()` expoe apenas uma dessas
+ * ocorrencias, entao o valor obsoleto sombreava o valido e o painel derrubava a
+ * sessao logo depois de um login bem-sucedido, num laco de "entra e sai" que so
+ * acabava limpando os cookies do navegador na mao. Lendo o header bruto
+ * conseguimos aceitar a sessao se QUALQUER uma das ocorrencias for legitima.
+ */
+async function readAdminCookieValues(): Promise<string[]> {
+  const values: string[] = []
+
+  const raw = (await headers()).get("cookie")
+  if (raw) {
+    for (const part of raw.split(";")) {
+      const sep = part.indexOf("=")
+      if (sep === -1) continue
+      if (part.slice(0, sep).trim() !== ADMIN_COOKIE) continue
+
+      const encoded = part.slice(sep + 1).trim()
+      try {
+        values.push(decodeURIComponent(encoded))
+      } catch {
+        values.push(encoded)
+      }
+    }
+  }
+
+  // Reserva para runtimes onde o header bruto nao esta disponivel.
+  if (values.length === 0) {
+    const store = await cookies()
+    const single = store.get(ADMIN_COOKIE)?.value
+    if (single) values.push(single)
+  }
+
+  return values
+}
+
+/**
  * Valida a sessao admin da requisicao atual. Toda rota em /api/admin deve
  * chamar esta funcao antes de tocar no banco com a service role key.
  */
 export async function isAdminRequest(): Promise<boolean> {
-  const store = await cookies()
-  return verifyAdminSessionValue(store.get(ADMIN_COOKIE)?.value)
+  for (const value of await readAdminCookieValues()) {
+    if (await verifyAdminSessionValue(value)) return true
+  }
+  return false
 }
 
 export function adminCookieOptions(maxAge: number = SESSION_TTL_SECONDS) {

@@ -32,9 +32,23 @@ export default function AdminLoginPage() {
       const data = await res.json().catch(() => ({}))
 
       if (res.ok && data?.success) {
-        // A sessao vive em um cookie HttpOnly definido pelo servidor.
-        sessionStorage.setItem("admin_authenticated", "true")
-        window.location.href = "/admin/dashboard"
+        // A sessao vive em um cookie HttpOnly definido pelo servidor. Antes de sair
+        // desta pagina confirmamos que o cookie realmente foi gravado: se o navegador
+        // o descartar (bloqueio de cookies de terceiros quando a pagina roda dentro de
+        // um iframe de outro dominio, por exemplo), o dashboard devolveria o usuario
+        // para ca sem qualquer mensagem, dando a impressao de "entra e sai".
+        const session = await fetch("/api/admin/session", { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => null)
+
+        if (session?.authenticated) {
+          window.location.href = "/admin/dashboard"
+          return
+        }
+
+        setError(
+          "Login aceito, mas o navegador nao guardou o cookie da sessao. Abra o painel em uma aba propria (fora do preview incorporado) ou libere os cookies deste site.",
+        )
         return
       }
 

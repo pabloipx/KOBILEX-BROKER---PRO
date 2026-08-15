@@ -496,6 +496,28 @@ function ChartCore({
   const [cds, setCds] = useState<Record<string, number>>({})
   const prevTradeIdsRef = useRef<string[]>([])
 
+  // Serie a que as linhas de operacao guardadas em tradeLinesRef pertencem. Se a serie mudar,
+  // os handles antigos estao mortos e precisam ser descartados (senao a linha "desaparece").
+  const linesSeriesRef = useRef<any>(null)
+  // Incrementado quando a pagina volta a ficar visivel: forca reconciliar as linhas de operacao
+  // imediatamente, sem esperar o proximo tick do cronometro (que pode ter sido congelado).
+  const [resyncKey, setResyncKey] = useState(0)
+
+  useEffect(() => {
+    const resync = () => {
+      if (typeof document !== "undefined" && document.hidden) return
+      setResyncKey((n) => n + 1)
+    }
+    document.addEventListener("visibilitychange", resync)
+    window.addEventListener("focus", resync)
+    window.addEventListener("pageshow", resync)
+    return () => {
+      document.removeEventListener("visibilitychange", resync)
+      window.removeEventListener("focus", resync)
+      window.removeEventListener("pageshow", resync)
+    }
+  }, [])
+
   // ===== DRAWING TOOLS state/refs =====
   const [tool, setTool] = useState<DrawTool>("cursor")
   const [drawColor, setDrawColor] = useState<string>(DRAW_COLORS[0])
@@ -1516,36 +1538,63 @@ function ChartCore({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicators, seriesReady, symbol, timeframe])
 
-  // ===== TRADE LINES + MARKERS (native, attached to chart) =====
+  // ===== TRADE LINES (native price lines, attached to chart) =====
+  //
+  // BUG CORRIGIDO — "a linha de CALL/PUT sumia ao minimizar a pagina e voltar":
+  //
+  // 1. A existencia da linha dependia do estado `cds`, alimentado por um setInterval. Navegador
+  //    estrangula (e chega a congelar) timers de aba em segundo plano, entao ao restaurar a
+  //    janela o `cds` vinha vazio/velho: `cds[trade.id] ?? -1` dava -1, caia no `cd <= 0` e a
+  //    linha NAO era desenhada. Agora o tempo restante e calculado na hora, direto de
+  //    `trade.timestamp + trade.expiryTime`, que nao depende de nenhum timer ter rodado.
+  // 2. O efeito apagava TODAS as linhas e recriava a cada tick (4x/s). Qualquer falha no meio
+  //    (ou um tick com estado velho) deixava o grafico sem linha nenhuma. Agora e incremental:
+  //    linha existente e so atualizada via applyOptions, e removemos apenas as que sairam.
+  //
+  // O `resyncKey` (visibilitychange/focus/pageshow) forca uma reconciliacao ao voltar para a
+  // aba, e `linesSeriesRef` detecta troca de serie para descartar handles orfaos.
   useEffect(() => {
     const series = seriesRef.current
     const lwc = lwcRef.current
     if (!series) return
 
-    // Remove old lines
-    tradeLinesRef.current.forEach((l) => {
-      try {
-        series.removePriceLine(l)
-      } catch {}
-    })
-    tradeLinesRef.current.clear()
+    // Se a serie foi recriada, os handles guardados apontam para um objeto morto: descarta.
+    if (linesSeriesRef.current !== series) {
+      tradeLinesRef.current.clear()
+      linesSeriesRef.current = series
+    }
 
     const LS = lwc?.LineStyle
-    const markers: any[] = []
+    const now = Date.now()
+    const seen = new Set<string>()
 
     chartTrades.forEach((trade) => {
       if (trade.entryPrice <= 0) return
-      const cd = cds[trade.id] ?? -1
+
+      // Tempo restante calculado agora, sem depender do cronometro (que pode estar congelado).
+      const cd = Math.max(0, Math.ceil((trade.timestamp + trade.expiryTime * 1000 - now) / 1000))
       if (cd <= 0) return
+
       const isCall = trade.direction === "call"
-      const baseColor = isCall ? "#00E676" : "#FF5252"
-      const isUrgent = cd <= 10
-      const color = isUrgent ? "#FFC400" : baseColor
+      const color = cd <= 10 ? "#FFC400" : isCall ? "#00E676" : "#FF5252"
       const label = isCall ? "CALL" : "PUT"
-      const m = Math.floor(cd / 60)
-      const s = cd % 60
-      const timeStr = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      const timeStr = `${String(Math.floor(cd / 60)).padStart(2, "0")}:${String(cd % 60).padStart(2, "0")}`
       const amount = trade.amount ? ` R$${trade.amount.toFixed(0)}` : ""
+      const title = ` ${label} ${timeStr}${amount} `
+
+      seen.add(trade.id)
+      const existing = tradeLinesRef.current.get(trade.id)
+
+      if (existing) {
+        // Linha ja existe: apenas atualiza cor/cronometro, sem remover e recriar (sem piscar).
+        try {
+          existing.applyOptions({ price: trade.entryPrice, color, title })
+          return
+        } catch {
+          // applyOptions falhou (handle invalido) — cai no caminho de recriar abaixo.
+          tradeLinesRef.current.delete(trade.id)
+        }
+      }
 
       try {
         const line = series.createPriceLine({
@@ -1554,7 +1603,7 @@ function ChartCore({
           lineWidth: 2,
           lineStyle: LS?.Dashed ?? 1,
           axisLabelVisible: true,
-          title: ` ${label} ${timeStr}${amount} `,
+          title,
         })
         if (line) tradeLinesRef.current.set(trade.id, line)
       } catch {}
@@ -1565,15 +1614,15 @@ function ChartCore({
       // que ja traz direcao, cor, cronometro e valor.
     })
 
-    // Apply markers
-    try {
-      if (markersApiRef.current?.setMarkers) {
-        markersApiRef.current.setMarkers(markers)
-      } else if (series.setMarkers) {
-        series.setMarkers(markers)
-      }
-    } catch {}
-  }, [chartTrades, cds, seriesReady])
+    // Remove apenas as linhas de operacoes que expiraram ou sairam da lista.
+    tradeLinesRef.current.forEach((line, id) => {
+      if (seen.has(id)) return
+      try {
+        series.removePriceLine(line)
+      } catch {}
+      tradeLinesRef.current.delete(id)
+    })
+  }, [chartTrades, cds, seriesReady, resyncKey])
 
   // ===== Live floating P&L overlays (IQ Option style) =====
   useEffect(() => {

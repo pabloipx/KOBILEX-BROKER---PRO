@@ -561,6 +561,100 @@ export default function TradePage() {
   // Track processed trade IDs to prevent double-processing
   const processedTradesRef = useRef<Set<string>>(new Set())
 
+  /**
+   * Recarrega do banco as operacoes que ainda estao abertas.
+   *
+   * BUG CORRIGIDO — "fiz uma venda e nao marcou a linha no grafico":
+   * `activeTrades` (a unica fonte das linhas do grafico) so era preenchido no momento em que a
+   * operacao era criada, e nunca era reconstruido a partir do banco. Ou seja: a lista vivia
+   * apenas na memoria daquela sessao da pagina. Bastava a pagina remontar — F5, o Chrome
+   * descartar a aba deixada em segundo plano (comum ao minimizar por um tempo), voltar pelo
+   * historico ou um novo deploy — para as operacoes abertas desaparecerem do grafico
+   * permanentemente, enquanto o painel Historico continuava mostrando cada uma contando o tempo,
+   * porque ele le direto do banco. Era exatamente o sintoma relatado: operacao ativa na lista,
+   * nenhuma linha no grafico.
+   *
+   * Agora as operacoes abertas sao lidas do banco ao montar a pagina e a cada retorno para a aba,
+   * entao a linha reaparece sozinha. Somente operacoes que ainda nao expiraram sao restauradas;
+   * as vencidas continuam por conta de `finalizeExpiredTrades`.
+   */
+  const hydrateActiveTrades = useCallback(
+    async (userId: string) => {
+      try {
+        const { data, error } = await supabaseRef.current
+          .from("trades")
+          .select("id, symbol, entry_price, direction, timeframe, entry_time, amount, is_demo")
+          .eq("user_id", userId)
+          .in("result", ["pending", "PENDING"])
+          .not("entry_time", "is", null)
+
+        if (error || !data?.length) return
+
+        const now = Date.now()
+
+        setActiveTrades((prev) => {
+          const conhecidas = new Set(prev.map((t) => t.dbId).filter(Boolean))
+          const restauradas: ActiveTrade[] = []
+
+          for (const row of data as any[]) {
+            if (conhecidas.has(row.id)) continue // ja esta no grafico
+            if (processedTradesRef.current.has(`db-${row.id}`)) continue // ja liquidada nesta sessao
+
+            const timestamp = new Date(row.entry_time).getTime()
+            const expiryTime = Number(row.timeframe) || 60
+            if (!Number.isFinite(timestamp)) continue
+            // Ja venceu: quem encerra e o finalizeExpiredTrades, nao entra como linha ativa.
+            if (now >= timestamp + expiryTime * 1000) continue
+
+            const entryPrice = Number(row.entry_price) || 0
+            if (entryPrice <= 0) continue // sem preco de entrada nao existe linha para desenhar
+
+            // Marcada como acompanhada na tela para que a liquidacao siga o caminho com animacao.
+            trackedDbIdsRef.current.add(row.id)
+
+            restauradas.push({
+              id: `db-${row.id}`,
+              dbId: row.id,
+              symbol: row.symbol,
+              direction: (String(row.direction || "call").toUpperCase() === "PUT"
+                ? "PUT"
+                : "CALL") as "CALL" | "PUT",
+              amount: Number(row.amount) || 0,
+              entryPrice,
+              expiryTime,
+              timestamp,
+              isDemo: Boolean(row.is_demo),
+            })
+          }
+
+          return restauradas.length > 0 ? [...prev, ...restauradas] : prev
+        })
+      } catch {}
+    },
+    [],
+  )
+
+  // Restaura as linhas ao abrir a pagina e sempre que a aba volta a ficar visivel.
+  useEffect(() => {
+    if (!user?.id) return
+    const userId = user.id
+
+    const run = () => {
+      if (typeof document !== "undefined" && document.hidden) return
+      void hydrateActiveTrades(userId)
+    }
+
+    run()
+    document.addEventListener("visibilitychange", run)
+    window.addEventListener("focus", run)
+    window.addEventListener("pageshow", run)
+    return () => {
+      document.removeEventListener("visibilitychange", run)
+      window.removeEventListener("focus", run)
+      window.removeEventListener("pageshow", run)
+    }
+  }, [user?.id, hydrateActiveTrades])
+
   // Check active trades results - ROBUST
   useEffect(() => {
     if (activeTrades.length === 0 || !user || !mountedRef.current) return

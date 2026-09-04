@@ -32,11 +32,19 @@ export default function LoginPage() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const supabase = createClient()
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        router.replace("/trade")
-      } else {
+      try {
+        console.log("[v0] checkSession: start")
+        const supabase = createClient()
+        console.log("[v0] checkSession: client created")
+        const { data, error } = await supabase.auth.getSession()
+        console.log("[v0] checkSession: getSession returned", { hasSession: !!data?.session, error })
+        if (data.session) {
+          router.replace("/trade")
+        } else {
+          setIsCheckingSession(false)
+        }
+      } catch (err) {
+        console.log("[v0] checkSession: threw", err instanceof Error ? err.message : err)
         setIsCheckingSession(false)
       }
     }

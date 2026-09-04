@@ -5,13 +5,14 @@ export const config = {
   // Supabase - fallback para strings vazias (não vai conectar, mas não vai crashar)
   supabase: {
     url: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
+    // Somente servidor: em código de cliente este valor é sempre "".
+    secretKey: process.env.SUPABASE_SECRET_KEY || "",
     get isConfigured() {
-      return !!(this.url && this.anonKey)
+      return !!(this.url && this.publishableKey)
     },
     get isAdminConfigured() {
-      return !!(this.url && this.serviceRoleKey)
+      return !!(this.url && this.secretKey)
     },
   },
 

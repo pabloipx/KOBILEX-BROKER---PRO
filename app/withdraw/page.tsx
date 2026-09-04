@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createBrowserClient } from "@supabase/ssr"
+import { createClient } from "@/lib/supabase/client"
 import { ChevronLeft, AlertCircle, Check, Wallet, Clock, Shield, AlertTriangle, CheckCircle, Bitcoin } from "lucide-react"
 import Image from "next/image"
 
@@ -50,7 +50,7 @@ export default function WithdrawPage() {
   const [checkingKyc, setCheckingKyc] = useState(true)
 
   const supabase = useMemo(
-    () => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL || "", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""),
+    () => createClient(),
     [],
   )
 

@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createBrowserClient } from "@supabase/ssr"
+import { createClient } from "@/lib/supabase/client"
 import { ChevronLeft, Copy, Check, Loader2, Clock, RefreshCw, CreditCard, CheckCircle2, XCircle, X, Info, Sparkles, ShieldCheck, Lock } from "lucide-react"
 import Image from "next/image"
 import { QRCodeSVG } from "qrcode.react"
@@ -84,7 +84,7 @@ export default function DepositPage() {
   }, [cryptoAmountUsd])
 
   const supabase = useMemo(
-    () => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL || "", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""),
+    () => createClient(),
     [],
   )
 

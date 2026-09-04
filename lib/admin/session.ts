@@ -20,7 +20,7 @@ function getSecret(): string {
   const material = [
     process.env.ADMIN_SESSION_SECRET || "",
     process.env.SUPABASE_JWT_SECRET || "",
-    process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    process.env.SUPABASE_SECRET_KEY || "",
     process.env.ADMIN_PASSWORD || "",
   ]
     .filter(Boolean)

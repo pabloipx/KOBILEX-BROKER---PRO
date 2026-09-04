@@ -16,8 +16,8 @@ const MANIPULABLE_SYMBOLS = new Set(
 )
 
 function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || ""
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
@@ -28,7 +28,7 @@ async function checkAuth(): Promise<boolean> {
 }
 
 function notConfigured() {
-  return !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY
+  return !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY
 }
 
 // GET: lista manipulacoes (ativas e agendadas primeiro, mais recentes no topo)

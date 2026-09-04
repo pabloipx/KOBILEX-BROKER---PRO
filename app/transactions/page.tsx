@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createBrowserClient } from "@supabase/ssr"
+import { createClient } from "@/lib/supabase/client"
 import { ChevronLeft, TrendingUp, TrendingDown, Clock, DollarSign, BarChart3 } from "lucide-react"
 
 interface Trade {
@@ -29,7 +29,7 @@ export default function TransactionsPage() {
   const [filter, setFilter] = useState<"all" | "real" | "demo">("all")
 
   const supabase = useMemo(
-    () => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL || "", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""),
+    () => createClient(),
     [],
   )
 

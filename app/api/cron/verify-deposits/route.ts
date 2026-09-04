@@ -9,7 +9,7 @@ export const maxDuration = 60
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  const key = process.env.SUPABASE_SECRET_KEY || ""
   return createClient(url, key)
 }
 
@@ -39,7 +39,7 @@ async function handler(request: NextRequest) {
     }
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 })
   }
 

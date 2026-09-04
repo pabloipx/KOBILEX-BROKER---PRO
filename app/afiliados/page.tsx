@@ -4,7 +4,7 @@ import { AffiliateTradeEditor } from "@/components/affiliate/affiliate-trade-edi
 import { InvitesChart } from "@/components/affiliate/invites-chart"
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createBrowserClient } from "@supabase/ssr"
+import { createClient } from "@/lib/supabase/client"
 import {
   ChevronLeft,
   Users,
@@ -100,10 +100,7 @@ const MODEL_LABEL: Record<Affiliate["commission_model"], string> = {
 export default function AffiliatePage() {
   const router = useRouter()
   const [supabase] = useState(() =>
-    createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-    ),
+    createClient(),
   )
 
   const [loading, setLoading] = useState(true)

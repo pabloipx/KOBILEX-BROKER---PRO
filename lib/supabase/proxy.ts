@@ -6,7 +6,7 @@ const PROTECTED_ROUTES = ["/trade", "/profile", "/transactions", "/withdraw", "/
 export async function updateSession(request: NextRequest) {
   // Se Supabase não está configurado, apenas passa adiante
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.next({ request })

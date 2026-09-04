@@ -6,7 +6,7 @@ export async function GET() {
     status: "ok",
     timestamp: new Date().toISOString(),
     env: {
-      supabaseConfigured: !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+      supabaseConfigured: !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
       nodeEnv: process.env.NODE_ENV || "unknown",
     },
   })

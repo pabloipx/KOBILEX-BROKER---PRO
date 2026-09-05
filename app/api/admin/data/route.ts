@@ -443,8 +443,10 @@ export async function POST(req: NextRequest) {
 
     if (action === "apply_rollover") {
       // Aplica uma trava de rollover manual a um usuario ja existente (ex.: quem depositou antes
-      // de o rollover ser ativado). Cria uma linha em deposit_rollovers com um deposit_id sintetico,
-      // porque a coluna e NOT NULL/UNIQUE mas nao ha deposito real associado a uma trava manual.
+      // de o rollover ser ativado). A coluna deposit_id em deposit_rollovers e NOT NULL/UNIQUE e tem
+      // foreign key para deposits(id), entao criamos um deposito "ancora" real (metodo admin, ja
+      // concluido) apenas para servir de referencia. Ele NAO credita saldo (o credito e feito em
+      // nivel de aplicacao no fluxo de pagamento) e NAO e reprocessado pelo cron (nao esta pendente).
       const userId = payload.userId
       const baseAmount = round2(Number(payload.baseAmount))
       const multiplier = Number(payload.multiplier)
@@ -460,17 +462,45 @@ export async function POST(req: NextRequest) {
       }
 
       const rolloverRequired = round2(baseAmount * multiplier)
-      const syntheticDepositId = crypto.randomUUID()
 
+      // 1) Cria o deposito ancora e recupera o id gerado.
+      const nowIso = new Date().toISOString()
+      const { data: anchorDeposit, error: anchorError } = await supabase
+        .from("deposits")
+        .insert({
+          user_id: userId,
+          amount: baseAmount,
+          currency: "BRL",
+          method: "admin",
+          payment_method: "admin",
+          status: "completed",
+          external_id: "ADMIN-ROLLOVER-" + crypto.randomUUID(),
+          paid_at: nowIso,
+          processed_at: nowIso,
+          completed_at: nowIso,
+        })
+        .select("id")
+        .single()
+
+      if (anchorError || !anchorDeposit) {
+        return NextResponse.json(
+          { error: "Erro ao aplicar rollover: " + (anchorError?.message || "falha ao criar registro base") },
+          { status: 500 },
+        )
+      }
+
+      // 2) Cria a trava de rollover referenciando o deposito ancora.
       const { error: rolloverError } = await supabase.from("deposit_rollovers").insert({
         user_id: userId,
-        deposit_id: syntheticDepositId,
+        deposit_id: anchorDeposit.id,
         deposit_amount: baseAmount,
         multiplier,
         rollover_required: rolloverRequired,
       })
 
       if (rolloverError) {
+        // Desfaz o deposito ancora para nao deixar lixo caso a trava falhe.
+        await supabase.from("deposits").delete().eq("id", anchorDeposit.id)
         return NextResponse.json({ error: "Erro ao aplicar rollover: " + rolloverError.message }, { status: 500 })
       }
 

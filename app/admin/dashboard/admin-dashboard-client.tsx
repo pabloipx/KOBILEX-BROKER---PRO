@@ -65,6 +65,7 @@ interface User {
   created_at: string
   balance_real: number
   balance_demo: number
+  rollover?: { required: number; progress: number; remaining: number; count: number } | null
 }
 
 interface Deposit {
@@ -1013,6 +1014,15 @@ export default function AdminDashboardClient() {
                           <div className="text-right">
                             <p className="text-green-500 font-bold">{formatCurrency(user.balance_real)}</p>
                             <p className="text-gray-500 text-xs">Demo: {formatCurrency(user.balance_demo)}</p>
+                            {user.rollover && user.rollover.remaining > 0 && (
+                              <p className="text-orange-400 text-xs mt-1 flex items-center justify-end gap-1">
+                                <Repeat className="w-3 h-3" />
+                                Rollover: falta {formatCurrency(user.rollover.remaining)}
+                              </p>
+                            )}
+                            {user.rollover && user.rollover.remaining <= 0 && (
+                              <p className="text-green-400 text-xs mt-1">Rollover concluído</p>
+                            )}
                           </div>
                           <Button
                             onClick={() => openRolloverModal(user)}

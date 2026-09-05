@@ -100,12 +100,31 @@ export async function GET(req: NextRequest) {
       const userIds = profiles.map((p: any) => p.id)
       const { data: balances } = await supabase.from("user_balances").select("*").in("user_id", userIds)
 
+      // Travas de rollover ativas de todos os usuarios, para mostrar quanto falta em cada card.
+      const { data: rollovers } = await supabase
+        .from("deposit_rollovers")
+        .select("user_id, rollover_required, rollover_progress")
+        .eq("status", "active")
+        .in("user_id", userIds)
+
+      // Consolida as travas ativas por usuario: soma exigido e progresso, calcula o restante.
+      const rolloverByUser = new Map<string, { required: number; progress: number; remaining: number; count: number }>()
+      for (const r of rollovers || []) {
+        const current = rolloverByUser.get(r.user_id) || { required: 0, progress: 0, remaining: 0, count: 0 }
+        current.required = round2(current.required + Number(r.rollover_required || 0))
+        current.progress = round2(current.progress + Number(r.rollover_progress || 0))
+        current.count += 1
+        current.remaining = round2(Math.max(0, current.required - current.progress))
+        rolloverByUser.set(r.user_id, current)
+      }
+
       const users = profiles.map((profile: any) => {
         const balance = balances?.find((b: any) => b.user_id === profile.id)
         return {
           ...profile,
           balance_real: balance?.balance_real || 0,
           balance_demo: balance?.balance_demo || 100,
+          rollover: rolloverByUser.get(profile.id) || null,
         }
       })
 

@@ -99,9 +99,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              `Voce tem R$ ${depositLocked.toFixed(2)} em depositos com rollover pendente. ` +
-              `Saldo disponivel para saque: R$ ${available.toFixed(2)}. Faltam ` +
-              `R$ ${depositRollover.remaining.toFixed(2)} de volume negociado para liberar.`,
+              `Voce ainda tem R$ ${depositLocked.toFixed(2)} em depositos travados pelo rollover. ` +
+              `Faltam R$ ${depositRollover.remaining.toFixed(2)} de volume em entradas para liberar esse valor. ` +
+              `Saldo disponivel para saque agora: R$ ${available.toFixed(2)}.`,
+            rolloverRemaining: depositRollover.remaining,
+            lockedAmount: depositLocked,
+            availableBalance: available,
           },
           { status: 409 },
         )

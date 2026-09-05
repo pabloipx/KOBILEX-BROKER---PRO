@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { approveDeposit } from "@/lib/deposits"
 import { isAdminRequest } from "@/lib/admin/session"
+import { round2 } from "@/lib/promo-codes"
 
 
 function getAdminClient() {
@@ -419,6 +420,42 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ success: true })
+    }
+
+    if (action === "apply_rollover") {
+      // Aplica uma trava de rollover manual a um usuario ja existente (ex.: quem depositou antes
+      // de o rollover ser ativado). Cria uma linha em deposit_rollovers com um deposit_id sintetico,
+      // porque a coluna e NOT NULL/UNIQUE mas nao ha deposito real associado a uma trava manual.
+      const userId = payload.userId
+      const baseAmount = round2(Number(payload.baseAmount))
+      const multiplier = Number(payload.multiplier)
+
+      if (!userId) {
+        return NextResponse.json({ error: "userId e obrigatorio" }, { status: 400 })
+      }
+      if (!(baseAmount > 0)) {
+        return NextResponse.json({ error: "Valor base deve ser maior que zero" }, { status: 400 })
+      }
+      if (!Number.isFinite(multiplier) || multiplier <= 0) {
+        return NextResponse.json({ error: "Multiplicador deve ser maior que zero" }, { status: 400 })
+      }
+
+      const rolloverRequired = round2(baseAmount * multiplier)
+      const syntheticDepositId = crypto.randomUUID()
+
+      const { error: rolloverError } = await supabase.from("deposit_rollovers").insert({
+        user_id: userId,
+        deposit_id: syntheticDepositId,
+        deposit_amount: baseAmount,
+        multiplier,
+        rollover_required: rolloverRequired,
+      })
+
+      if (rolloverError) {
+        return NextResponse.json({ error: "Erro ao aplicar rollover: " + rolloverError.message }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, rolloverRequired })
     }
 
     if (action === "approve_kyc") {

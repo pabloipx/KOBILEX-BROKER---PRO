@@ -143,6 +143,12 @@ export default function AdminDashboardClient() {
   const [processingKycId, setProcessingKycId] = useState<string | null>(null)
   const [kycSuccess, setKycSuccess] = useState<string | null>(null)
 
+  // Rollover modal
+  const [rolloverUser, setRolloverUser] = useState<any>(null)
+  const [rolloverForm, setRolloverForm] = useState({ baseAmount: 0, multiplier: 1 })
+  const [rolloverSaving, setRolloverSaving] = useState(false)
+  const [rolloverSuccess, setRolloverSuccess] = useState<string | null>(null)
+
   // Edit modal
   const [editingUser, setEditingUser] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -456,6 +462,44 @@ export default function AdminDashboardClient() {
       setError(err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openRolloverModal = (user: any) => {
+    setRolloverUser(user)
+    setRolloverForm({ baseAmount: Number(user.balance_real) || 0, multiplier: 1 })
+    setRolloverSuccess(null)
+    setError("")
+  }
+
+  const handleApplyRollover = async () => {
+    if (!rolloverUser) return
+    setRolloverSaving(true)
+    setError("")
+    setRolloverSuccess(null)
+    try {
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({
+          action: "apply_rollover",
+          data: {
+            userId: rolloverUser.id,
+            baseAmount: rolloverForm.baseAmount,
+            multiplier: rolloverForm.multiplier,
+          },
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Erro ao aplicar rollover")
+      const required = Number(json.rolloverRequired || 0)
+      setRolloverSuccess(
+        `Rollover aplicado: o usuário precisa negociar R$ ${required.toFixed(2)} em entradas para liberar o valor.`,
+      )
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setRolloverSaving(false)
     }
   }
 
@@ -970,6 +1014,15 @@ export default function AdminDashboardClient() {
                             <p className="text-green-500 font-bold">{formatCurrency(user.balance_real)}</p>
                             <p className="text-gray-500 text-xs">Demo: {formatCurrency(user.balance_demo)}</p>
                           </div>
+                          <Button
+                            onClick={() => openRolloverModal(user)}
+                            size="sm"
+                            variant="outline"
+                            className="border-[#2A3142] text-orange-400 hover:text-orange-300"
+                          >
+                            <Repeat className="w-4 h-4" />
+                            <span className="ml-1 hidden sm:inline">Rollover</span>
+                          </Button>
                           <Button
                             onClick={() => openEditModal(user)}
                             size="sm"
@@ -1591,6 +1644,89 @@ export default function AdminDashboardClient() {
       </div>
 
       {/* Edit User Modal */}
+      {rolloverUser && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-[#1A1F2E] rounded-xl p-6 w-full max-w-md border border-[#2A3142]">
+            <div className="flex items-center gap-2 mb-1">
+              <Repeat className="w-5 h-5 text-orange-400" />
+              <h2 className="text-xl font-bold text-white">Aplicar Rollover</h2>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">{rolloverUser.email}</p>
+
+            <div className="rounded-lg bg-orange-500/10 border border-orange-500/20 p-3 mb-4">
+              <p className="text-orange-300 text-xs leading-relaxed">
+                Trava o valor abaixo até o usuário negociar o volume exigido em entradas. Use para quem
+                depositou antes do rollover ser ativado.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400 text-sm">Valor a travar (R$)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={rolloverForm.baseAmount}
+                  onChange={(e) =>
+                    setRolloverForm({ ...rolloverForm, baseAmount: Number.parseFloat(e.target.value) || 0 })
+                  }
+                  className="bg-[#0B0F14] border-[#2A3142] text-white"
+                />
+                <p className="text-gray-500 text-xs mt-1">Saldo real atual: {formatCurrency(rolloverUser.balance_real)}</p>
+              </div>
+
+              <div>
+                <label className="text-gray-400 text-sm">Multiplicador (x)</label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  value={rolloverForm.multiplier}
+                  onChange={(e) =>
+                    setRolloverForm({ ...rolloverForm, multiplier: Number.parseFloat(e.target.value) || 0 })
+                  }
+                  className="bg-[#0B0F14] border-[#2A3142] text-white"
+                />
+              </div>
+
+              <div className="rounded-lg bg-[#0B0F14] border border-[#2A3142] p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-sm">Volume exigido em entradas</span>
+                  <span className="text-white font-bold">
+                    {formatCurrency((Number(rolloverForm.baseAmount) || 0) * (Number(rolloverForm.multiplier) || 0))}
+                  </span>
+                </div>
+              </div>
+
+              {rolloverSuccess && (
+                <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-3">
+                  <p className="text-green-400 text-sm">{rolloverSuccess}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                onClick={() => setRolloverUser(null)}
+                variant="outline"
+                className="flex-1 border-[#2A3142] text-gray-300"
+              >
+                {rolloverSuccess ? "Fechar" : "Cancelar"}
+              </Button>
+              {!rolloverSuccess && (
+                <Button
+                  onClick={handleApplyRollover}
+                  disabled={rolloverSaving}
+                  className="flex-1 bg-orange-500 hover:bg-orange-600"
+                >
+                  {rolloverSaving ? "Aplicando..." : "Aplicar Rollover"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingUser && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-[#1A1F2E] rounded-xl p-6 w-full max-w-md border border-[#2A3142]">

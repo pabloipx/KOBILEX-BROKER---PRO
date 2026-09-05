@@ -858,7 +858,20 @@ export default function TradePage() {
         return
       }
 
-      const entryPrice = price > 0 ? price : 1.085 // fallback price
+      // Preco de entrada do ativo SELECIONADO. Antes o fallback era um numero fixo (1.085, o
+      // preco do EUR/USD): quando `price` vinha 0 — tipico ao alternar entre varias abas, com o
+      // feed do ativo recem-focado ainda carregando — a operacao era gravada em 1.085 e a linha
+      // tracejada caia fora da area visivel de qualquer ativo que nao valesse ~1,08 (BTC, USD/JPY,
+      // etc.), dando o sintoma "a linha nao aparece". O motor deterministico calcula o preco de
+      // QUALQUER ativo sob demanda, entao usamos ele como fonte autoritativa. Sem cotacao (feed de
+      // mercado aberto ainda fora), bloqueamos a entrada em vez de gravar um preco falso que
+      // tambem corromperia a liquidacao.
+      const entryPrice = price > 0 ? price : multiAssetEngine.getCurrentPrice(selectedSymbol)
+      if (!entryPrice || entryPrice <= 0) {
+        setTradeError("Aguardando cotacao do ativo. Tente novamente em instantes.")
+        setTimeout(() => setTradeError(null), 3000)
+        return
+      }
 
       // Toca o som AQUI (sincrono, ainda dentro do gesto de clique do usuario).
       // Se tocado apos os awaits abaixo, o navegador ja perdeu o contexto do gesto e

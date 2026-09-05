@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/client"
 import { ChevronLeft, Copy, Check, Loader2, Clock, RefreshCw, CreditCard, CheckCircle2, XCircle, X, Info, Sparkles, ShieldCheck, Lock } from "lucide-react"
 import Image from "next/image"
 import { QRCodeSVG } from "qrcode.react"
-import { PromoCodeInput } from "@/components/promo-code-input"
 
 const QUICK_AMOUNTS = [50, 100, 500, 1000, 5000, 10000, 50000, 100000]
 
@@ -1170,11 +1169,6 @@ export default function DepositPage() {
               </>
             )}
           </div>
-        )}
-
-        {/* Codigo promocional - apenas PIX, o unico metodo que concede bonus hoje */}
-        {method === "pix" && !pixData && (
-          <PromoCodeInput amount={parseAmount()} onApplied={setAppliedPromoCode} />
         )}
 
         {/* Terms - only for PIX and Card */}

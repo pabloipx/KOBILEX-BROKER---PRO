@@ -241,6 +241,29 @@ export default function TradePage() {
     return () => clearInterval(id)
   }, [])
 
+  // Tick de 1s usado apenas para a contagem regressiva das abas. Só roda enquanto houver
+  // operações abertas, para não re-renderizar a tela toda o tempo todo sem necessidade.
+  const [tabTick, setTabTick] = useState(() => Date.now())
+  useEffect(() => {
+    if (activeTrades.length === 0) return
+    const id = setInterval(() => setTabTick(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [activeTrades.length])
+
+  // Segundos restantes por ativo: para cada símbolo com operação aberta, pega a operação que
+  // vence primeiro (a mais urgente) e calcula quanto falta para ela finalizar.
+  const remainingBySymbol = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const t of activeTrades) {
+      const remaining = Math.ceil((t.timestamp + t.expiryTime * 1000 - tabTick) / 1000)
+      if (remaining <= 0) continue
+      if (map[t.symbol] === undefined || remaining < map[t.symbol]) {
+        map[t.symbol] = remaining
+      }
+    }
+    return map
+  }, [activeTrades, tabTick])
+
   // Status do mercado do ativo selecionado (fechado no fim de semana para forex de mercado aberto).
   const marketStatus = useMemo(
     () => getMarketStatus(selectedAsset, new Date(clockTick)),
@@ -1070,6 +1093,15 @@ export default function TradePage() {
               const asset = assetBySymbol(sym)
               if (!asset) return null
               const isActive = sym === selectedSymbol
+              const remaining = remainingBySymbol[sym]
+              const hasTimer = remaining !== undefined && remaining > 0
+              const urgent = hasTimer && remaining <= 10
+              const timerLabel =
+                hasTimer
+                  ? remaining >= 60
+                    ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`
+                    : `:${String(remaining).padStart(2, "0")}`
+                  : ""
               return (
                 <div
                   key={sym}
@@ -1109,8 +1141,19 @@ export default function TradePage() {
                     <p className="text-white font-bold text-xs lg:text-sm leading-tight truncate max-w-[90px] lg:max-w-[110px]">
                       {asset.name}
                     </p>
-                    {(asset.market || "otc") === "otc" && (
-                      <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
+                    {hasTimer ? (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-semibold leading-tight tabular-nums ${
+                          urgent ? "text-red-400" : "text-[#ff8a00]"
+                        }`}
+                      >
+                        <Clock className={`w-3 h-3 ${urgent ? "animate-pulse" : ""}`} />
+                        {timerLabel}
+                      </span>
+                    ) : (
+                      (asset.market || "otc") === "otc" && (
+                        <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
+                      )
                     )}
                   </div>
 

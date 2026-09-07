@@ -711,8 +711,14 @@ export default function TradePage() {
       for (const trade of tradesToFinalize) {
         if (!mountedRef.current) break
 
-        // Mark as being processed to prevent race conditions
+        // Mark as being processed to prevent race conditions.
+        // Marca tambem a chave `db-<dbId>`: e essa chave que o hydrateActiveTrades usa para
+        // deduplicar. Sem ela, uma operacao recem-finalizada cuja linha no banco ainda consta
+        // 'pending' era re-adicionada pelo hydrate (ao focar/voltar a aba) com o timestamp do
+        // relogio do servidor, criando uma segunda entrada no mesmo ativo. O contador entao
+        // alternava entre os dois tempos a cada render — era esse o bug do timer "pulando".
         processedTradesRef.current.add(trade.id)
+        if (trade.dbId) processedTradesRef.current.add(`db-${trade.dbId}`)
 
         try {
           // Resultado REAL baseado no movimento do preco, para TODOS os usuarios
@@ -791,6 +797,7 @@ export default function TradePage() {
 
           if (updateError || !closedRows || closedRows.length === 0) {
             processedTradesRef.current.delete(trade.id)
+            if (trade.dbId) processedTradesRef.current.delete(`db-${trade.dbId}`)
             continue
           }
 

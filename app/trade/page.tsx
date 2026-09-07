@@ -241,27 +241,36 @@ export default function TradePage() {
     return () => clearInterval(id)
   }, [])
 
-  // Tick de 1s usado apenas para a contagem regressiva das abas. Só roda enquanto houver
-  // operações abertas, para não re-renderizar a tela toda o tempo todo sem necessidade.
+  // Tick de 1s usado apenas para a contagem regressiva das abas. O intervalo é criado uma única
+  // vez e nunca reinicia — reiniciá-lo a cada atualização de activeTrades (polling do servidor)
+  // dessincronizava o relógio e fazia a contagem "pular" segundos. O cálculo do tempo restante
+  // lê Date.now() direto, então o tick serve apenas para forçar o re-render a cada segundo.
+  const hasActiveTrades = activeTrades.length > 0
   const [tabTick, setTabTick] = useState(() => Date.now())
   useEffect(() => {
-    if (activeTrades.length === 0) return
-    const id = setInterval(() => setTabTick(Date.now()), 1000)
+    if (!hasActiveTrades) return
+    const id = setInterval(() => setTabTick(Date.now()), 500)
     return () => clearInterval(id)
-  }, [activeTrades.length])
+  }, [hasActiveTrades])
 
   // Segundos restantes por ativo: para cada símbolo com operação aberta, pega a operação que
   // vence primeiro (a mais urgente) e calcula quanto falta para ela finalizar.
   const remainingBySymbol = useMemo(() => {
+    // Lê o relógio no instante do cálculo em vez de depender do valor capturado em tabTick.
+    // tabTick serve só para disparar este recálculo a cada 500ms; usar Date.now() aqui evita
+    // que uma atualização de activeTrades (polling) fora do compasso do tick faça o número saltar.
+    const now = Date.now()
     const map: Record<string, number> = {}
     for (const t of activeTrades) {
-      const remaining = Math.ceil((t.timestamp + t.expiryTime * 1000 - tabTick) / 1000)
+      const remaining = Math.round((t.timestamp + t.expiryTime * 1000 - now) / 1000)
       if (remaining <= 0) continue
       if (map[t.symbol] === undefined || remaining < map[t.symbol]) {
         map[t.symbol] = remaining
       }
     }
     return map
+    // tabTick é dependência intencional: cada tick reavalia este memo com o Date.now() atual.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTrades, tabTick])
 
   // Status do mercado do ativo selecionado (fechado no fim de semana para forex de mercado aberto).

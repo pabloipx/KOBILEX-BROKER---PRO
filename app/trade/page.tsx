@@ -905,7 +905,16 @@ export default function TradePage() {
       // QUALQUER ativo sob demanda, entao usamos ele como fonte autoritativa. Sem cotacao (feed de
       // mercado aberto ainda fora), bloqueamos a entrada em vez de gravar um preco falso que
       // tambem corromperia a liquidacao.
-      const entryPrice = price > 0 ? price : multiAssetEngine.getCurrentPrice(selectedSymbol)
+      // O preco de entrada precisa ser SEMPRE o do ativo selecionado (a aba onde a operacao
+      // esta sendo aberta). Ao abrir varias operacoes em abas de ativos diferentes em sequencia
+      // rapida, o estado `price` pode ainda refletir por um instante o preco do ativo ANTERIOR
+      // (o hook do novo ativo acabou de trocar) — gravando a entrada num preco que cai fora da
+      // faixa visivel do grafico do novo ativo, e a linha tracejada "some". O motor
+      // deterministico devolve o preco exato do ativo sob demanda e e a MESMA fonte que o
+      // grafico usa para desenhar (e para liquidar no servidor), entao a linha fica sempre
+      // dentro da area visivel e o preco de entrada fica consistente com a liquidacao.
+      const enginePrice = multiAssetEngine.getCurrentPrice(selectedSymbol)
+      const entryPrice = enginePrice > 0 ? enginePrice : price
       if (!entryPrice || entryPrice <= 0) {
         setTradeError("Aguardando cotacao do ativo. Tente novamente em instantes.")
         setTimeout(() => setTradeError(null), 3000)

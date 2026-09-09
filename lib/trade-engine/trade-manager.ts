@@ -11,7 +11,7 @@ import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 function getSupabaseAdmin() {
   const { createClient } = require("@supabase/supabase-js")
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  const key = process.env.SUPABASE_SECRET_KEY || ""
   
   if (!url || !key) return null
   

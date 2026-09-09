@@ -1,14 +1,13 @@
 import { createServerClient } from "@supabase/ssr"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
+import { getSupabasePublishableKey, getSupabaseSecretKey, getSupabaseUrl } from "./env"
 
+// Cliente autenticado pelo cookie do usuário (respeita RLS).
 export async function createClient() {
   const cookieStore = await cookies()
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
+  return createServerClient(getSupabaseUrl(), getSupabasePublishableKey(), {
     cookies: {
       getAll() {
         return cookieStore.getAll()
@@ -25,10 +24,9 @@ export async function createClient() {
   })
 }
 
-// Admin client with service role key - bypasses RLS
+// Cliente administrativo com SUPABASE_SECRET_KEY (ignora RLS). Somente servidor.
 export function createAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-
-  return createSupabaseClient(supabaseUrl, serviceRoleKey)
+  return createSupabaseClient(getSupabaseUrl(), getSupabaseSecretKey(), {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
 }

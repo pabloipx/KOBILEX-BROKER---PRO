@@ -1,18 +1,16 @@
-import { createClient } from "@supabase/supabase-js"
 import { type NextRequest, NextResponse } from "next/server"
 import { isAdminRequest } from "@/lib/admin/session"
+import { createAdminClient } from "@/lib/supabase/server"
 
-
+// O client é criado dentro de cada handler (nunca no escopo do módulo):
+// na fase de build o Next.js avalia o módulo e a criação falharia sem a URL.
 function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-  return createClient(url, key)
+  return createAdminClient()
 }
 
-const supabaseAdmin = getSupabaseAdmin()
-
 export async function GET(request: NextRequest) {
-  
+  const supabaseAdmin = getSupabaseAdmin()
+
   try {
     if (!(await isAdminRequest())) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })

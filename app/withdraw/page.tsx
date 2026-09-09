@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createBrowserClient } from "@supabase/ssr"
+import { createClient } from "@/lib/supabase/client"
 import { ChevronLeft, AlertCircle, Check, Wallet, Clock, Shield, AlertTriangle, CheckCircle, Bitcoin } from "lucide-react"
 import Image from "next/image"
 
@@ -50,7 +50,7 @@ export default function WithdrawPage() {
   const [checkingKyc, setCheckingKyc] = useState(true)
 
   const supabase = useMemo(
-    () => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL || "", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""),
+    () => createClient(),
     [],
   )
 
@@ -193,10 +193,17 @@ export default function WithdrawPage() {
 
     // Aviso antecipado: a trava de verdade e aplicada no servidor, isso so evita a ida perdida.
     if (withdrawAmount > availableBalance) {
-      if (lockedBalance > 0) {
+      if (depositRollover && depositRollover.remaining > 0) {
+        setError(
+          `Você ainda tem R$ ${depositLocked.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em depósitos travados pelo rollover. ` +
+            `Faltam R$ ${depositRollover.remaining.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} de volume em entradas para liberar esse valor. ` +
+            `Saldo disponível para saque agora: R$ ${availableBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}.`,
+        )
+      } else if (lockedBalance > 0) {
         setError(
           `Saldo disponível para saque: R$ ${availableBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. ` +
-            `Você tem R$ ${lockedBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em bônus travados pelo rollover.`,
+            `Você tem R$ ${lockedBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em bônus travados pelo rollover. ` +
+            `Faltam R$ ${(rolloverInfo?.remaining ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} de volume em entradas para liberar.`,
         )
       } else {
         setError("Saldo insuficiente para realizar este saque")

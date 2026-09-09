@@ -6,7 +6,7 @@ import { amplopay } from "@/lib/amplopay"
 // Função para obter cliente admin do Supabase
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  const key = process.env.SUPABASE_SECRET_KEY || ""
   return createClient(url, key)
 }
 
@@ -36,7 +36,7 @@ interface AmploPayWebhook {
 
 export async function POST(request: NextRequest) {
   // Verificar se Supabase está configurado
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 })
   }
 

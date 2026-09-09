@@ -4,8 +4,8 @@ import { isAdminRequest } from "@/lib/admin/session"
 
 
 function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || ""
 
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 })
   }
 

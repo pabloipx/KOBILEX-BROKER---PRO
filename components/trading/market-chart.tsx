@@ -493,7 +493,7 @@ function ChartCore({
   const loadDataRef = useRef<null | (() => void)>(null)
 
   // Countdown for trade lines
-  const [cds, setCds] = useState<Record<string, number>>({})
+  const pnlSigRef = useRef<string>("")
   const prevTradeIdsRef = useRef<string[]>([])
 
   // Serie a que as linhas de operacao guardadas em tradeLinesRef pertencem. Se a serie mudar,
@@ -833,24 +833,10 @@ function ChartCore({
     prevTradeIdsRef.current = ids
   }, [chartTrades])
 
-  // ===== Countdown timer =====
-  useEffect(() => {
-    if (!chartTrades.length) {
-      setCds({})
-      return
-    }
-    const tick = () => {
-      const now = Date.now()
-      const r: Record<string, number> = {}
-      chartTrades.forEach((t) => {
-        r[t.id] = Math.max(0, Math.ceil((t.timestamp + t.expiryTime * 1000 - now) / 1000))
-      })
-      setCds(r)
-    }
-    tick()
-    const iv = setInterval(tick, 250)
-    return () => clearInterval(iv)
-  }, [chartTrades])
+  // O antigo "countdown timer" que alimentava o estado `cds` foi removido: ele disparava um
+  // setInterval de 250ms (re-render 4x/s) cujo unico consumidor — o efeito das linhas de trade —
+  // ja nao usava `cds` (o tempo restante e calculado na hora, direto de trade.timestamp).
+  // Mante-lo so causava re-renders e recriacao das linhas de preco sem beneficio visual.
 
   // ===== Update header (OHLC + price) =====
   function updateHeader(c: Candle, price: number) {
@@ -1622,11 +1608,12 @@ function ChartCore({
       } catch {}
       tradeLinesRef.current.delete(id)
     })
-  }, [chartTrades, cds, seriesReady, resyncKey])
+  }, [chartTrades, seriesReady, resyncKey])
 
   // ===== Live floating P&L overlays (IQ Option style) =====
   useEffect(() => {
     if (!chartTrades.length) {
+      pnlSigRef.current = ""
       setPnlOverlays([])
       return
     }
@@ -1662,10 +1649,16 @@ function ChartCore({
           time: `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`,
         })
       })
+      // So re-renderiza quando algo realmente muda. A cada tick os valores costumam ser
+      // identicos (o tempo so muda 1x/s, a coordenada Y quase nao varia, o P&L raramente vira),
+      // entao comparar uma assinatura evita dezenas de re-renders por segundo do componente.
+      const sig = next.map((o) => `${o.id}:${Math.round(o.top)}:${o.pnl}:${o.inMoney ? 1 : 0}:${o.time}`).join("|")
+      if (sig === pnlSigRef.current) return
+      pnlSigRef.current = sig
       setPnlOverlays(next)
     }
     update()
-    const iv = setInterval(update, 60)
+    const iv = setInterval(update, 120)
     return () => clearInterval(iv)
   }, [chartTrades, payout, seriesReady])
 

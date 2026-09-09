@@ -3,11 +3,10 @@
 import type React from "react"
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createBrowserClient } from "@supabase/ssr"
+import { createClient } from "@/lib/supabase/client"
 import { ChevronLeft, Copy, Check, Loader2, Clock, RefreshCw, CreditCard, CheckCircle2, XCircle, X, Info, Sparkles, ShieldCheck, Lock } from "lucide-react"
 import Image from "next/image"
 import { QRCodeSVG } from "qrcode.react"
-import { PromoCodeInput } from "@/components/promo-code-input"
 
 const QUICK_AMOUNTS = [50, 100, 500, 1000, 5000, 10000, 50000, 100000]
 
@@ -84,7 +83,7 @@ export default function DepositPage() {
   }, [cryptoAmountUsd])
 
   const supabase = useMemo(
-    () => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL || "", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""),
+    () => createClient(),
     [],
   )
 
@@ -1170,11 +1169,6 @@ export default function DepositPage() {
               </>
             )}
           </div>
-        )}
-
-        {/* Codigo promocional - apenas PIX, o unico metodo que concede bonus hoje */}
-        {method === "pix" && !pixData && (
-          <PromoCodeInput amount={parseAmount()} onApplied={setAppliedPromoCode} />
         )}
 
         {/* Terms - only for PIX and Card */}

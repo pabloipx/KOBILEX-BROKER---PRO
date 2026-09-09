@@ -4,7 +4,7 @@ import { type NextRequest, NextResponse } from "next/server"
 // Função para obter admin client
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  const key = process.env.SUPABASE_SECRET_KEY || ""
   return createClient(url, key)
 }
 

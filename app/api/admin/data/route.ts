@@ -2,11 +2,12 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { approveDeposit } from "@/lib/deposits"
 import { isAdminRequest } from "@/lib/admin/session"
+import { round2 } from "@/lib/promo-codes"
 
 
 function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || ""
 
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 })
   }
 
@@ -99,12 +100,31 @@ export async function GET(req: NextRequest) {
       const userIds = profiles.map((p: any) => p.id)
       const { data: balances } = await supabase.from("user_balances").select("*").in("user_id", userIds)
 
+      // Travas de rollover ativas de todos os usuarios, para mostrar quanto falta em cada card.
+      const { data: rollovers } = await supabase
+        .from("deposit_rollovers")
+        .select("user_id, rollover_required, rollover_progress")
+        .eq("status", "active")
+        .in("user_id", userIds)
+
+      // Consolida as travas ativas por usuario: soma exigido e progresso, calcula o restante.
+      const rolloverByUser = new Map<string, { required: number; progress: number; remaining: number; count: number }>()
+      for (const r of rollovers || []) {
+        const current = rolloverByUser.get(r.user_id) || { required: 0, progress: 0, remaining: 0, count: 0 }
+        current.required = round2(current.required + Number(r.rollover_required || 0))
+        current.progress = round2(current.progress + Number(r.rollover_progress || 0))
+        current.count += 1
+        current.remaining = round2(Math.max(0, current.required - current.progress))
+        rolloverByUser.set(r.user_id, current)
+      }
+
       const users = profiles.map((profile: any) => {
         const balance = balances?.find((b: any) => b.user_id === profile.id)
         return {
           ...profile,
           balance_real: balance?.balance_real || 0,
           balance_demo: balance?.balance_demo || 100,
+          rollover: rolloverByUser.get(profile.id) || null,
         }
       })
 
@@ -197,7 +217,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 })
   }
 
@@ -419,6 +439,72 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ success: true })
+    }
+
+    if (action === "apply_rollover") {
+      // Aplica uma trava de rollover manual a um usuario ja existente (ex.: quem depositou antes
+      // de o rollover ser ativado). A coluna deposit_id em deposit_rollovers e NOT NULL/UNIQUE e tem
+      // foreign key para deposits(id), entao criamos um deposito "ancora" real (metodo admin, ja
+      // concluido) apenas para servir de referencia. Ele NAO credita saldo (o credito e feito em
+      // nivel de aplicacao no fluxo de pagamento) e NAO e reprocessado pelo cron (nao esta pendente).
+      const userId = payload.userId
+      const baseAmount = round2(Number(payload.baseAmount))
+      const multiplier = Number(payload.multiplier)
+
+      if (!userId) {
+        return NextResponse.json({ error: "userId e obrigatorio" }, { status: 400 })
+      }
+      if (!(baseAmount > 0)) {
+        return NextResponse.json({ error: "Valor base deve ser maior que zero" }, { status: 400 })
+      }
+      if (!Number.isFinite(multiplier) || multiplier <= 0) {
+        return NextResponse.json({ error: "Multiplicador deve ser maior que zero" }, { status: 400 })
+      }
+
+      const rolloverRequired = round2(baseAmount * multiplier)
+
+      // 1) Cria o deposito ancora e recupera o id gerado.
+      const nowIso = new Date().toISOString()
+      const { data: anchorDeposit, error: anchorError } = await supabase
+        .from("deposits")
+        .insert({
+          user_id: userId,
+          amount: baseAmount,
+          currency: "BRL",
+          method: "admin",
+          payment_method: "admin",
+          status: "completed",
+          external_id: "ADMIN-ROLLOVER-" + crypto.randomUUID(),
+          paid_at: nowIso,
+          processed_at: nowIso,
+          completed_at: nowIso,
+        })
+        .select("id")
+        .single()
+
+      if (anchorError || !anchorDeposit) {
+        return NextResponse.json(
+          { error: "Erro ao aplicar rollover: " + (anchorError?.message || "falha ao criar registro base") },
+          { status: 500 },
+        )
+      }
+
+      // 2) Cria a trava de rollover referenciando o deposito ancora.
+      const { error: rolloverError } = await supabase.from("deposit_rollovers").insert({
+        user_id: userId,
+        deposit_id: anchorDeposit.id,
+        deposit_amount: baseAmount,
+        multiplier,
+        rollover_required: rolloverRequired,
+      })
+
+      if (rolloverError) {
+        // Desfaz o deposito ancora para nao deixar lixo caso a trava falhe.
+        await supabase.from("deposits").delete().eq("id", anchorDeposit.id)
+        return NextResponse.json({ error: "Erro ao aplicar rollover: " + rolloverError.message }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, rolloverRequired })
     }
 
     if (action === "approve_kyc") {

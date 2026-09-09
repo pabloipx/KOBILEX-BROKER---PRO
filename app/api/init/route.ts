@@ -8,7 +8,7 @@ export async function POST() {
   try {
     // Verifica se Supabase está configurado
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
     if (!supabaseUrl || !supabaseKey) {
       // Retorna símbolos padrão se DB não está configurado

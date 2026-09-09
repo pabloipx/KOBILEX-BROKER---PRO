@@ -241,6 +241,38 @@ export default function TradePage() {
     return () => clearInterval(id)
   }, [])
 
+  // Tick de 1s usado apenas para a contagem regressiva das abas. O intervalo é criado uma única
+  // vez e nunca reinicia — reiniciá-lo a cada atualização de activeTrades (polling do servidor)
+  // dessincronizava o relógio e fazia a contagem "pular" segundos. O cálculo do tempo restante
+  // lê Date.now() direto, então o tick serve apenas para forçar o re-render a cada segundo.
+  const hasActiveTrades = activeTrades.length > 0
+  const [tabTick, setTabTick] = useState(() => Date.now())
+  useEffect(() => {
+    if (!hasActiveTrades) return
+    const id = setInterval(() => setTabTick(Date.now()), 500)
+    return () => clearInterval(id)
+  }, [hasActiveTrades])
+
+  // Segundos restantes por ativo: para cada símbolo com operação aberta, pega a operação que
+  // vence primeiro (a mais urgente) e calcula quanto falta para ela finalizar.
+  const remainingBySymbol = useMemo(() => {
+    // Lê o relógio no instante do cálculo em vez de depender do valor capturado em tabTick.
+    // tabTick serve só para disparar este recálculo a cada 500ms; usar Date.now() aqui evita
+    // que uma atualização de activeTrades (polling) fora do compasso do tick faça o número saltar.
+    const now = Date.now()
+    const map: Record<string, number> = {}
+    for (const t of activeTrades) {
+      const remaining = Math.round((t.timestamp + t.expiryTime * 1000 - now) / 1000)
+      if (remaining <= 0) continue
+      if (map[t.symbol] === undefined || remaining < map[t.symbol]) {
+        map[t.symbol] = remaining
+      }
+    }
+    return map
+    // tabTick é dependência intencional: cada tick reavalia este memo com o Date.now() atual.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTrades, tabTick])
+
   // Status do mercado do ativo selecionado (fechado no fim de semana para forex de mercado aberto).
   const marketStatus = useMemo(
     () => getMarketStatus(selectedAsset, new Date(clockTick)),
@@ -679,8 +711,14 @@ export default function TradePage() {
       for (const trade of tradesToFinalize) {
         if (!mountedRef.current) break
 
-        // Mark as being processed to prevent race conditions
+        // Mark as being processed to prevent race conditions.
+        // Marca tambem a chave `db-<dbId>`: e essa chave que o hydrateActiveTrades usa para
+        // deduplicar. Sem ela, uma operacao recem-finalizada cuja linha no banco ainda consta
+        // 'pending' era re-adicionada pelo hydrate (ao focar/voltar a aba) com o timestamp do
+        // relogio do servidor, criando uma segunda entrada no mesmo ativo. O contador entao
+        // alternava entre os dois tempos a cada render — era esse o bug do timer "pulando".
         processedTradesRef.current.add(trade.id)
+        if (trade.dbId) processedTradesRef.current.add(`db-${trade.dbId}`)
 
         try {
           // Resultado REAL baseado no movimento do preco, para TODOS os usuarios
@@ -727,8 +765,18 @@ export default function TradePage() {
             fetchError = error
           }
 
-          if (fetchError || !existingTrade) {
-            // Trade not found in DB - remove from active list to prevent zombie
+          if (fetchError) {
+            // Erro transitorio (rede/limite) — comum quando varias operacoes de ativos
+            // diferentes expiram juntas e disparam muitas consultas ao mesmo tempo. NAO remover
+            // a operacao: isso apagaria a linha do grafico e ainda deixaria a operacao sem
+            // liquidar. Libera o "processed" para tentar de novo no proximo ciclo (500ms).
+            processedTradesRef.current.delete(trade.id)
+            if (trade.dbId) processedTradesRef.current.delete(`db-${trade.dbId}`)
+            continue
+          }
+
+          if (!existingTrade) {
+            // O banco respondeu sem erro e a linha realmente nao existe — remove o fantasma.
             setActiveTrades((prev) => prev.filter((t) => t.id !== trade.id))
             continue
           }
@@ -759,6 +807,7 @@ export default function TradePage() {
 
           if (updateError || !closedRows || closedRows.length === 0) {
             processedTradesRef.current.delete(trade.id)
+            if (trade.dbId) processedTradesRef.current.delete(`db-${trade.dbId}`)
             continue
           }
 
@@ -858,7 +907,29 @@ export default function TradePage() {
         return
       }
 
-      const entryPrice = price > 0 ? price : 1.085 // fallback price
+      // Preco de entrada do ativo SELECIONADO. Antes o fallback era um numero fixo (1.085, o
+      // preco do EUR/USD): quando `price` vinha 0 — tipico ao alternar entre varias abas, com o
+      // feed do ativo recem-focado ainda carregando — a operacao era gravada em 1.085 e a linha
+      // tracejada caia fora da area visivel de qualquer ativo que nao valesse ~1,08 (BTC, USD/JPY,
+      // etc.), dando o sintoma "a linha nao aparece". O motor deterministico calcula o preco de
+      // QUALQUER ativo sob demanda, entao usamos ele como fonte autoritativa. Sem cotacao (feed de
+      // mercado aberto ainda fora), bloqueamos a entrada em vez de gravar um preco falso que
+      // tambem corromperia a liquidacao.
+      // O preco de entrada precisa ser SEMPRE o do ativo selecionado (a aba onde a operacao
+      // esta sendo aberta). Ao abrir varias operacoes em abas de ativos diferentes em sequencia
+      // rapida, o estado `price` pode ainda refletir por um instante o preco do ativo ANTERIOR
+      // (o hook do novo ativo acabou de trocar) — gravando a entrada num preco que cai fora da
+      // faixa visivel do grafico do novo ativo, e a linha tracejada "some". O motor
+      // deterministico devolve o preco exato do ativo sob demanda e e a MESMA fonte que o
+      // grafico usa para desenhar (e para liquidar no servidor), entao a linha fica sempre
+      // dentro da area visivel e o preco de entrada fica consistente com a liquidacao.
+      const enginePrice = multiAssetEngine.getCurrentPrice(selectedSymbol)
+      const entryPrice = enginePrice > 0 ? enginePrice : price
+      if (!entryPrice || entryPrice <= 0) {
+        setTradeError("Aguardando cotacao do ativo. Tente novamente em instantes.")
+        setTimeout(() => setTradeError(null), 3000)
+        return
+      }
 
       // Toca o som AQUI (sincrono, ainda dentro do gesto de clique do usuario).
       // Se tocado apos os awaits abaixo, o navegador ja perdeu o contexto do gesto e
@@ -1057,6 +1128,15 @@ export default function TradePage() {
               const asset = assetBySymbol(sym)
               if (!asset) return null
               const isActive = sym === selectedSymbol
+              const remaining = remainingBySymbol[sym]
+              const hasTimer = remaining !== undefined && remaining > 0
+              const urgent = hasTimer && remaining <= 10
+              const timerLabel =
+                hasTimer
+                  ? remaining >= 60
+                    ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`
+                    : `:${String(remaining).padStart(2, "0")}`
+                  : ""
               return (
                 <div
                   key={sym}
@@ -1096,8 +1176,19 @@ export default function TradePage() {
                     <p className="text-white font-bold text-xs lg:text-sm leading-tight truncate max-w-[90px] lg:max-w-[110px]">
                       {asset.name}
                     </p>
-                    {(asset.market || "otc") === "otc" && (
-                      <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
+                    {hasTimer ? (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-semibold leading-tight tabular-nums ${
+                          urgent ? "text-red-400" : "text-[#ff8a00]"
+                        }`}
+                      >
+                        <Clock className={`w-3 h-3 ${urgent ? "animate-pulse" : ""}`} />
+                        {timerLabel}
+                      </span>
+                    ) : (
+                      (asset.market || "otc") === "otc" && (
+                        <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
+                      )
                     )}
                   </div>
 

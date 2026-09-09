@@ -11,7 +11,6 @@ import {
   MessageCircle,
   LogOut,
   ChevronRight,
-  TrendingUp,
   Shield,
   Wallet,
 } from "lucide-react"
@@ -104,33 +103,27 @@ export function SidebarMenu({
           </div>
 
           {/* User Profile Card */}
-          <div className="relative rounded-2xl overflow-hidden mb-5">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#f97316]/20 via-[#7c2d12]/30 to-transparent" />
-            <div className="relative p-4 border border-[#f97316]/20 rounded-2xl">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#f97316] to-[#c2410c] flex items-center justify-center shadow-lg shadow-orange-500/20">
+          <div className="relative rounded-2xl overflow-hidden mb-5 bg-[#12100e] border border-white/[0.08]">
+            <div className="absolute -top-16 -right-10 w-40 h-40 rounded-full bg-[#f97316]/20 blur-3xl pointer-events-none" />
+            <div className="relative p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#fb923c] to-[#c2410c] flex items-center justify-center shadow-lg shadow-orange-500/25 ring-2 ring-[#f97316]/20">
                   <span className="text-white font-bold text-lg">
                     {userName ? userName.charAt(0).toUpperCase() : "U"}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-white font-semibold text-sm truncate">{userName || "Trader"}</div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-[#f97316]/10 border border-[#f97316]/20">
                     <Shield className="w-3 h-3 text-[#fb923c]" />
-                    <span className="text-[#fb923c] text-[11px] font-medium">VIP Bronze</span>
+                    <span className="text-[#fb923c] text-[10px] font-semibold tracking-wide">VIP Bronze</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-end justify-between">
-                <div>
-                  <div className="text-white/40 text-[10px] uppercase tracking-wider font-medium mb-0.5">Saldo Disponivel</div>
-                  <div className="text-white font-bold text-xl tracking-tight">{formatBRL(balance)}</div>
-                </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f97316]/15 rounded-lg">
-                  <TrendingUp className="w-3 h-3 text-[#fb923c]" />
-                  <span className="text-[#fb923c] text-[10px] font-bold">85%</span>
-                </div>
+              <div className="mt-4 pt-3 border-t border-white/[0.06]">
+                <div className="text-white/40 text-[10px] uppercase tracking-wider font-medium mb-1">Saldo Disponivel</div>
+                <div className="text-white font-bold text-2xl tracking-tight">{formatBRL(balance)}</div>
               </div>
             </div>
           </div>

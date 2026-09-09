@@ -1336,12 +1336,30 @@ function ChartCore({
           renderFrame()
         }
       }, 250)
+      // Guarda o instante em que a aba foi para segundo plano. Em background o navegador
+      // estrangula/congela o requestAnimationFrame, mas o preco OTC e deterministico e continua
+      // avancando no tempo. Se apenas retomassemos o loop, o primeiro frame ao voltar criaria
+      // uma vela-ponte gigante (abre no ultimo preco visto, fecha no preco atual) — era o candle
+      // bugado que so o F5 corrigia.
+      let hiddenSince = 0
       onVisible = () => {
-        if (typeof document !== "undefined" && !document.hidden) {
-          renderFrame()
-          if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
-          animFrameRef.current = requestAnimationFrame(tick)
+        if (typeof document === "undefined") return
+        if (document.hidden) {
+          hiddenSince = Date.now()
+          return
         }
+        const awayMs = hiddenSince ? Date.now() - hiddenSince : 0
+        hiddenSince = 0
+        // Ficou tempo suficiente para os frames serem descartados: reconstroi a serie inteira
+        // pelo datafeed (mesmo efeito do F5), o que recria corretamente todas as velas do periodo
+        // ausente em vez de desenhar uma unica vela-ponte gigante.
+        if (awayMs > 1200 && loadDataRef.current) {
+          loadDataRef.current()
+        } else {
+          renderFrame()
+        }
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+        animFrameRef.current = requestAnimationFrame(tick)
       }
       document.addEventListener("visibilitychange", onVisible)
       window.addEventListener("focus", onVisible)

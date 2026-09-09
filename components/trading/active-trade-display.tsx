@@ -31,7 +31,7 @@ export function ActiveTradeDisplay({
     }
 
     updateTimer()
-    const interval = setInterval(updateTimer, 100)
+    const interval = setInterval(updateTimer, 250)
 
     return () => clearInterval(interval)
   }, [expiryTime])

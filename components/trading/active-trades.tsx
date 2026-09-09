@@ -13,7 +13,7 @@ export function ActiveTrades({ trades, currentPrices }: ActiveTradesProps) {
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 100)
+    const interval = setInterval(() => setNow(Date.now()), 250)
     return () => clearInterval(interval)
   }, [])
 

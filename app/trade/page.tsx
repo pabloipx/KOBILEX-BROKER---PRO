@@ -765,8 +765,18 @@ export default function TradePage() {
             fetchError = error
           }
 
-          if (fetchError || !existingTrade) {
-            // Trade not found in DB - remove from active list to prevent zombie
+          if (fetchError) {
+            // Erro transitorio (rede/limite) — comum quando varias operacoes de ativos
+            // diferentes expiram juntas e disparam muitas consultas ao mesmo tempo. NAO remover
+            // a operacao: isso apagaria a linha do grafico e ainda deixaria a operacao sem
+            // liquidar. Libera o "processed" para tentar de novo no proximo ciclo (500ms).
+            processedTradesRef.current.delete(trade.id)
+            if (trade.dbId) processedTradesRef.current.delete(`db-${trade.dbId}`)
+            continue
+          }
+
+          if (!existingTrade) {
+            // O banco respondeu sem erro e a linha realmente nao existe — remove o fantasma.
             setActiveTrades((prev) => prev.filter((t) => t.id !== trade.id))
             continue
           }

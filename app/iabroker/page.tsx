@@ -260,26 +260,6 @@ function ConnectForm({
             </p>
           </div>
 
-          {/* Estatísticas de performance */}
-          <div className="grid grid-cols-3 gap-2 mb-6">
-            {[
-              { label: "Assertividade", value: "94%", icon: TrendingUp },
-              { label: "Operando", value: "24h", icon: Activity },
-              { label: "Traders", value: "3.2k", icon: Sparkles },
-            ].map((s) => (
-              <div
-                key={s.label}
-                className="rounded-xl border border-white/10 bg-black/30 px-2 py-3 text-center backdrop-blur-sm"
-              >
-                <s.icon className="mx-auto mb-1 h-4 w-4 text-primary" />
-                <div className="text-base font-bold leading-none text-foreground">{s.value}</div>
-                <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {s.label}
-                </div>
-              </div>
-            ))}
-          </div>
-
           <div className="rounded-2xl border border-white/10 bg-black/40 p-4 sm:p-5 backdrop-blur-sm">
             <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
               <Lock className="w-4 h-4 text-primary" />

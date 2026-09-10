@@ -6,6 +6,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { LiveCandles } from "@/components/iabroker/live-candles"
+import { NeuralNet } from "@/components/iabroker/neural-net"
 import {
   Bot,
   ShieldCheck,
@@ -410,15 +411,41 @@ function Connecting({ stageIndex }: { stageIndex: number }) {
   const progress = ((stageIndex + 1) / CONNECT_STAGES.length) * 100
   return (
     <div className="w-full max-w-md flex flex-col items-center pt-4 animate-fade-up">
-      <div className="relative mb-7 flex items-center justify-center">
-        <div className="absolute h-40 w-40 rounded-full border border-primary/30 animate-result-ring" />
+      {/* Núcleo de IA com rede neural trocando informações */}
+      <div className="relative mb-6 flex h-52 w-full items-center justify-center overflow-hidden rounded-2xl border border-primary/15 bg-black/30">
+        <div className="absolute inset-0 opacity-90">
+          <NeuralNet active />
+        </div>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-background/40" />
+        <div className="absolute h-32 w-32 rounded-full border border-primary/25 animate-result-ring" />
         <div
-          className="absolute h-52 w-52 rounded-full border border-primary/15 animate-result-ring"
+          className="absolute h-40 w-40 rounded-full border border-primary/10 animate-result-ring"
           style={{ animationDelay: "0.6s" }}
         />
-        <div className="absolute h-40 w-40 rounded-full bg-primary/10 blur-2xl animate-hero-pulse" />
-        <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/40">
-          <Bot className="w-10 h-10 text-primary-foreground" />
+        <div className="absolute h-28 w-28 rounded-full bg-primary/15 blur-2xl animate-hero-pulse" />
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/50">
+          <Bot className="w-8 h-8 text-primary-foreground" />
+          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-atlas-success opacity-75" />
+            <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-atlas-success" />
+          </span>
+        </div>
+        {/* métricas técnicas nos cantos */}
+        <div className="absolute left-2 top-2 font-mono text-[9px] leading-tight text-primary/70">
+          <div>node.sync</div>
+          <div className="text-muted-foreground">{Math.round(progress * 12.8)} req/s</div>
+        </div>
+        <div className="absolute right-2 top-2 text-right font-mono text-[9px] leading-tight text-primary/70">
+          <div>latency</div>
+          <div className="text-muted-foreground">{(42 - progress * 0.28).toFixed(0)}ms</div>
+        </div>
+        <div className="absolute bottom-2 left-2 font-mono text-[9px] leading-tight text-atlas-success/80">
+          <div>tokens</div>
+          <div className="text-muted-foreground">{Math.round(progress * 184)}k</div>
+        </div>
+        <div className="absolute bottom-2 right-2 text-right font-mono text-[9px] leading-tight text-atlas-success/80">
+          <div>confiança</div>
+          <div className="text-muted-foreground">{(88 + progress * 0.09).toFixed(1)}%</div>
         </div>
       </div>
 
@@ -428,7 +455,7 @@ function Connecting({ stageIndex }: { stageIndex: number }) {
       </div>
       <h2 className="text-xl font-bold mb-1 text-center text-balance">Ativando a inteligência artificial</h2>
       <p className="text-muted-foreground text-sm mb-6 text-center">
-        A IA está lendo o gráfico e montando a estratégia
+        Os agentes de IA estão cruzando dados e montando a estratégia
       </p>
 
       <div className="w-full h-2 rounded-full bg-secondary overflow-hidden mb-1.5">

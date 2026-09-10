@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
@@ -75,6 +75,7 @@ export default function IaBrokerPage() {
   const [stageIndex, setStageIndex] = useState(0)
   const [plan, setPlan] = useState<Plan | null>(null)
   const [balance, setBalance] = useState(0)
+  const [activatedAt, setActivatedAt] = useState<string | null>(null)
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -131,6 +132,23 @@ export default function IaBrokerPage() {
       return
     }
 
+    // Se a IA já foi ativada antes (e não desativada), retoma direto —
+    // ela continua ativa até o próprio usuário desativar.
+    try {
+      const res = await fetch("/api/iabroker/state", { cache: "no-store" })
+      if (res.ok) {
+        const { state } = await res.json()
+        if (state?.active && mounted.current) {
+          setPlan({ id: state.planId, amount: state.amount, daily: state.daily })
+          setActivatedAt(state.activatedAt)
+          setStep("active")
+          return
+        }
+      }
+    } catch {
+      // ignora erro de rede — segue para o fluxo normal
+    }
+
     // Sequência visual de conexão com Anthropic e análise do gráfico (~15s total)
     const perStage = 15000 / CONNECT_STAGES.length
     for (let i = 0; i < CONNECT_STAGES.length; i++) {
@@ -139,6 +157,36 @@ export default function IaBrokerPage() {
       await sleep(perStage)
     }
     if (!mounted.current) return
+    setStep("plans")
+  }
+
+  const handleActivate = async (p: Plan) => {
+    setPlan(p)
+    try {
+      const res = await fetch("/api/iabroker/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "activate", planId: p.id }),
+      })
+      const { state } = await res.json()
+      setActivatedAt(state?.activatedAt || new Date().toISOString())
+    } catch {
+      setActivatedAt(new Date().toISOString())
+    }
+    setStep("active")
+  }
+
+  const handleDeactivate = async () => {
+    try {
+      await fetch("/api/iabroker/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deactivate" }),
+      })
+    } catch {
+      // ignora — o estado local será limpo de qualquer forma
+    }
+    setActivatedAt(null)
     setStep("plans")
   }
 
@@ -177,18 +225,10 @@ export default function IaBrokerPage() {
 
         {step === "connecting" && <Connecting stageIndex={stageIndex} />}
 
-        {step === "plans" && (
-          <Plans
-            balance={balance}
-            onSelect={(p) => {
-              setPlan(p)
-              setStep("active")
-            }}
-          />
-        )}
+        {step === "plans" && <Plans balance={balance} onSelect={handleActivate} />}
 
         {step === "active" && plan && (
-          <ActivePanel plan={plan} balance={balance} onStop={() => setStep("plans")} />
+          <ActivePanel plan={plan} balance={balance} activatedAt={activatedAt} onStop={handleDeactivate} />
         )}
       </main>
     </div>
@@ -583,13 +623,37 @@ function Plans({ balance, onSelect }: { balance: number; onSelect: (p: Plan) => 
 
 /* ---------------- Etapa 4: IA operando ---------------- */
 
-function ActivePanel({ plan, balance, onStop }: { plan: Plan; balance: number; onStop: () => void }) {
+function ActivePanel({
+  plan,
+  balance,
+  activatedAt,
+  onStop,
+}: {
+  plan: Plan
+  balance: number
+  activatedAt: string | null
+  onStop: () => void
+}) {
   const dailyTarget = (plan.amount * plan.daily) / 100
+
+  // A IA continua operando enquanto o site fica fechado. Ao voltar, o rendimento
+  // acumulado é reconstruído a partir do tempo decorrido desde a ativação.
+  const seed = useMemo(() => {
+    const start = activatedAt ? new Date(activatedAt).getTime() : Date.now()
+    const elapsedMs = Math.max(0, Date.now() - start)
+    const elapsedDays = elapsedMs / 86_400_000
+    const accrued = elapsedDays * dailyTarget
+    const todayFraction = elapsedDays - Math.floor(elapsedDays)
+    const todayProfit = Math.min(dailyTarget, todayFraction * dailyTarget)
+    const seededCount = Math.floor(elapsedMs / 45_000) // ~1 entrada a cada 45s
+    return { accrued, todayProfit, seededCount }
+  }, [activatedAt, dailyTarget])
+
   const [running, setRunning] = useState(true)
-  const [profit, setProfit] = useState(0)
-  const [totalEarned, setTotalEarned] = useState(0)
+  const [profit, setProfit] = useState(seed.todayProfit)
+  const [totalEarned, setTotalEarned] = useState(seed.accrued)
   const [entries, setEntries] = useState<Entry[]>([])
-  const [count, setCount] = useState(0)
+  const [count, setCount] = useState(seed.seededCount)
   const idRef = useRef(0)
 
   useEffect(() => {
@@ -658,6 +722,11 @@ function ActivePanel({ plan, balance, onStop }: { plan: Plan; balance: number; o
             <div className="text-xs text-muted-foreground">
               Plano {brl(plan.amount)} · {plan.daily}% ao dia
             </div>
+            {activatedAt && (
+              <div className="text-[11px] text-muted-foreground/80 mt-0.5">
+                Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -77,6 +77,8 @@ export default function IaBrokerPage() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [balance, setBalance] = useState(0)
   const [activatedAt, setActivatedAt] = useState<string | null>(null)
+  const [paused, setPaused] = useState(false)
+  const [totalCredited, setTotalCredited] = useState(0)
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -138,10 +140,13 @@ export default function IaBrokerPage() {
     try {
       const res = await fetch("/api/iabroker/state", { cache: "no-store" })
       if (res.ok) {
-        const { state } = await res.json()
+        const { state, balance: srvBalance } = await res.json()
+        if (typeof srvBalance === "number" && mounted.current) setBalance(srvBalance)
         if (state?.active && mounted.current) {
           setPlan({ id: state.planId, amount: state.amount, daily: state.daily })
           setActivatedAt(state.activatedAt)
+          setPaused(!!state.paused)
+          setTotalCredited(Number(state.totalCredited || 0))
           setStep("active")
           return
         }
@@ -162,34 +167,112 @@ export default function IaBrokerPage() {
   }
 
   const handleActivate = async (p: Plan) => {
-    setPlan(p)
     try {
       const res = await fetch("/api/iabroker/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "activate", planId: p.id }),
       })
-      const { state } = await res.json()
-      setActivatedAt(state?.activatedAt || new Date().toISOString())
+      const data = await res.json()
+      if (!res.ok) {
+        if (data?.error === "insufficient_balance") {
+          setError(
+            `Saldo insuficiente. Você tem ${brl(Number(data.balance || 0))} e o plano exige ${brl(Number(data.required || p.amount))}.`,
+          )
+        } else {
+          setError("Não foi possível ativar a IA. Tente novamente.")
+        }
+        setStep("plans")
+        return
+      }
+      setPlan(p)
+      if (typeof data.balance === "number") setBalance(data.balance)
+      setActivatedAt(data.state?.activatedAt || new Date().toISOString())
+      setPaused(false)
+      setTotalCredited(Number(data.state?.totalCredited || 0))
+      setStep("active")
     } catch {
-      setActivatedAt(new Date().toISOString())
+      setError("Falha de conexão ao ativar a IA.")
+      setStep("plans")
     }
-    setStep("active")
+  }
+
+  const handlePauseToggle = async () => {
+    const action = paused ? "resume" : "pause"
+    setPaused(!paused) // resposta otimista
+    try {
+      const res = await fetch("/api/iabroker/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (typeof data.balance === "number") setBalance(data.balance)
+        if (data.state) {
+          setPaused(!!data.state.paused)
+          setTotalCredited(Number(data.state.totalCredited || 0))
+        }
+      }
+    } catch {
+      // mantém o estado otimista
+    }
   }
 
   const handleDeactivate = async () => {
     try {
-      await fetch("/api/iabroker/state", {
+      const res = await fetch("/api/iabroker/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "deactivate" }),
       })
+      if (res.ok) {
+        const data = await res.json()
+        if (typeof data.balance === "number") setBalance(data.balance)
+      }
     } catch {
       // ignora — o estado local será limpo de qualquer forma
     }
     setActivatedAt(null)
+    setPaused(false)
+    setTotalCredited(0)
     setStep("plans")
   }
+
+  // Acerto periódico do rendimento real enquanto a IA opera (também recupera o tempo com o site fechado).
+  useEffect(() => {
+    if (step !== "active" || paused) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/iabroker/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "settle" }),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled || !mounted.current) return
+        if (typeof data.balance === "number") setBalance(data.balance)
+        if (data.state && typeof data.state.totalCredited === "number") {
+          setTotalCredited(Number(data.state.totalCredited))
+        } else if (!data.state) {
+          // Foi desativada em outro lugar
+          setActivatedAt(null)
+          setTotalCredited(0)
+          setStep("plans")
+        }
+      } catch {
+        // silencioso — tenta de novo no próximo ciclo
+      }
+    }
+    tick()
+    const id = setInterval(tick, 20000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [step, paused])
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground flex flex-col">
@@ -229,7 +312,15 @@ export default function IaBrokerPage() {
         {step === "plans" && <Plans balance={balance} onSelect={handleActivate} />}
 
         {step === "active" && plan && (
-          <ActivePanel plan={plan} balance={balance} activatedAt={activatedAt} onStop={handleDeactivate} />
+          <ActivePanel
+            plan={plan}
+            balance={balance}
+            activatedAt={activatedAt}
+            totalCredited={totalCredited}
+            paused={paused}
+            onPauseToggle={handlePauseToggle}
+            onStop={handleDeactivate}
+          />
         )}
       </main>
     </div>
@@ -654,33 +745,47 @@ function ActivePanel({
   plan,
   balance,
   activatedAt,
+  totalCredited,
+  paused,
+  onPauseToggle,
   onStop,
 }: {
   plan: Plan
   balance: number
   activatedAt: string | null
+  totalCredited: number
+  paused: boolean
+  onPauseToggle: () => void
   onStop: () => void
 }) {
   const dailyTarget = (plan.amount * plan.daily) / 100
+  const running = !paused
 
-  // A IA continua operando enquanto o site fica fechado. Ao voltar, o rendimento
-  // acumulado é reconstruído a partir do tempo decorrido desde a ativação.
-  const seed = useMemo(() => {
-    const start = activatedAt ? new Date(activatedAt).getTime() : Date.now()
-    const elapsedMs = Math.max(0, Date.now() - start)
-    const elapsedDays = elapsedMs / 86_400_000
-    const accrued = elapsedDays * dailyTarget
+  // "Lucro hoje" é um indicador visual de progresso da meta diária, derivado do
+  // tempo decorrido no dia atual desde a ativação. O dinheiro REAL creditado é o
+  // `totalCredited`, que vem do servidor (rendimento já lançado no saldo).
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!running) return
+    const id = setInterval(() => setNow(Date.now()), 3000)
+    return () => clearInterval(id)
+  }, [running])
+
+  const todayProfit = useMemo(() => {
+    const start = activatedAt ? new Date(activatedAt).getTime() : now
+    const elapsedDays = Math.max(0, (now - start) / 86_400_000)
     const todayFraction = elapsedDays - Math.floor(elapsedDays)
-    const todayProfit = Math.min(dailyTarget, todayFraction * dailyTarget)
-    const seededCount = Math.floor(elapsedMs / 45_000) // ~1 entrada a cada 45s
-    return { accrued, todayProfit, seededCount }
-  }, [activatedAt, dailyTarget])
+    return Math.min(dailyTarget, todayFraction * dailyTarget)
+  }, [activatedAt, now, dailyTarget])
 
-  const [running, setRunning] = useState(true)
-  const [profit, setProfit] = useState(seed.todayProfit)
-  const [totalEarned, setTotalEarned] = useState(seed.accrued)
+  // Feed visual de entradas — puramente ilustrativo, NÃO movimenta dinheiro.
+  const seededCount = useMemo(() => {
+    const start = activatedAt ? new Date(activatedAt).getTime() : Date.now()
+    return Math.floor(Math.max(0, Date.now() - start) / 45_000)
+  }, [activatedAt])
+
   const [entries, setEntries] = useState<Entry[]>([])
-  const [count, setCount] = useState(seed.seededCount)
+  const [count, setCount] = useState(seededCount)
   const idRef = useRef(0)
 
   useEffect(() => {
@@ -698,8 +803,6 @@ function ActivePanel({
       const entry: Entry = { id: idRef.current, dir, asset, result: win ? "win" : "loss", pnl }
       setEntries((prev) => [entry, ...prev].slice(0, 8))
       setCount((c) => c + 1)
-      setProfit((p) => Math.min(dailyTarget, Math.max(0, p + pnl)))
-      setTotalEarned((t) => Math.max(0, t + pnl))
       schedule()
     }
 
@@ -715,9 +818,10 @@ function ActivePanel({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [running, plan.amount, dailyTarget])
+  }, [running, plan.amount])
 
-  const progress = Math.min(100, (profit / dailyTarget) * 100)
+  const totalEarned = totalCredited
+  const progress = Math.min(100, (todayProfit / dailyTarget) * 100)
 
   return (
     <div className="w-full max-w-4xl animate-fade-up">

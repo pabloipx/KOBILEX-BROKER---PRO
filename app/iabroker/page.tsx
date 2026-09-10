@@ -418,13 +418,17 @@ function ActivePanel({ plan, onStop }: { plan: Plan; onStop: () => void }) {
   const dailyTarget = (plan.amount * plan.daily) / 100
   const [running, setRunning] = useState(true)
   const [profit, setProfit] = useState(0)
+  const [totalEarned, setTotalEarned] = useState(0)
   const [entries, setEntries] = useState<Entry[]>([])
   const [count, setCount] = useState(0)
   const idRef = useRef(0)
 
   useEffect(() => {
     if (!running) return
-    const id = setInterval(() => {
+    let timer: ReturnType<typeof setTimeout>
+    let cancelled = false
+
+    const runEntry = () => {
       idRef.current += 1
       const win = Math.random() < 0.72
       const dir: Entry["dir"] = Math.random() < 0.5 ? "BUY" : "SELL"
@@ -434,12 +438,23 @@ function ActivePanel({ plan, onStop }: { plan: Plan; onStop: () => void }) {
       const entry: Entry = { id: idRef.current, dir, asset, result: win ? "win" : "loss", pnl }
       setEntries((prev) => [entry, ...prev].slice(0, 8))
       setCount((c) => c + 1)
-      setProfit((p) => {
-        const next = p + pnl
-        return Math.min(dailyTarget, Math.max(0, next))
-      })
-    }, 2600)
-    return () => clearInterval(id)
+      setProfit((p) => Math.min(dailyTarget, Math.max(0, p + pnl)))
+      setTotalEarned((t) => Math.max(0, t + pnl))
+      schedule()
+    }
+
+    const schedule = () => {
+      if (cancelled) return
+      // Entrada a cada 20–40s: a IA aguarda a melhor oportunidade, sem operar toda hora
+      const delay = 20000 + Math.random() * 20000
+      timer = setTimeout(runEntry, delay)
+    }
+
+    schedule()
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   }, [running, plan.amount, dailyTarget])
 
   const progress = Math.min(100, (profit / dailyTarget) * 100)
@@ -505,6 +520,28 @@ function ActivePanel({ plan, onStop }: { plan: Plan; onStop: () => void }) {
         />
         <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
         <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
+      </div>
+
+      {/* Rendimento já gerado pela IA */}
+      <div className="rounded-2xl border border-atlas-success/30 bg-gradient-to-br from-atlas-success/10 to-transparent p-5 mb-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+              <TrendingUp className="w-4 h-4 text-atlas-success" />
+              Rendimento já gerado pela IA
+            </div>
+            <div className="text-3xl sm:text-4xl font-bold text-atlas-success">{brl(totalEarned)}</div>
+            <div className="text-xs text-muted-foreground mt-1.5">
+              Acumulado desde a ativação · {count} {count === 1 ? "entrada" : "entradas"}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-muted-foreground mb-1">Retorno sobre o investido</div>
+            <div className="text-2xl font-bold">
+              {plan.amount > 0 ? ((totalEarned / plan.amount) * 100).toFixed(2) : "0.00"}%
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">

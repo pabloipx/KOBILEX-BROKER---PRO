@@ -79,6 +79,7 @@ export default function IaBrokerPage() {
   const [activatedAt, setActivatedAt] = useState<string | null>(null)
   const [paused, setPaused] = useState(false)
   const [totalCredited, setTotalCredited] = useState(0)
+  const [creditedToday, setCreditedToday] = useState(0)
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -147,6 +148,7 @@ export default function IaBrokerPage() {
           setActivatedAt(state.activatedAt)
           setPaused(!!state.paused)
           setTotalCredited(Number(state.totalCredited || 0))
+          setCreditedToday(Number(state.creditedToday || 0))
           setStep("active")
           return
         }
@@ -190,6 +192,7 @@ export default function IaBrokerPage() {
       setActivatedAt(data.state?.activatedAt || new Date().toISOString())
       setPaused(false)
       setTotalCredited(Number(data.state?.totalCredited || 0))
+      setCreditedToday(Number(data.state?.creditedToday || 0))
       setStep("active")
     } catch {
       setError("Falha de conexão ao ativar a IA.")
@@ -212,6 +215,7 @@ export default function IaBrokerPage() {
         if (data.state) {
           setPaused(!!data.state.paused)
           setTotalCredited(Number(data.state.totalCredited || 0))
+          setCreditedToday(Number(data.state.creditedToday || 0))
         }
       }
     } catch {
@@ -256,10 +260,12 @@ export default function IaBrokerPage() {
         if (typeof data.balance === "number") setBalance(data.balance)
         if (data.state && typeof data.state.totalCredited === "number") {
           setTotalCredited(Number(data.state.totalCredited))
+          setCreditedToday(Number(data.state.creditedToday || 0))
         } else if (!data.state) {
           // Foi desativada em outro lugar
           setActivatedAt(null)
           setTotalCredited(0)
+          setCreditedToday(0)
           setStep("plans")
         }
       } catch {
@@ -317,6 +323,7 @@ export default function IaBrokerPage() {
             balance={balance}
             activatedAt={activatedAt}
             totalCredited={totalCredited}
+            creditedToday={creditedToday}
             paused={paused}
             onPauseToggle={handlePauseToggle}
             onStop={handleDeactivate}
@@ -746,6 +753,7 @@ function ActivePanel({
   balance,
   activatedAt,
   totalCredited,
+  creditedToday,
   paused,
   onPauseToggle,
   onStop,
@@ -754,6 +762,7 @@ function ActivePanel({
   balance: number
   activatedAt: string | null
   totalCredited: number
+  creditedToday: number
   paused: boolean
   onPauseToggle: () => void
   onStop: () => void
@@ -761,22 +770,10 @@ function ActivePanel({
   const dailyTarget = (plan.amount * plan.daily) / 100
   const running = !paused
 
-  // "Lucro hoje" é um indicador visual de progresso da meta diária, derivado do
-  // tempo decorrido no dia atual desde a ativação. O dinheiro REAL creditado é o
-  // `totalCredited`, que vem do servidor (rendimento já lançado no saldo).
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!running) return
-    const id = setInterval(() => setNow(Date.now()), 3000)
-    return () => clearInterval(id)
-  }, [running])
-
-  const todayProfit = useMemo(() => {
-    const start = activatedAt ? new Date(activatedAt).getTime() : now
-    const elapsedDays = Math.max(0, (now - start) / 86_400_000)
-    const todayFraction = elapsedDays - Math.floor(elapsedDays)
-    return Math.min(dailyTarget, todayFraction * dailyTarget)
-  }, [activatedAt, now, dailyTarget])
+  // "Lucro hoje" e o progresso vêm do valor REAL creditado no dia (`creditedToday`,
+  // vindo do servidor), que sobe aos poucos até bater a meta diária e então para.
+  const todayProfit = Math.min(dailyTarget, creditedToday)
+  const metaReached = dailyTarget > 0 && creditedToday >= dailyTarget - 0.01
 
   // Feed visual de entradas — puramente ilustrativo, NÃO movimenta dinheiro.
   const seededCount = useMemo(() => {
@@ -821,7 +818,7 @@ function ActivePanel({
   }, [running, plan.amount])
 
   const totalEarned = totalCredited
-  const progress = Math.min(100, (todayProfit / dailyTarget) * 100)
+  const progress = dailyTarget > 0 ? Math.min(100, (todayProfit / dailyTarget) * 100) : 0
 
   return (
     <div className="w-full max-w-4xl animate-fade-up">
@@ -862,7 +859,7 @@ function ActivePanel({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setRunning((r) => !r)}
+            onClick={onPauseToggle}
             className="h-10 px-4 rounded-xl border border-border bg-secondary hover:bg-accent transition-colors flex items-center gap-2 text-sm font-medium"
           >
             {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -885,7 +882,7 @@ function ActivePanel({
         <StatCard
           icon={<TrendingUp className="w-4 h-4 text-atlas-success" />}
           label="Lucro hoje"
-          value={brl(profit)}
+          value={brl(todayProfit)}
           accent
         />
         <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />

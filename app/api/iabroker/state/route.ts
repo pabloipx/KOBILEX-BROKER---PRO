@@ -25,9 +25,15 @@ type IaState = {
   activatedAt: string
   lastSettleAt: string // marco do último acerto de rendimento
   totalCredited: number // rendimento real já creditado no saldo desde a ativação
+  creditedToday?: number // rendimento já creditado dentro do dia atual (teto = meta diária)
+  dayKey?: string // dia (YYYY-MM-DD, fuso -3) do acumulado atual; ao virar o dia, zera
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
+
+// Chave de dia no fuso America/Sao_Paulo (UTC-3, sem horário de verão),
+// para o teto diário zerar à meia-noite local.
+const dayKeyOf = (ms: number) => new Date(ms - 3 * 3_600_000).toISOString().slice(0, 10)
 
 async function getUserId(): Promise<string | null> {
   const supabase = await createClient()
@@ -118,33 +124,59 @@ async function settle(
   state: IaState,
 ): Promise<{ state: IaState; balance: number; credited: number }> {
   const now = Date.now()
+  const balance = await readBalance(admin, userId)
+
+  if (state.paused) {
+    return { state, balance, credited: 0 }
+  }
+
+  // Teto diário = meta do dia (a % sobre o investido). O rendimento sobe aos poucos
+  // ao longo do dia até bater essa meta e então para, voltando a render no dia seguinte.
+  const dailyMeta = round2(state.amount * (state.daily / 100))
+  const todayKey = dayKeyOf(now)
+
+  let creditedToday = state.creditedToday || 0
+  let dayKey = state.dayKey || dayKeyOf(new Date(state.activatedAt).getTime())
+  const dayChanged = dayKey !== todayKey
+  if (dayChanged) {
+    // Virou o dia: zera o acumulado diário e recomeça a render até a meta.
+    creditedToday = 0
+    dayKey = todayKey
+  }
+
   const last = new Date(state.lastSettleAt).getTime()
   const elapsedSec = Math.max(0, (now - last) / 1000)
-
-  if (state.paused || elapsedSec <= 0) {
-    return { state, balance: await readBalance(admin, userId), credited: 0 }
-  }
-
   const perSecond = (state.amount * (state.daily / 100)) / SECONDS_PER_DAY
-  const owed = round2(perSecond * elapsedSec)
+  const owed = perSecond * elapsedSec
 
-  if (owed < MIN_CREDIT) {
-    // Rendimento ainda insignificante: não credita e não avança o marco, para acumular.
-    return { state, balance: await readBalance(admin, userId), credited: 0 }
+  const remainingToday = round2(Math.max(0, dailyMeta - creditedToday))
+  const creditNow = round2(Math.min(owed, remainingToday))
+
+  if (creditNow < MIN_CREDIT) {
+    // Nada relevante a creditar agora. Se a meta do dia já foi batida (ou o dia virou
+    // sem rendimento devido), avança o marco e persiste o dia para não acumular tempo.
+    if (remainingToday < MIN_CREDIT || dayChanged) {
+      const updated: IaState = { ...state, lastSettleAt: new Date(now).toISOString(), creditedToday, dayKey }
+      await saveState(admin, settingKey, updated)
+      return { state: updated, balance, credited: 0 }
+    }
+    // Rendimento ainda insignificante: não credita nem avança o marco, para acumular.
+    return { state, balance, credited: 0 }
   }
 
-  const balance = await readBalance(admin, userId)
-  const newBalance = round2(balance + owed)
+  const newBalance = round2(balance + creditNow)
   await writeBalance(admin, userId, newBalance)
-  await recordTransaction(admin, userId, "ia_yield", owed, newBalance, "Rendimento do Robô de IA")
+  await recordTransaction(admin, userId, "ia_yield", creditNow, newBalance, "Rendimento do Robô de IA")
 
   const updated: IaState = {
     ...state,
     lastSettleAt: new Date(now).toISOString(),
-    totalCredited: round2((state.totalCredited || 0) + owed),
+    totalCredited: round2((state.totalCredited || 0) + creditNow),
+    creditedToday: round2(creditedToday + creditNow),
+    dayKey,
   }
   await saveState(admin, settingKey, updated)
-  return { state: updated, balance: newBalance, credited: owed }
+  return { state: updated, balance: newBalance, credited: creditNow }
 }
 
 export async function GET() {
@@ -239,7 +271,8 @@ export async function POST(req: Request) {
     await writeBalance(admin, userId, newBalance)
     await recordTransaction(admin, userId, "ia_invest", -plan.amount, newBalance, "Investimento no Robô de IA")
 
-    const nowIso = new Date().toISOString()
+    const now = Date.now()
+    const nowIso = new Date(now).toISOString()
     const state: IaState = {
       active: true,
       paused: false,
@@ -249,6 +282,8 @@ export async function POST(req: Request) {
       activatedAt: nowIso,
       lastSettleAt: nowIso,
       totalCredited: 0,
+      creditedToday: 0,
+      dayKey: dayKeyOf(now),
     }
     await saveState(admin, settingKey, state)
     return NextResponse.json({ state, balance: newBalance })

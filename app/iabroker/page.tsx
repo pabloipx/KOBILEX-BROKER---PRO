@@ -213,73 +213,172 @@ function ConnectForm({
   onSubmit: (e: React.FormEvent) => void
 }) {
   const inputClass =
-    "w-full h-12 pl-11 pr-4 rounded-xl bg-secondary text-foreground text-[15px] border border-border outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+    "w-full h-12 pl-11 pr-4 rounded-xl bg-black/40 text-foreground text-[15px] border border-white/10 outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
 
   return (
     <div className="w-full max-w-md animate-fade-up">
-      <div className="flex flex-col items-center text-center mb-8">
-        <div className="relative mb-5">
-          <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-xl animate-hero-pulse" />
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/30">
-            <Bot className="w-8 h-8 text-primary-foreground" />
-          </div>
+      {/* Terminal de mercado com candles ao vivo ao fundo */}
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-[#0e1420] to-[#0a0d14] shadow-2xl shadow-black/50">
+        {/* fundo de candles */}
+        <div className="pointer-events-none absolute inset-0 opacity-[0.18]">
+          <LiveCandles active />
         </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-balance">Robô de IA URYN</h1>
-        <p className="text-muted-foreground text-sm mt-2 text-pretty max-w-xs">
-          A inteligência artificial que analisa o mercado e faz entradas no gráfico por você.
-        </p>
-      </div>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0d14]/60 to-[#0a0d14]" />
+        {/* grade sutil */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.05]"
+          style={{
+            backgroundImage:
+              "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        />
 
-      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
-        <div className="flex items-center gap-2 mb-5 text-sm text-muted-foreground">
-          <Lock className="w-4 h-4 text-primary" />
-          Conecte sua conta da corretora para liberar a IA
-        </div>
+        {/* Ticker de cotações ao vivo */}
+        <MarketTicker />
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
-          <div className="relative">
-            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
-            <input
-              type="email"
-              placeholder="E-mail da corretora"
-              value={email}
-              onChange={(e) => onEmail(e.target.value)}
-              autoComplete="email"
-              className={inputClass}
-            />
-          </div>
-          <div className="relative">
-            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
-            <input
-              type="password"
-              placeholder="Senha da corretora"
-              value={password}
-              onChange={(e) => onPassword(e.target.value)}
-              autoComplete="current-password"
-              className={inputClass}
-            />
-          </div>
-
-          {error && (
-            <div className="text-sm p-3 rounded-lg flex items-center gap-2 text-destructive bg-destructive/10 border border-destructive/30">
-              <span>⚠</span>
-              {error}
+        <div className="relative px-5 py-7 sm:px-7 sm:py-8">
+          <div className="flex flex-col items-center text-center mb-7">
+            <div className="relative mb-4">
+              <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-xl animate-hero-pulse" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/40 ring-1 ring-white/20">
+                <Bot className="w-8 h-8 text-primary-foreground" />
+              </div>
             </div>
-          )}
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-atlas-success/30 bg-atlas-success/10 px-2.5 py-1 mb-3">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-atlas-success opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-atlas-success" />
+              </span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-atlas-success">
+                Mercado ao vivo
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-balance">Robô de IA URYN</h1>
+            <p className="text-muted-foreground text-sm mt-2 text-pretty max-w-xs">
+              A inteligência artificial que analisa o mercado e faz entradas no gráfico por você.
+            </p>
+          </div>
 
-          <button
-            type="submit"
-            className="w-full h-13 py-3.5 rounded-xl text-primary-foreground font-semibold text-base bg-primary hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
-          >
-            <Zap className="w-5 h-5" />
-            Conectar com a corretora
-          </button>
-        </form>
+          {/* Estatísticas de performance */}
+          <div className="grid grid-cols-3 gap-2 mb-6">
+            {[
+              { label: "Assertividade", value: "94%", icon: TrendingUp },
+              { label: "Operando", value: "24h", icon: Activity },
+              { label: "Traders", value: "3.2k", icon: Sparkles },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="rounded-xl border border-white/10 bg-black/30 px-2 py-3 text-center backdrop-blur-sm"
+              >
+                <s.icon className="mx-auto mb-1 h-4 w-4 text-primary" />
+                <div className="text-base font-bold leading-none text-foreground">{s.value}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
 
-        <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
-          <ShieldCheck className="w-4 h-4 text-atlas-success" />
-          Conexão criptografada. Seus dados não são compartilhados.
+          <div className="rounded-2xl border border-white/10 bg-black/40 p-4 sm:p-5 backdrop-blur-sm">
+            <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
+              <Lock className="w-4 h-4 text-primary" />
+              Conecte sua conta da corretora para liberar a IA
+            </div>
+
+            <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
+                <input
+                  type="email"
+                  placeholder="E-mail da corretora"
+                  value={email}
+                  onChange={(e) => onEmail(e.target.value)}
+                  autoComplete="email"
+                  className={inputClass}
+                />
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
+                <input
+                  type="password"
+                  placeholder="Senha da corretora"
+                  value={password}
+                  onChange={(e) => onPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className={inputClass}
+                />
+              </div>
+
+              {error && (
+                <div className="text-sm p-3 rounded-lg flex items-center gap-2 text-destructive bg-destructive/10 border border-destructive/30">
+                  <span>⚠</span>
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="group relative w-full h-13 py-3.5 rounded-xl text-primary-foreground font-semibold text-base bg-gradient-to-r from-primary to-atlas-orange-dark hover:brightness-110 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/30"
+              >
+                <Zap className="w-5 h-5" />
+                Conectar com a corretora
+              </button>
+            </form>
+
+            <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
+              <ShieldCheck className="w-4 h-4 text-atlas-success" />
+              Conexão criptografada. Seus dados não são compartilhados.
+            </div>
+          </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* Ticker de cotações ao vivo no topo do terminal */
+function MarketTicker() {
+  const [ticks, setTicks] = useState(() =>
+    [
+      { s: "EUR/USD", p: 1.0847 },
+      { s: "GBP/USD", p: 1.2634 },
+      { s: "BTC/USD", p: 64231 },
+      { s: "XAU/USD", p: 2338.5 },
+      { s: "USD/JPY", p: 156.82 },
+      { s: "ETH/USD", p: 3145.2 },
+    ].map((t) => ({ ...t, d: 0 })),
+  )
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTicks((prev) =>
+        prev.map((t) => {
+          const delta = (Math.random() - 0.5) * (t.p > 1000 ? t.p * 0.0006 : t.p * 0.0004)
+          return { ...t, p: t.p + delta, d: delta }
+        }),
+      )
+    }, 1400)
+    return () => clearInterval(id)
+  }, [])
+
+  const fmt = (p: number) => (p > 1000 ? p.toFixed(0) : p.toFixed(p > 100 ? 2 : 4))
+
+  return (
+    <div className="relative flex items-center gap-4 overflow-hidden border-b border-white/10 bg-black/40 px-4 py-2 backdrop-blur-sm">
+      <div className="flex animate-marquee items-center gap-5 whitespace-nowrap">
+        {[...ticks, ...ticks].map((t, i) => {
+          const up = t.d >= 0
+          return (
+            <span key={i} className="flex items-center gap-1.5 text-xs">
+              <span className="font-semibold text-muted-foreground">{t.s}</span>
+              <span className="font-mono text-foreground">{fmt(t.p)}</span>
+              <span className={up ? "text-atlas-success" : "text-destructive"}>
+                {up ? "▲" : "▼"}
+              </span>
+            </span>
+          )
+        })}
       </div>
     </div>
   )

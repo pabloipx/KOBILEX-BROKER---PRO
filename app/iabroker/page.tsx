@@ -24,6 +24,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Sparkles,
+  Cpu,
+  AlertTriangle,
 } from "lucide-react"
 
 type Step = "connect" | "connecting" | "plans" | "active"
@@ -41,11 +43,13 @@ const PLANS: Plan[] = [
 ]
 
 const CONNECT_STAGES = [
-  "Autenticando credenciais",
-  "Estabelecendo conexão segura",
-  "Sincronizando dados da conta",
-  "Calibrando modelo de IA",
-  "Pronto para operar",
+  { label: "Autenticando credenciais na corretora", detail: "Validando sessão segura" },
+  { label: "Conectando ao motor Anthropic Claude", detail: "Estabelecendo túnel criptografado" },
+  { label: "Carregando dados do gráfico em tempo real", detail: "EUR/USD · GBP/USD · BTC/USD · XAU/USD" },
+  { label: "Executando análise de padrões", detail: "Processando 2.400+ candles históricos" },
+  { label: "Calibrando modelo preditivo", detail: "Ajustando pesos da rede neural" },
+  { label: "Validando pontos de entrada", detail: "Cruzando indicadores e volume" },
+  { label: "IA pronta para operar", detail: "Estratégia otimizada e ativa" },
 ]
 
 const ASSETS = ["EUR/USD", "GBP/USD", "XAU/USD", "BTC/USD", "USD/JPY", "ETH/USD"]
@@ -70,6 +74,7 @@ export default function IaBrokerPage() {
   const [error, setError] = useState<string | null>(null)
   const [stageIndex, setStageIndex] = useState(0)
   const [plan, setPlan] = useState<Plan | null>(null)
+  const [balance, setBalance] = useState(0)
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -94,7 +99,7 @@ export default function IaBrokerPage() {
 
     try {
       const supabase = createClient()
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: mail,
         password: pass,
       })
@@ -108,6 +113,17 @@ export default function IaBrokerPage() {
         }
         throw new Error(signInError.message)
       }
+
+      // Carregar saldo real da carteira do usuário
+      const userId = authData.user?.id
+      if (userId) {
+        const { data: balanceData } = await supabase
+          .from("user_balances")
+          .select("balance_real")
+          .eq("user_id", userId)
+          .single()
+        if (mounted.current) setBalance(balanceData?.balance_real || 0)
+      }
     } catch (err) {
       if (!mounted.current) return
       setStep("connect")
@@ -115,11 +131,12 @@ export default function IaBrokerPage() {
       return
     }
 
-    // Sequência visual de conexão
+    // Sequência visual de conexão com Anthropic e análise do gráfico (~15s total)
+    const perStage = 15000 / CONNECT_STAGES.length
     for (let i = 0; i < CONNECT_STAGES.length; i++) {
       if (!mounted.current) return
       setStageIndex(i)
-      await sleep(i === CONNECT_STAGES.length - 1 ? 650 : 820)
+      await sleep(perStage)
     }
     if (!mounted.current) return
     setStep("plans")
@@ -162,6 +179,7 @@ export default function IaBrokerPage() {
 
         {step === "plans" && (
           <Plans
+            balance={balance}
             onSelect={(p) => {
               setPlan(p)
               setStep("active")
@@ -169,7 +187,9 @@ export default function IaBrokerPage() {
           />
         )}
 
-        {step === "active" && plan && <ActivePanel plan={plan} onStop={() => setStep("plans")} />}
+        {step === "active" && plan && (
+          <ActivePanel plan={plan} balance={balance} onStop={() => setStep("plans")} />
+        )}
       </main>
     </div>
   )
@@ -270,23 +290,37 @@ function ConnectForm({
 function Connecting({ stageIndex }: { stageIndex: number }) {
   const progress = ((stageIndex + 1) / CONNECT_STAGES.length) * 100
   return (
-    <div className="w-full max-w-md flex flex-col items-center pt-6 animate-fade-up">
-      <div className="relative mb-8 flex items-center justify-center">
+    <div className="w-full max-w-md flex flex-col items-center pt-4 animate-fade-up">
+      <div className="relative mb-7 flex items-center justify-center">
         <div className="absolute h-40 w-40 rounded-full border border-primary/30 animate-result-ring" />
+        <div
+          className="absolute h-52 w-52 rounded-full border border-primary/15 animate-result-ring"
+          style={{ animationDelay: "0.6s" }}
+        />
         <div className="absolute h-40 w-40 rounded-full bg-primary/10 blur-2xl animate-hero-pulse" />
         <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/40">
           <Bot className="w-10 h-10 text-primary-foreground" />
         </div>
       </div>
 
-      <h2 className="text-xl font-bold mb-1">Conectando com a corretora</h2>
-      <p className="text-muted-foreground text-sm mb-6">Aguarde enquanto preparamos a IA</p>
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-secondary border border-border px-3 py-1 text-[11px] font-medium text-muted-foreground mb-3">
+        <Cpu className="w-3.5 h-3.5 text-primary" />
+        Powered by Anthropic Claude
+      </div>
+      <h2 className="text-xl font-bold mb-1 text-center text-balance">Ativando a inteligência artificial</h2>
+      <p className="text-muted-foreground text-sm mb-6 text-center">
+        A IA está lendo o gráfico e montando a estratégia
+      </p>
 
-      <div className="w-full h-2 rounded-full bg-secondary overflow-hidden mb-6">
+      <div className="w-full h-2 rounded-full bg-secondary overflow-hidden mb-1.5">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-orange-hover transition-all duration-500 ease-out"
+          className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-orange-hover transition-all duration-700 ease-out"
           style={{ width: `${progress}%` }}
         />
+      </div>
+      <div className="w-full flex justify-between text-[11px] text-muted-foreground mb-6">
+        <span>Analisando mercado</span>
+        <span>{Math.round(progress)}%</span>
       </div>
 
       <div className="w-full flex flex-col gap-2.5">
@@ -295,17 +329,17 @@ function Connecting({ stageIndex }: { stageIndex: number }) {
           const current = i === stageIndex
           return (
             <div
-              key={stage}
-              className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+              key={stage.label}
+              className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-300 ${
                 current
                   ? "border-primary/50 bg-primary/5"
                   : done
                     ? "border-border bg-card"
-                    : "border-border bg-card opacity-50"
+                    : "border-border bg-card opacity-45"
               }`}
             >
               <div
-                className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
                   done ? "bg-atlas-success" : current ? "bg-primary" : "bg-secondary"
                 }`}
               >
@@ -317,9 +351,14 @@ function Connecting({ stageIndex }: { stageIndex: number }) {
                   <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
                 )}
               </div>
-              <span className={`text-sm ${current || done ? "text-foreground" : "text-muted-foreground"}`}>
-                {stage}
-              </span>
+              <div className="min-w-0">
+                <div className={`text-sm ${current || done ? "text-foreground" : "text-muted-foreground"}`}>
+                  {stage.label}
+                </div>
+                {current && (
+                  <div className="text-[11px] text-primary/80 mt-0.5 animate-fade-up">{stage.detail}</div>
+                )}
+              </div>
             </div>
           )
         })}
@@ -330,13 +369,18 @@ function Connecting({ stageIndex }: { stageIndex: number }) {
 
 /* ---------------- Etapa 3: Planos ---------------- */
 
-function Plans({ onSelect }: { onSelect: (p: Plan) => void }) {
-  const [selected, setSelected] = useState<string>(PLANS[1].id)
+function Plans({ balance, onSelect }: { balance: number; onSelect: (p: Plan) => void }) {
+  const affordablePlans = PLANS.filter((p) => balance >= p.amount)
+  const defaultId = affordablePlans.length ? affordablePlans[affordablePlans.length - 1].id : PLANS[0].id
+  const [selected, setSelected] = useState<string>(defaultId)
   const chosen = PLANS.find((p) => p.id === selected)!
+  const canAfford = balance >= chosen.amount
+  const cheapest = PLANS[0].amount
+  const missing = Math.max(0, chosen.amount - balance)
 
   return (
     <div className="w-full max-w-3xl animate-fade-up">
-      <div className="flex flex-col items-center text-center mb-8">
+      <div className="flex flex-col items-center text-center mb-6">
         <div className="inline-flex items-center gap-1.5 rounded-full bg-atlas-success/10 border border-atlas-success/30 px-3 py-1 text-xs font-medium text-atlas-success mb-4">
           <span className="h-1.5 w-1.5 rounded-full bg-atlas-success animate-pulse" />
           Conta conectada com sucesso
@@ -347,10 +391,33 @@ function Plans({ onSelect }: { onSelect: (p: Plan) => void }) {
         </p>
       </div>
 
+      {/* Carteira do usuário */}
+      <div className="mb-6 rounded-2xl border border-border bg-gradient-to-br from-card to-secondary/40 p-5 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 border border-primary/30">
+            <Wallet className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Saldo da sua carteira</div>
+            <div className="text-2xl font-bold">{brl(balance)}</div>
+          </div>
+        </div>
+        <div
+          className={`text-xs font-medium px-3 py-1.5 rounded-full ${
+            balance >= cheapest
+              ? "bg-atlas-success/15 text-atlas-success"
+              : "bg-destructive/15 text-destructive"
+          }`}
+        >
+          {balance >= cheapest ? "Saldo disponível" : "Saldo insuficiente"}
+        </div>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-3">
         {PLANS.map((p) => {
           const isSel = p.id === selected
           const highlight = p.id === "pro"
+          const locked = balance < p.amount
           return (
             <button
               key={p.id}
@@ -359,11 +426,17 @@ function Plans({ onSelect }: { onSelect: (p: Plan) => void }) {
                 isSel
                   ? "border-primary bg-primary/5 ring-1 ring-primary"
                   : "border-border bg-card hover:border-primary/40"
-              }`}
+              } ${locked ? "opacity-60" : ""}`}
             >
-              {highlight && (
+              {highlight && !locked && (
                 <span className="absolute -top-2.5 left-5 rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-primary-foreground">
                   Mais popular
+                </span>
+              )}
+              {locked && (
+                <span className="absolute -top-2.5 left-5 flex items-center gap-1 rounded-full bg-secondary border border-border px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                  <Lock className="w-2.5 h-2.5" />
+                  Sem saldo
                 </span>
               )}
               <div className="flex items-center justify-between mb-4">
@@ -400,21 +473,38 @@ function Plans({ onSelect }: { onSelect: (p: Plan) => void }) {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => onSelect(chosen)}
-          className="w-full sm:w-auto px-8 h-13 py-3.5 rounded-xl text-primary-foreground font-semibold bg-primary hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
-        >
-          <Power className="w-5 h-5" />
-          Ativar IA
-        </button>
+        {canAfford ? (
+          <button
+            onClick={() => onSelect(chosen)}
+            className="w-full sm:w-auto px-8 h-13 py-3.5 rounded-xl text-primary-foreground font-semibold bg-primary hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
+          >
+            <Power className="w-5 h-5" />
+            Ativar IA
+          </button>
+        ) : (
+          <Link
+            href="/deposit"
+            className="w-full sm:w-auto px-8 h-13 py-3.5 rounded-xl text-primary-foreground font-semibold bg-primary hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
+          >
+            <Wallet className="w-5 h-5" />
+            Depositar {brl(missing)}
+          </Link>
+        )}
       </div>
+
+      {!canAfford && (
+        <div className="mt-3 flex items-center justify-center gap-2 text-sm text-destructive">
+          <AlertTriangle className="w-4 h-4" />
+          Você precisa de {brl(missing)} a mais para ativar este plano.
+        </div>
+      )}
     </div>
   )
 }
 
 /* ---------------- Etapa 4: IA operando ---------------- */
 
-function ActivePanel({ plan, onStop }: { plan: Plan; onStop: () => void }) {
+function ActivePanel({ plan, balance, onStop }: { plan: Plan; balance: number; onStop: () => void }) {
   const dailyTarget = (plan.amount * plan.daily) / 100
   const [running, setRunning] = useState(true)
   const [profit, setProfit] = useState(0)
@@ -511,7 +601,8 @@ function ActivePanel({ plan, onStop }: { plan: Plan; onStop: () => void }) {
 
       {/* Métricas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <StatCard icon={<Wallet className="w-4 h-4" />} label="Investido" value={brl(plan.amount)} />
+        <StatCard icon={<Wallet className="w-4 h-4 text-primary" />} label="Saldo na carteira" value={brl(balance)} />
+        <StatCard icon={<Zap className="w-4 h-4" />} label="Investido" value={brl(plan.amount)} />
         <StatCard
           icon={<TrendingUp className="w-4 h-4 text-atlas-success" />}
           label="Lucro hoje"

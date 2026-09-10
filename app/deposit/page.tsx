@@ -684,49 +684,86 @@ export default function DepositPage() {
         <div className="flex flex-col lg:flex-row lg:gap-16">
           <div className="w-full lg:max-w-md space-y-6">
         {/* Method selector */}
-        <div className="flex gap-2 p-1 bg-[#121826] rounded-xl border border-[#1F2933]">
-          <button
-            onClick={() => { setMethod("pix"); setError(null) }}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all ${
-              method === "pix"
-                ? "bg-[#f97316] text-white shadow-lg shadow-orange-500/20"
-                : "text-white/50 hover:text-white/70"
-            }`}
-          >
-            <Image
-              src="/images/a57db68e-f6a1-44c5-bde8.jpeg"
-              alt="PIX"
-              width={20}
-              height={20}
-              className="w-5 h-5 rounded"
-            />
-            PIX
-          </button>
-          {cardEnabled && (
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280] mb-2.5">Metodo de pagamento</p>
+          <div className={`grid gap-2.5 ${cardEnabled && cryptoEnabled ? "grid-cols-3" : cardEnabled || cryptoEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
             <button
-              onClick={() => { setMethod("card"); setError(null); setCardAmountSelected(false) }}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all ${
-                method === "card"
-                  ? "bg-[#f97316] text-white shadow-lg shadow-orange-500/20"
-                  : "text-white/50 hover:text-white/70"
+              onClick={() => { setMethod("pix"); setError(null) }}
+              aria-pressed={method === "pix"}
+              className={`group relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border transition-all duration-200 overflow-hidden ${
+                method === "pix"
+                  ? "border-[#f97316] bg-gradient-to-b from-[#f97316]/15 to-transparent shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_8px_24px_-8px_rgba(249,115,22,0.5)]"
+                  : "border-[#1F2933] bg-[#121826] hover:border-[#374151] hover:bg-[#161d2b]"
               }`}
             >
-              <CreditCard className="w-5 h-5" />
-              Cartao
+              {method === "pix" && (
+                <span className="absolute top-2 right-2 flex items-center justify-center w-4 h-4 rounded-full bg-[#f97316]">
+                  <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                </span>
+              )}
+              <span className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${method === "pix" ? "bg-white" : "bg-[#0d0d0f] group-hover:bg-white/95"}`}>
+                <Image
+                  src="/images/a57db68e-f6a1-44c5-bde8.jpeg"
+                  alt="PIX"
+                  width={24}
+                  height={24}
+                  className="w-6 h-6 rounded-md"
+                />
+              </span>
+              <span className="flex flex-col items-center leading-tight">
+                <span className={`text-sm font-bold ${method === "pix" ? "text-white" : "text-white/80"}`}>PIX</span>
+                <span className="text-[10px] text-[#6B7280]">Aprovacao na hora</span>
+              </span>
             </button>
-          )}
-          {cryptoEnabled && (
-            <button
-              onClick={() => { setMethod("crypto"); setError(null) }}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all ${
-                method === "crypto"
-                  ? "bg-[#f97316] text-white shadow-lg shadow-orange-500/20"
-                  : "text-white/50 hover:text-white/70"
-              }`}
-            >
-              <span className="text-sm font-bold">USDT</span>
-            </button>
-          )}
+            {cardEnabled && (
+              <button
+                onClick={() => { setMethod("card"); setError(null); setCardAmountSelected(false) }}
+                aria-pressed={method === "card"}
+                className={`group relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border transition-all duration-200 overflow-hidden ${
+                  method === "card"
+                    ? "border-[#f97316] bg-gradient-to-b from-[#f97316]/15 to-transparent shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_8px_24px_-8px_rgba(249,115,22,0.5)]"
+                    : "border-[#1F2933] bg-[#121826] hover:border-[#374151] hover:bg-[#161d2b]"
+                }`}
+              >
+                {method === "card" && (
+                  <span className="absolute top-2 right-2 flex items-center justify-center w-4 h-4 rounded-full bg-[#f97316]">
+                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                  </span>
+                )}
+                <span className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${method === "card" ? "bg-[#f97316]" : "bg-[#0d0d0f] group-hover:bg-[#161d2b]"}`}>
+                  <CreditCard className={`w-5 h-5 ${method === "card" ? "text-white" : "text-white/70"}`} />
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className={`text-sm font-bold ${method === "card" ? "text-white" : "text-white/80"}`}>Cartao</span>
+                  <span className="text-[10px] text-[#6B7280]">Credito / Debito</span>
+                </span>
+              </button>
+            )}
+            {cryptoEnabled && (
+              <button
+                onClick={() => { setMethod("crypto"); setError(null) }}
+                aria-pressed={method === "crypto"}
+                className={`group relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border transition-all duration-200 overflow-hidden ${
+                  method === "crypto"
+                    ? "border-[#f97316] bg-gradient-to-b from-[#f97316]/15 to-transparent shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_8px_24px_-8px_rgba(249,115,22,0.5)]"
+                    : "border-[#1F2933] bg-[#121826] hover:border-[#374151] hover:bg-[#161d2b]"
+                }`}
+              >
+                {method === "crypto" && (
+                  <span className="absolute top-2 right-2 flex items-center justify-center w-4 h-4 rounded-full bg-[#f97316]">
+                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                  </span>
+                )}
+                <span className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${method === "crypto" ? "bg-[#26A17B]" : "bg-[#0d0d0f] group-hover:bg-[#161d2b]"}`}>
+                  <span className={`text-lg font-bold ${method === "crypto" ? "text-white" : "text-white/70"}`}>₮</span>
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className={`text-sm font-bold ${method === "crypto" ? "text-white" : "text-white/80"}`}>Cripto</span>
+                  <span className="text-[10px] text-[#6B7280]">USDT / BTC</span>
+                </span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Title with icon */}

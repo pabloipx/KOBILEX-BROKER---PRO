@@ -1,0 +1,621 @@
+"use client"
+
+import type React from "react"
+import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import Image from "next/image"
+import { createClient } from "@/lib/supabase/client"
+import { LiveCandles } from "@/components/iabroker/live-candles"
+import {
+  Bot,
+  ShieldCheck,
+  Lock,
+  Mail,
+  Loader2,
+  Check,
+  ArrowLeft,
+  Zap,
+  TrendingUp,
+  Activity,
+  Wallet,
+  Pause,
+  Play,
+  Power,
+  ArrowUpRight,
+  ArrowDownRight,
+  Sparkles,
+} from "lucide-react"
+
+type Step = "connect" | "connecting" | "plans" | "active"
+
+type Plan = {
+  id: string
+  amount: number
+  daily: number
+}
+
+const PLANS: Plan[] = [
+  { id: "start", amount: 500, daily: 5 },
+  { id: "pro", amount: 1000, daily: 7 },
+  { id: "elite", amount: 5000, daily: 9 },
+]
+
+const CONNECT_STAGES = [
+  "Autenticando credenciais",
+  "Estabelecendo conexão segura",
+  "Sincronizando dados da conta",
+  "Calibrando modelo de IA",
+  "Pronto para operar",
+]
+
+const ASSETS = ["EUR/USD", "GBP/USD", "XAU/USD", "BTC/USD", "USD/JPY", "ETH/USD"]
+
+type Entry = {
+  id: number
+  dir: "BUY" | "SELL"
+  asset: string
+  result: "win" | "loss"
+  pnl: number
+}
+
+const brl = (v: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v)
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+export default function IaBrokerPage() {
+  const [step, setStep] = useState<Step>("connect")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [stageIndex, setStageIndex] = useState(0)
+  const [plan, setPlan] = useState<Plan | null>(null)
+
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  const handleConnect = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const mail = email.trim().toLowerCase()
+    const pass = password.trim()
+    if (!mail || !pass) {
+      setError("Preencha e-mail e senha da corretora")
+      return
+    }
+
+    setError(null)
+    setStageIndex(0)
+    setStep("connecting")
+
+    try {
+      const supabase = createClient()
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: mail,
+        password: pass,
+      })
+      if (signInError) {
+        const msg = signInError.message.toLowerCase()
+        if (msg.includes("invalid login credentials") || msg.includes("invalid_credentials")) {
+          throw new Error("E-mail ou senha da corretora incorretos")
+        }
+        if (msg.includes("too many requests")) {
+          throw new Error("Muitas tentativas. Aguarde alguns minutos.")
+        }
+        throw new Error(signInError.message)
+      }
+    } catch (err) {
+      if (!mounted.current) return
+      setStep("connect")
+      setError(err instanceof Error ? err.message : "Falha ao conectar com a corretora")
+      return
+    }
+
+    // Sequência visual de conexão
+    for (let i = 0; i < CONNECT_STAGES.length; i++) {
+      if (!mounted.current) return
+      setStageIndex(i)
+      await sleep(i === CONNECT_STAGES.length - 1 ? 650 : 820)
+    }
+    if (!mounted.current) return
+    setStep("plans")
+  }
+
+  return (
+    <div className="min-h-screen w-full bg-background text-foreground flex flex-col">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-border">
+        <Link href="/trade" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          <span className="text-sm font-medium">Voltar</span>
+        </Link>
+        <Image
+          src="/images/uryn-fox-logo.png"
+          alt="URYNBROKER"
+          width={140}
+          height={34}
+          className="h-8 w-auto"
+          unoptimized
+        />
+        <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+          <Sparkles className="w-3.5 h-3.5" />
+          IA
+        </div>
+      </header>
+
+      <main className="flex-1 flex flex-col items-center px-4 py-6 sm:py-10">
+        {step === "connect" && (
+          <ConnectForm
+            email={email}
+            password={password}
+            error={error}
+            onEmail={setEmail}
+            onPassword={setPassword}
+            onSubmit={handleConnect}
+          />
+        )}
+
+        {step === "connecting" && <Connecting stageIndex={stageIndex} />}
+
+        {step === "plans" && (
+          <Plans
+            onSelect={(p) => {
+              setPlan(p)
+              setStep("active")
+            }}
+          />
+        )}
+
+        {step === "active" && plan && <ActivePanel plan={plan} onStop={() => setStep("plans")} />}
+      </main>
+    </div>
+  )
+}
+
+/* ---------------- Etapa 1: Conexão ---------------- */
+
+function ConnectForm({
+  email,
+  password,
+  error,
+  onEmail,
+  onPassword,
+  onSubmit,
+}: {
+  email: string
+  password: string
+  error: string | null
+  onEmail: (v: string) => void
+  onPassword: (v: string) => void
+  onSubmit: (e: React.FormEvent) => void
+}) {
+  const inputClass =
+    "w-full h-12 pl-11 pr-4 rounded-xl bg-secondary text-foreground text-[15px] border border-border outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+
+  return (
+    <div className="w-full max-w-md animate-fade-up">
+      <div className="flex flex-col items-center text-center mb-8">
+        <div className="relative mb-5">
+          <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-xl animate-hero-pulse" />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/30">
+            <Bot className="w-8 h-8 text-primary-foreground" />
+          </div>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-balance">Robô de IA URYN</h1>
+        <p className="text-muted-foreground text-sm mt-2 text-pretty max-w-xs">
+          A inteligência artificial que analisa o mercado e faz entradas no gráfico por você.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <div className="flex items-center gap-2 mb-5 text-sm text-muted-foreground">
+          <Lock className="w-4 h-4 text-primary" />
+          Conecte sua conta da corretora para liberar a IA
+        </div>
+
+        <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
+          <div className="relative">
+            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
+            <input
+              type="email"
+              placeholder="E-mail da corretora"
+              value={email}
+              onChange={(e) => onEmail(e.target.value)}
+              autoComplete="email"
+              className={inputClass}
+            />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-muted-foreground" />
+            <input
+              type="password"
+              placeholder="Senha da corretora"
+              value={password}
+              onChange={(e) => onPassword(e.target.value)}
+              autoComplete="current-password"
+              className={inputClass}
+            />
+          </div>
+
+          {error && (
+            <div className="text-sm p-3 rounded-lg flex items-center gap-2 text-destructive bg-destructive/10 border border-destructive/30">
+              <span>⚠</span>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full h-13 py-3.5 rounded-xl text-primary-foreground font-semibold text-base bg-primary hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
+          >
+            <Zap className="w-5 h-5" />
+            Conectar com a corretora
+          </button>
+        </form>
+
+        <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
+          <ShieldCheck className="w-4 h-4 text-atlas-success" />
+          Conexão criptografada. Seus dados não são compartilhados.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------------- Etapa 2: Conectando ---------------- */
+
+function Connecting({ stageIndex }: { stageIndex: number }) {
+  const progress = ((stageIndex + 1) / CONNECT_STAGES.length) * 100
+  return (
+    <div className="w-full max-w-md flex flex-col items-center pt-6 animate-fade-up">
+      <div className="relative mb-8 flex items-center justify-center">
+        <div className="absolute h-40 w-40 rounded-full border border-primary/30 animate-result-ring" />
+        <div className="absolute h-40 w-40 rounded-full bg-primary/10 blur-2xl animate-hero-pulse" />
+        <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/40">
+          <Bot className="w-10 h-10 text-primary-foreground" />
+        </div>
+      </div>
+
+      <h2 className="text-xl font-bold mb-1">Conectando com a corretora</h2>
+      <p className="text-muted-foreground text-sm mb-6">Aguarde enquanto preparamos a IA</p>
+
+      <div className="w-full h-2 rounded-full bg-secondary overflow-hidden mb-6">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-orange-hover transition-all duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <div className="w-full flex flex-col gap-2.5">
+        {CONNECT_STAGES.map((stage, i) => {
+          const done = i < stageIndex
+          const current = i === stageIndex
+          return (
+            <div
+              key={stage}
+              className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                current
+                  ? "border-primary/50 bg-primary/5"
+                  : done
+                    ? "border-border bg-card"
+                    : "border-border bg-card opacity-50"
+              }`}
+            >
+              <div
+                className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                  done ? "bg-atlas-success" : current ? "bg-primary" : "bg-secondary"
+                }`}
+              >
+                {done ? (
+                  <Check className="w-3.5 h-3.5 text-white" />
+                ) : current ? (
+                  <Loader2 className="w-3.5 h-3.5 text-primary-foreground animate-spin" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                )}
+              </div>
+              <span className={`text-sm ${current || done ? "text-foreground" : "text-muted-foreground"}`}>
+                {stage}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ---------------- Etapa 3: Planos ---------------- */
+
+function Plans({ onSelect }: { onSelect: (p: Plan) => void }) {
+  const [selected, setSelected] = useState<string>(PLANS[1].id)
+  const chosen = PLANS.find((p) => p.id === selected)!
+
+  return (
+    <div className="w-full max-w-3xl animate-fade-up">
+      <div className="flex flex-col items-center text-center mb-8">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-atlas-success/10 border border-atlas-success/30 px-3 py-1 text-xs font-medium text-atlas-success mb-4">
+          <span className="h-1.5 w-1.5 rounded-full bg-atlas-success animate-pulse" />
+          Conta conectada com sucesso
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-balance">Escolha o rendimento da IA</h1>
+        <p className="text-muted-foreground text-sm mt-2 text-pretty max-w-md">
+          Defina quanto deseja alocar para a IA operar sozinha. Quanto maior o valor, maior o rendimento diário.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {PLANS.map((p) => {
+          const isSel = p.id === selected
+          const highlight = p.id === "pro"
+          return (
+            <button
+              key={p.id}
+              onClick={() => setSelected(p.id)}
+              className={`relative text-left rounded-2xl border p-5 transition-all ${
+                isSel
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border bg-card hover:border-primary/40"
+              }`}
+            >
+              {highlight && (
+                <span className="absolute -top-2.5 left-5 rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-primary-foreground">
+                  Mais popular
+                </span>
+              )}
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-muted-foreground">Investimento</span>
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                    isSel ? "border-primary bg-primary" : "border-border"
+                  }`}
+                >
+                  {isSel && <Check className="w-3 h-3 text-primary-foreground" />}
+                </span>
+              </div>
+              <div className="text-3xl font-bold mb-3">{brl(p.amount)}</div>
+              <div className="flex items-baseline gap-1.5">
+                <TrendingUp className="w-4 h-4 text-atlas-success" />
+                <span className="text-atlas-success font-semibold">{p.daily}% ao dia</span>
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                ≈ {brl((p.amount * p.daily) / 100)} por dia
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="mt-6 rounded-2xl border border-border bg-card p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="text-center sm:text-left">
+          <div className="text-sm text-muted-foreground">Projeção com {brl(chosen.amount)}</div>
+          <div className="text-lg font-semibold">
+            {brl((chosen.amount * chosen.daily) / 100)} / dia
+            <span className="text-muted-foreground font-normal text-sm">
+              {" "}
+              · {brl(((chosen.amount * chosen.daily) / 100) * 30)} / mês
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={() => onSelect(chosen)}
+          className="w-full sm:w-auto px-8 h-13 py-3.5 rounded-xl text-primary-foreground font-semibold bg-primary hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
+        >
+          <Power className="w-5 h-5" />
+          Ativar IA
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ---------------- Etapa 4: IA operando ---------------- */
+
+function ActivePanel({ plan, onStop }: { plan: Plan; onStop: () => void }) {
+  const dailyTarget = (plan.amount * plan.daily) / 100
+  const [running, setRunning] = useState(true)
+  const [profit, setProfit] = useState(0)
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [count, setCount] = useState(0)
+  const idRef = useRef(0)
+
+  useEffect(() => {
+    if (!running) return
+    const id = setInterval(() => {
+      idRef.current += 1
+      const win = Math.random() < 0.72
+      const dir: Entry["dir"] = Math.random() < 0.5 ? "BUY" : "SELL"
+      const asset = ASSETS[Math.floor(Math.random() * ASSETS.length)]
+      const base = plan.amount * 0.02
+      const pnl = win ? base * (0.85 + Math.random() * 0.15) : -base * (0.5 + Math.random() * 0.3)
+      const entry: Entry = { id: idRef.current, dir, asset, result: win ? "win" : "loss", pnl }
+      setEntries((prev) => [entry, ...prev].slice(0, 8))
+      setCount((c) => c + 1)
+      setProfit((p) => {
+        const next = p + pnl
+        return Math.min(dailyTarget, Math.max(0, next))
+      })
+    }, 2600)
+    return () => clearInterval(id)
+  }, [running, plan.amount, dailyTarget])
+
+  const progress = Math.min(100, (profit / dailyTarget) * 100)
+
+  return (
+    <div className="w-full max-w-4xl animate-fade-up">
+      {/* Barra de status */}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-atlas-orange-dark">
+              <Bot className="w-6 h-6 text-primary-foreground" />
+            </div>
+            {running && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-atlas-success opacity-75" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-atlas-success" />
+              </span>
+            )}
+          </div>
+          <div>
+            <div className="font-semibold flex items-center gap-2">
+              IA URYN
+              <span
+                className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                  running ? "bg-atlas-success/15 text-atlas-success" : "bg-secondary text-muted-foreground"
+                }`}
+              >
+                {running ? "Operando" : "Pausada"}
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Plano {brl(plan.amount)} · {plan.daily}% ao dia
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setRunning((r) => !r)}
+            className="h-10 px-4 rounded-xl border border-border bg-secondary hover:bg-accent transition-colors flex items-center gap-2 text-sm font-medium"
+          >
+            {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            {running ? "Pausar" : "Retomar"}
+          </button>
+          <button
+            onClick={onStop}
+            className="h-10 px-4 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-2 text-sm font-medium"
+          >
+            <Power className="w-4 h-4" />
+            Desativar
+          </button>
+        </div>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <StatCard icon={<Wallet className="w-4 h-4" />} label="Investido" value={brl(plan.amount)} />
+        <StatCard
+          icon={<TrendingUp className="w-4 h-4 text-atlas-success" />}
+          label="Lucro hoje"
+          value={brl(profit)}
+          accent
+        />
+        <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
+        <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-5">
+        {/* Gráfico */}
+        <div className="lg:col-span-3 rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium flex items-center gap-2">
+              <Activity className="w-4 h-4 text-primary" />
+              Análise em tempo real
+            </div>
+            {running && (
+              <div className="flex items-center gap-1.5 text-xs text-atlas-success">
+                <span className="h-1.5 w-1.5 rounded-full bg-atlas-success animate-pulse" />
+                IA analisando padrões
+              </div>
+            )}
+          </div>
+          <div className="h-48 sm:h-56">
+            <LiveCandles active={running} />
+          </div>
+          {/* Progresso da meta */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+              <span>Progresso da meta diária</span>
+              <span>{progress.toFixed(0)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-success transition-all duration-700"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Feed de entradas */}
+        <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-4">
+          <div className="text-sm font-medium mb-3 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            Entradas da IA
+          </div>
+          {entries.length === 0 ? (
+            <div className="h-48 flex flex-col items-center justify-center text-center text-muted-foreground">
+              <Loader2 className="w-6 h-6 animate-spin mb-2 text-primary" />
+              <span className="text-sm">Procurando a melhor entrada...</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {entries.map((e) => {
+                const win = e.result === "win"
+                return (
+                  <div
+                    key={e.id}
+                    className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-3 py-2.5"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                          e.dir === "BUY" ? "bg-atlas-success/15" : "bg-destructive/15"
+                        }`}
+                      >
+                        {e.dir === "BUY" ? (
+                          <ArrowUpRight className="w-4 h-4 text-atlas-success" />
+                        ) : (
+                          <ArrowDownRight className="w-4 h-4 text-destructive" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{e.asset}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {e.dir === "BUY" ? "Compra" : "Venda"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`text-sm font-semibold ${win ? "text-atlas-success" : "text-destructive"}`}>
+                      {win ? "+" : ""}
+                      {brl(e.pnl)}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <p className="text-center text-xs text-muted-foreground mt-6 max-w-xl mx-auto text-pretty">
+        A IA opera automaticamente com base na análise de mercado. Resultados passados não garantem retornos futuros.
+      </p>
+    </div>
+  )
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  accent?: boolean
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+        {icon}
+        {label}
+      </div>
+      <div className={`text-lg font-bold ${accent ? "text-atlas-success" : ""}`}>{value}</div>
+    </div>
+  )
+}

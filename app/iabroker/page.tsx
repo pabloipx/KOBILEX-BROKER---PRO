@@ -82,6 +82,7 @@ export default function IaBrokerPage() {
   const [paused, setPaused] = useState(false)
   const [totalCredited, setTotalCredited] = useState(0)
   const [creditedToday, setCreditedToday] = useState(0)
+  const [assertiveness, setAssertiveness] = useState(87)
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -169,6 +170,7 @@ export default function IaBrokerPage() {
           setPaused(!!state.paused)
           setTotalCredited(Number(state.totalCredited || 0))
           setCreditedToday(Number(state.creditedToday || 0))
+          setAssertiveness(Number(state.assertiveness ?? 87))
           setStep("active")
           return
         }
@@ -213,6 +215,7 @@ export default function IaBrokerPage() {
       setPaused(false)
       setTotalCredited(Number(data.state?.totalCredited || 0))
       setCreditedToday(Number(data.state?.creditedToday || 0))
+      setAssertiveness(Number(data.state?.assertiveness ?? 87))
       setStep("active")
     } catch {
       setError("Falha de conexão ao ativar a IA.")
@@ -281,6 +284,7 @@ export default function IaBrokerPage() {
         if (data.state && typeof data.state.totalCredited === "number") {
           setTotalCredited(Number(data.state.totalCredited))
           setCreditedToday(Number(data.state.creditedToday || 0))
+          if (data.state.assertiveness != null) setAssertiveness(Number(data.state.assertiveness))
         } else if (!data.state) {
           // Foi desativada em outro lugar
           setActivatedAt(null)
@@ -347,6 +351,7 @@ export default function IaBrokerPage() {
             totalCredited={totalCredited}
             creditedToday={creditedToday}
             paused={paused}
+            assertiveness={assertiveness}
             onPauseToggle={handlePauseToggle}
             onStop={handleDeactivate}
           />
@@ -838,6 +843,7 @@ function ActivePanel({
   totalCredited: number
   creditedToday: number
   paused: boolean
+  assertiveness: number
   onPauseToggle: () => void
   onStop: () => void
 }) {
@@ -960,6 +966,12 @@ function ActivePanel({
           accent
         />
         <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
+        <StatCard
+          icon={<Sparkles className="w-4 h-4 text-atlas-success" />}
+          label="Assertividade"
+          value={`${assertiveness}%`}
+          accent
+        />
         <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
       </div>
 

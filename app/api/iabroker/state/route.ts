@@ -27,7 +27,10 @@ type IaState = {
   totalCredited: number // rendimento real já creditado no saldo desde a ativação
   creditedToday?: number // rendimento já creditado dentro do dia atual (teto = meta diária)
   dayKey?: string // dia (YYYY-MM-DD, fuso -3) do acumulado atual; ao virar o dia, zera
+  assertiveness?: number // taxa de acerto exibida ao usuário (controlada pelo admin)
 }
+
+const DEFAULT_ASSERTIVENESS = 87 // taxa de acerto padrão exibida ao usuário
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -284,6 +287,7 @@ export async function POST(req: Request) {
       totalCredited: 0,
       creditedToday: 0,
       dayKey: dayKeyOf(now),
+      assertiveness: DEFAULT_ASSERTIVENESS,
     }
     await saveState(admin, settingKey, state)
     return NextResponse.json({ state, balance: newBalance })

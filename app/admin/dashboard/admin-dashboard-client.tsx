@@ -26,6 +26,7 @@ import {
   Zap,
   Gift,
   Repeat,
+  Bot,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -105,7 +106,7 @@ interface KycRequest {
 export default function AdminDashboardClient() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [activeTab, setActiveTab] = useState<"home" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "promotions" | "cards" | "assets" | "manipulation" | "settings">("home")
+  const [activeTab, setActiveTab] = useState<"home" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "promotions" | "cards" | "assets" | "manipulation" | "robo_ia" | "settings">("home")
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Stats - initialize with default values to prevent null errors
@@ -128,6 +129,13 @@ export default function AdminDashboardClient() {
   const [usersLoading, setUsersLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [userDaysFilter, setUserDaysFilter] = useState<number | "all">("all")
+
+  // Robo IA
+  const [iaUsers, setIaUsers] = useState<any[]>([])
+  const [iaLoading, setIaLoading] = useState(false)
+  const [iaSavingId, setIaSavingId] = useState<string | null>(null)
+  const [iaDraft, setIaDraft] = useState<Record<string, string>>({})
+  const [iaSuccess, setIaSuccess] = useState<string | null>(null)
 
   // Deposits
   const [deposits, setDeposits] = useState<any[]>([])
@@ -226,6 +234,7 @@ export default function AdminDashboardClient() {
     if (isAuthenticated && activeTab === "deposits") fetchDeposits()
     if (isAuthenticated && activeTab === "withdrawals") fetchWithdrawals()
     if (isAuthenticated && activeTab === "kyc") fetchKyc()
+    if (isAuthenticated && activeTab === "robo_ia") fetchIaUsers()
     if (isAuthenticated && activeTab === "settings") fetchSettings()
   }, [isAuthenticated, activeTab])
 
@@ -236,6 +245,7 @@ export default function AdminDashboardClient() {
     { id: "deposits", label: "Depositos", icon: CreditCard },
     { id: "withdrawals", label: "Saques", icon: Banknote },
     { id: "kyc", label: "KYC", icon: ShieldCheck },
+    { id: "robo_ia", label: "Robo IA", icon: Bot },
     { id: "affiliates", label: "Afiliados", icon: UserPlus },
     { id: "promotions", label: "Promocoes", icon: Gift },
     { id: "trades", label: "Operacoes", icon: History },
@@ -314,6 +324,51 @@ export default function AdminDashboardClient() {
       setError(err.message)
     } finally {
       setUsersLoading(false)
+    }
+  }
+
+  const fetchIaUsers = async () => {
+    setIaLoading(true)
+    try {
+      const res = await fetch("/api/admin/data?type=ia_users", {
+        headers: { "x-admin-token": ADMIN_TOKEN },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao carregar usuários da IA")
+      setIaUsers(data.iaUsers || [])
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setIaLoading(false)
+    }
+  }
+
+  const handleSaveAssertiveness = async (userId: string) => {
+    const raw = iaDraft[userId]
+    const value = Number(raw)
+    if (!Number.isFinite(value)) return
+    setIaSavingId(userId)
+    setIaSuccess(null)
+    try {
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({ action: "set_ia_assertiveness", userId, assertiveness: value }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao salvar assertividade")
+      setIaUsers((prev) => prev.map((u) => (u.userId === userId ? { ...u, assertiveness: data.assertiveness } : u)))
+      setIaDraft((prev) => {
+        const next = { ...prev }
+        delete next[userId]
+        return next
+      })
+      setIaSuccess(userId)
+      setTimeout(() => setIaSuccess(null), 2000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setIaSavingId(null)
     }
   }
 
@@ -1446,6 +1501,158 @@ export default function AdminDashboardClient() {
                 fetchStats()
               }}
             />
+          )}
+
+          {/* Robo IA Tab */}
+          {activeTab === "robo_ia" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-primary" />
+                    Robo IA
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Usuarios com a IA ativa, resultados e controle de assertividade.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchIaUsers}
+                  disabled={iaLoading}
+                  className="border-[#2A3142] text-gray-300"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${iaLoading ? "animate-spin" : ""}`} />
+                  Atualizar
+                </Button>
+              </div>
+
+              {/* Resumo */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-[#1A1F2E] rounded-xl p-4 border border-[#2A3142]">
+                  <p className="text-xs text-gray-400">IAs ativas</p>
+                  <p className="text-lg font-bold text-white">{iaUsers.length}</p>
+                </div>
+                <div className="bg-[#1A1F2E] rounded-xl p-4 border border-[#2A3142]">
+                  <p className="text-xs text-gray-400">Total investido</p>
+                  <p className="text-lg font-bold text-white">
+                    {formatCurrency(iaUsers.reduce((s, u) => s + Number(u.amount || 0), 0))}
+                  </p>
+                </div>
+                <div className="bg-[#1A1F2E] rounded-xl p-4 border border-[#2A3142]">
+                  <p className="text-xs text-gray-400">Rendimento gerado</p>
+                  <p className="text-lg font-bold text-green-500">
+                    {formatCurrency(iaUsers.reduce((s, u) => s + Number(u.totalCredited || 0), 0))}
+                  </p>
+                </div>
+                <div className="bg-[#1A1F2E] rounded-xl p-4 border border-[#2A3142]">
+                  <p className="text-xs text-gray-400">Creditado hoje</p>
+                  <p className="text-lg font-bold text-green-500">
+                    {formatCurrency(iaUsers.reduce((s, u) => s + Number(u.creditedToday || 0), 0))}
+                  </p>
+                </div>
+              </div>
+
+              {iaLoading ? (
+                <div className="text-center py-10 text-gray-400">Carregando...</div>
+              ) : iaUsers.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 bg-[#1A1F2E] rounded-xl border border-[#2A3142]">
+                  Nenhum usuario com a IA ativa no momento.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {iaUsers.map((u) => {
+                    const draft = iaDraft[u.userId]
+                    const dirty = draft !== undefined && Number(draft) !== Number(u.assertiveness)
+                    return (
+                      <div
+                        key={u.userId}
+                        className="bg-[#1A1F2E] rounded-xl p-4 border border-[#2A3142]"
+                      >
+                        <div className="flex items-start justify-between gap-4 flex-wrap">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-white truncate">{u.user_name}</p>
+                              <span
+                                className={`text-[11px] px-2 py-0.5 rounded-full ${
+                                  u.paused ? "bg-gray-500/20 text-gray-400" : "bg-green-500/20 text-green-500"
+                                }`}
+                              >
+                                {u.paused ? "Pausada" : "Operando"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-400 truncate">{u.user_email}</p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                              Plano {formatCurrency(u.amount)} · {u.daily}% ao dia
+                              {u.activatedAt ? ` · desde ${formatDate(u.activatedAt)}` : ""}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-400">Saldo na carteira</p>
+                            <p className="font-bold text-white">{formatCurrency(u.balance_real)}</p>
+                          </div>
+                        </div>
+
+                        {/* Resultados */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                          <div className="bg-[#0B0F14] rounded-lg p-3">
+                            <p className="text-[11px] text-gray-400">Rendimento total</p>
+                            <p className="font-semibold text-green-500">{formatCurrency(u.totalCredited)}</p>
+                          </div>
+                          <div className="bg-[#0B0F14] rounded-lg p-3">
+                            <p className="text-[11px] text-gray-400">Hoje</p>
+                            <p className="font-semibold text-green-500">{formatCurrency(u.creditedToday)}</p>
+                          </div>
+                          <div className="bg-[#0B0F14] rounded-lg p-3">
+                            <p className="text-[11px] text-gray-400">Meta diaria</p>
+                            <p className="font-semibold text-white">{formatCurrency(u.dailyMeta)}</p>
+                          </div>
+                          <div className="bg-[#0B0F14] rounded-lg p-3">
+                            <p className="text-[11px] text-gray-400">Assertividade atual</p>
+                            <p className="font-semibold text-primary">{u.assertiveness}%</p>
+                          </div>
+                        </div>
+
+                        {/* Editar assertividade */}
+                        <div className="flex items-end gap-3 mt-4 flex-wrap">
+                          <div>
+                            <label className="text-[11px] text-gray-400 block mb-1">Ajustar assertividade (%)</label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={draft ?? String(u.assertiveness)}
+                              onChange={(e) =>
+                                setIaDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
+                              }
+                              className="w-28 bg-[#0B0F14] border-[#2A3142] text-white"
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => handleSaveAssertiveness(u.userId)}
+                            disabled={!dirty || iaSavingId === u.userId}
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                          >
+                            {iaSavingId === u.userId ? (
+                              "Salvando..."
+                            ) : iaSuccess === u.userId ? (
+                              <>
+                                <Check className="w-4 h-4 mr-1" />
+                                Salvo
+                              </>
+                            ) : (
+                              "Salvar"
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Affiliates Tab */}

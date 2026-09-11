@@ -206,6 +206,64 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ kycRequests: kycWithProfiles })
     }
 
+    if (type === "ia_users") {
+      // Estados do Robô de IA ficam em platform_settings, chave ia_broker_state:<userId>.
+      const { data: settings, error: settingsError } = await supabase
+        .from("platform_settings")
+        .select("setting_key, setting_value, updated_at")
+        .like("setting_key", "ia_broker_state:%")
+
+      if (settingsError) throw settingsError
+
+      const parsed = (settings || [])
+        .map((row: any) => {
+          const userId = String(row.setting_key).replace("ia_broker_state:", "")
+          let value: any = null
+          try {
+            value = typeof row.setting_value === "string" ? JSON.parse(row.setting_value) : row.setting_value
+          } catch {
+            value = null
+          }
+          return { userId, value, updatedAt: row.updated_at }
+        })
+        .filter((r: any) => r.value && r.value.active)
+
+      if (parsed.length === 0) return NextResponse.json({ iaUsers: [] })
+
+      const userIds = parsed.map((p: any) => p.userId)
+      const [{ data: profiles }, { data: balances }] = await Promise.all([
+        supabase.from("profiles").select("id, full_name, email").in("id", userIds),
+        supabase.from("user_balances").select("user_id, balance_real").in("user_id", userIds),
+      ])
+
+      const iaUsers = parsed
+        .map((p: any) => {
+          const profile = profiles?.find((x: any) => x.id === p.userId)
+          const balance = balances?.find((b: any) => b.user_id === p.userId)
+          const s = p.value
+          const dailyMeta = round2(Number(s.amount || 0) * (Number(s.daily || 0) / 100))
+          return {
+            userId: p.userId,
+            user_name: profile?.full_name || "Usuario",
+            user_email: profile?.email || "Email nao encontrado",
+            balance_real: Number(balance?.balance_real || 0),
+            planId: s.planId || "",
+            amount: Number(s.amount || 0),
+            daily: Number(s.daily || 0),
+            dailyMeta,
+            totalCredited: round2(Number(s.totalCredited || 0)),
+            creditedToday: round2(Number(s.creditedToday || 0)),
+            assertiveness: Number(s.assertiveness ?? 87),
+            paused: !!s.paused,
+            activatedAt: s.activatedAt || null,
+            updatedAt: p.updatedAt,
+          }
+        })
+        .sort((a: any, b: any) => new Date(b.activatedAt || 0).getTime() - new Date(a.activatedAt || 0).getTime())
+
+      return NextResponse.json({ iaUsers })
+    }
+
     return NextResponse.json({ error: "Tipo invalido" }, { status: 400 })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -233,6 +291,42 @@ export async function POST(req: NextRequest) {
     const payload = actionData || body
 
     console.log("[v0] Payload:", JSON.stringify(payload))
+
+    if (action === "set_ia_assertiveness") {
+      const userId = payload.userId
+      const raw = Number(payload.assertiveness)
+      if (!userId || !Number.isFinite(raw)) {
+        return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+      }
+      // Limita entre 1% e 100% e arredonda para inteiro.
+      const assertiveness = Math.max(1, Math.min(100, Math.round(raw)))
+      const settingKey = `ia_broker_state:${userId}`
+
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.assertiveness = assertiveness
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      return NextResponse.json({ success: true, assertiveness })
+    }
 
     if (action === "update_balance") {
       const userId = payload.userId

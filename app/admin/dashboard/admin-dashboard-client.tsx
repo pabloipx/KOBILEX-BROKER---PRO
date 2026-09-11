@@ -136,6 +136,8 @@ export default function AdminDashboardClient() {
   const [iaSavingId, setIaSavingId] = useState<string | null>(null)
   const [iaDraft, setIaDraft] = useState<Record<string, string>>({})
   const [iaSuccess, setIaSuccess] = useState<string | null>(null)
+  const [iaDetail, setIaDetail] = useState<any | null>(null)
+  const [iaDetailLoading, setIaDetailLoading] = useState(false)
 
   // Deposits
   const [deposits, setDeposits] = useState<any[]>([])
@@ -340,6 +342,24 @@ export default function AdminDashboardClient() {
       setError(err.message)
     } finally {
       setIaLoading(false)
+    }
+  }
+
+  const openIaDetail = async (userId: string) => {
+    setIaDetail(null)
+    setIaDetailLoading(true)
+    try {
+      const res = await fetch(`/api/admin/data?type=ia_user_detail&userId=${encodeURIComponent(userId)}`, {
+        headers: { "x-admin-token": ADMIN_TOKEN },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao carregar detalhes")
+      setIaDetail(data.detail)
+    } catch (err: any) {
+      setError(err.message)
+      setIaDetail(null)
+    } finally {
+      setIaDetailLoading(false)
     }
   }
 
@@ -1646,12 +1666,170 @@ export default function AdminDashboardClient() {
                               "Salvar"
                             )}
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openIaDetail(u.userId)}
+                            className="border-[#2A3142] text-gray-300"
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            Ver detalhes
+                          </Button>
                         </div>
                       </div>
                     )
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Modal de detalhes do usuario da IA */}
+          {(iaDetail || iaDetailLoading) && (
+            <div
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
+              onClick={() => {
+                setIaDetail(null)
+                setIaDetailLoading(false)
+              }}
+            >
+              <div
+                className="bg-[#1A1F2E] w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl border border-[#2A3142] max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between p-4 border-b border-[#2A3142] sticky top-0 bg-[#1A1F2E]">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-primary" />
+                    Detalhes da IA
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setIaDetail(null)
+                      setIaDetailLoading(false)
+                    }}
+                    className="text-gray-400 hover:text-white"
+                    aria-label="Fechar"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {iaDetailLoading || !iaDetail ? (
+                  <div className="p-10 text-center text-gray-400">Carregando detalhes...</div>
+                ) : (
+                  <div className="p-4 space-y-4">
+                    {/* Identificacao */}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-white">{iaDetail.user_name}</p>
+                        <span
+                          className={`text-[11px] px-2 py-0.5 rounded-full ${
+                            iaDetail.paused ? "bg-gray-500/20 text-gray-400" : "bg-green-500/20 text-green-500"
+                          }`}
+                        >
+                          {iaDetail.paused ? "Pausada" : "Operando"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400">{iaDetail.user_email}</p>
+                      {iaDetail.phone ? <p className="text-xs text-gray-500">{iaDetail.phone}</p> : null}
+                      {iaDetail.member_since ? (
+                        <p className="text-[11px] text-gray-500 mt-1">Cliente desde {formatDate(iaDetail.member_since)}</p>
+                      ) : null}
+                    </div>
+
+                    {/* Plano e datas */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Plano investido</p>
+                        <p className="font-semibold text-white">{formatCurrency(iaDetail.amount)}</p>
+                        <p className="text-[11px] text-gray-500">{iaDetail.daily}% ao dia</p>
+                      </div>
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Saldo na carteira</p>
+                        <p className="font-semibold text-white">{formatCurrency(iaDetail.balance_real)}</p>
+                      </div>
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Ativada em</p>
+                        <p className="font-medium text-white text-sm">
+                          {iaDetail.activatedAt ? formatDate(iaDetail.activatedAt) : "-"}
+                        </p>
+                      </div>
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Ultimo acerto</p>
+                        <p className="font-medium text-white text-sm">
+                          {iaDetail.lastSettleAt ? formatDate(iaDetail.lastSettleAt) : "-"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Resultados */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Rendimento total</p>
+                        <p className="font-semibold text-green-500">{formatCurrency(iaDetail.totalCredited)}</p>
+                      </div>
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Creditado hoje</p>
+                        <p className="font-semibold text-green-500">{formatCurrency(iaDetail.creditedToday)}</p>
+                      </div>
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Meta diaria</p>
+                        <p className="font-semibold text-white">{formatCurrency(iaDetail.dailyMeta)}</p>
+                      </div>
+                      <div className="bg-[#0B0F14] rounded-lg p-3">
+                        <p className="text-[11px] text-gray-400">Assertividade</p>
+                        <p className="font-semibold text-primary">{iaDetail.assertiveness}%</p>
+                      </div>
+                    </div>
+
+                    {/* Historico de movimentacoes */}
+                    <div>
+                      <p className="text-sm font-semibold text-white mb-2">
+                        Historico da IA{" "}
+                        <span className="text-xs text-gray-500 font-normal">
+                          ({iaDetail.yieldCount} rendimentos)
+                        </span>
+                      </p>
+                      {iaDetail.transactions.length === 0 ? (
+                        <p className="text-xs text-gray-500 bg-[#0B0F14] rounded-lg p-3">
+                          Nenhuma movimentacao registrada ainda.
+                        </p>
+                      ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {iaDetail.transactions.map((t: any) => {
+                            const isPositive = Number(t.amount) >= 0
+                            const label =
+                              t.type === "ia_invest"
+                                ? "Investimento"
+                                : t.type === "ia_refund"
+                                  ? "Devolucao"
+                                  : "Rendimento"
+                            return (
+                              <div
+                                key={t.id}
+                                className="flex items-center justify-between bg-[#0B0F14] rounded-lg p-3 gap-3"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm text-white">{label}</p>
+                                  <p className="text-[11px] text-gray-500">{formatDate(t.created_at)}</p>
+                                </div>
+                                <p
+                                  className={`text-sm font-semibold shrink-0 ${
+                                    isPositive ? "text-green-500" : "text-red-500"
+                                  }`}
+                                >
+                                  {isPositive ? "+" : ""}
+                                  {formatCurrency(Number(t.amount))}
+                                </p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

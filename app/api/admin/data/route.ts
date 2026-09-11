@@ -264,6 +264,67 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ iaUsers })
     }
 
+    if (type === "ia_user_detail") {
+      const userId = searchParams.get("userId") || ""
+      if (!userId) return NextResponse.json({ error: "userId obrigatorio" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const [{ data: setting }, { data: profile }, { data: balance }, { data: txs }] = await Promise.all([
+        supabase.from("platform_settings").select("setting_value, updated_at").eq("setting_key", settingKey).maybeSingle(),
+        supabase.from("profiles").select("id, full_name, email, phone, created_at").eq("id", userId).maybeSingle(),
+        supabase.from("user_balances").select("balance_real").eq("user_id", userId).maybeSingle(),
+        // Histórico de movimentações geradas pela IA (investimento, rendimentos, devolução).
+        supabase
+          .from("transactions")
+          .select("id, type, amount, balance_after, description, created_at")
+          .eq("user_id", userId)
+          .in("type", ["ia_invest", "ia_yield", "ia_refund"])
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ])
+
+      let state: any = null
+      if (setting?.setting_value) {
+        try {
+          state = typeof setting.setting_value === "string" ? JSON.parse(setting.setting_value) : setting.setting_value
+        } catch {
+          state = null
+        }
+      }
+
+      const transactions = txs || []
+      const totalYield = round2(
+        transactions.filter((t: any) => t.type === "ia_yield").reduce((s: number, t: any) => s + Number(t.amount || 0), 0),
+      )
+      const yieldCount = transactions.filter((t: any) => t.type === "ia_yield").length
+
+      return NextResponse.json({
+        detail: {
+          userId,
+          user_name: profile?.full_name || "Usuario",
+          user_email: profile?.email || "Email nao encontrado",
+          phone: profile?.phone || null,
+          member_since: profile?.created_at || null,
+          balance_real: Number(balance?.balance_real || 0),
+          active: !!state?.active,
+          paused: !!state?.paused,
+          planId: state?.planId || "",
+          amount: Number(state?.amount || 0),
+          daily: Number(state?.daily || 0),
+          dailyMeta: round2(Number(state?.amount || 0) * (Number(state?.daily || 0) / 100)),
+          totalCredited: round2(Number(state?.totalCredited || 0)),
+          creditedToday: round2(Number(state?.creditedToday || 0)),
+          assertiveness: Number(state?.assertiveness ?? 87),
+          activatedAt: state?.activatedAt || null,
+          lastSettleAt: state?.lastSettleAt || null,
+          updatedAt: setting?.updated_at || null,
+          totalYield,
+          yieldCount,
+          transactions,
+        },
+      })
+    }
+
     return NextResponse.json({ error: "Tipo invalido" }, { status: 400 })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })

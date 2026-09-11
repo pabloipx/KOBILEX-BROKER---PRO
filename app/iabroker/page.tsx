@@ -29,7 +29,9 @@ import {
   AlertTriangle,
 } from "lucide-react"
 
-type Step = "connect" | "connecting" | "plans" | "active"
+type Step = "welcome" | "connect" | "connecting" | "plans" | "active"
+
+const WELCOME_KEY = "uryn_ia_welcomed"
 
 type Plan = {
   id: string
@@ -88,6 +90,24 @@ export default function IaBrokerPage() {
       mounted.current = false
     }
   }, [])
+
+  // Primeira visita: mostra a tela de boas-vindas antes do login.
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(WELCOME_KEY)) setStep("welcome")
+    } catch {
+      // localStorage indisponível — segue direto para o login
+    }
+  }, [])
+
+  const handleWelcomeContinue = () => {
+    try {
+      localStorage.setItem(WELCOME_KEY, "1")
+    } catch {
+      // ignora
+    }
+    setStep("connect")
+  }
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -302,6 +322,8 @@ export default function IaBrokerPage() {
       </header>
 
       <main className="flex-1 flex flex-col items-center px-4 py-6 sm:py-10">
+        {step === "welcome" && <Welcome onContinue={handleWelcomeContinue} />}
+
         {step === "connect" && (
           <ConnectForm
             email={email}
@@ -330,6 +352,58 @@ export default function IaBrokerPage() {
           />
         )}
       </main>
+    </div>
+  )
+}
+
+/* ---------------- Etapa 0: Boas-vindas (primeira visita) ---------------- */
+
+function Welcome({ onContinue }: { onContinue: () => void }) {
+  return (
+    <div className="w-full max-w-md mx-auto flex flex-col items-center text-center">
+      <div className="relative w-full rounded-3xl border border-border/60 bg-card/40 backdrop-blur-sm overflow-hidden p-8 sm:p-10">
+        <div className="absolute inset-0 opacity-40 pointer-events-none">
+          <LiveCandles />
+        </div>
+        <div
+          className="absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full blur-3xl pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(249,115,22,0.28), transparent 70%)" }}
+        />
+
+        <div className="relative flex flex-col items-center">
+          <div className="relative mb-6">
+            <div className="absolute inset-0 rounded-2xl bg-primary/40 blur-2xl" />
+            <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-orange-600 flex items-center justify-center shadow-lg shadow-primary/30">
+              <Bot className="w-10 h-10 text-white" />
+            </div>
+          </div>
+
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold uppercase tracking-wide mb-4">
+            <Sparkles className="w-3.5 h-3.5" />
+            Seja bem-vindo
+          </span>
+
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground text-balance mb-2">
+            Robô de IA URYN
+          </h1>
+          <p className="text-muted-foreground text-sm sm:text-base text-pretty mb-8 max-w-sm">
+            A inteligência artificial que analisa o mercado e opera no gráfico por você, 24 horas por dia.
+          </p>
+
+          <button
+            onClick={onContinue}
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-primary to-orange-600 text-white font-semibold text-base shadow-lg shadow-primary/25 hover:brightness-110 active:scale-[0.99] transition"
+          >
+            <Zap className="w-5 h-5" />
+            Ativar
+          </button>
+
+          <div className="flex items-center gap-1.5 mt-5 text-xs text-muted-foreground">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            Conexão criptografada · Powered by Anthropic Claude
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

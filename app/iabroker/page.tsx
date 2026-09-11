@@ -834,6 +834,7 @@ function ActivePanel({
   totalCredited,
   creditedToday,
   paused,
+  assertiveness,
   onPauseToggle,
   onStop,
 }: {

@@ -974,12 +974,6 @@ function ActivePanel({
           accent
         />
         <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
-        <StatCard
-          icon={<Sparkles className="w-4 h-4 text-atlas-success" />}
-          label="Assertividade"
-          value={`${assertiveness}%`}
-          accent
-        />
         <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
       </div>
 

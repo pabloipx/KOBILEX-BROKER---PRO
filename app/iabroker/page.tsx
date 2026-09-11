@@ -1031,56 +1031,6 @@ function ActivePanel({
             </div>
           </div>
         </div>
-
-        {/* Feed de entradas */}
-        <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-4">
-          <div className="text-sm font-medium mb-3 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            Entradas da IA
-          </div>
-          {entries.length === 0 ? (
-            <div className="h-48 flex flex-col items-center justify-center text-center text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin mb-2 text-primary" />
-              <span className="text-sm">Procurando a melhor entrada...</span>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {entries.map((e) => {
-                const win = e.result === "win"
-                return (
-                  <div
-                    key={e.id}
-                    className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-3 py-2.5"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                          e.dir === "BUY" ? "bg-atlas-success/15" : "bg-destructive/15"
-                        }`}
-                      >
-                        {e.dir === "BUY" ? (
-                          <ArrowUpRight className="w-4 h-4 text-atlas-success" />
-                        ) : (
-                          <ArrowDownRight className="w-4 h-4 text-destructive" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">{e.asset}</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {e.dir === "BUY" ? "Compra" : "Venda"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className={`text-sm font-semibold ${win ? "text-atlas-success" : "text-destructive"}`}>
-                      {win ? "+" : ""}
-                      {brl(e.pnl)}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
       </div>
 
       <p className="text-center text-xs text-muted-foreground mt-6 max-w-xl mx-auto text-pretty">

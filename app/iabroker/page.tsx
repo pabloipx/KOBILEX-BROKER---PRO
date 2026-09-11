@@ -904,55 +904,62 @@ function ActivePanel({
   return (
     <div className="w-full max-w-4xl animate-fade-up">
       {/* Barra de status */}
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 flex items-center justify-between gap-4 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-atlas-orange-dark">
-              <Bot className="w-6 h-6 text-primary-foreground" />
-            </div>
-            {running && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-atlas-success opacity-75" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-atlas-success" />
-              </span>
-            )}
-          </div>
-          <div>
-            <div className="font-semibold flex items-center gap-2">
-              IA URYN
-              <span
-                className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                  running ? "bg-atlas-success/15 text-atlas-success" : "bg-secondary text-muted-foreground"
-                }`}
-              >
-                {running ? "Operando" : "Pausada"}
-              </span>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Plano {brl(plan.amount)} · {plan.daily}% ao dia
-            </div>
-            {activatedAt && (
-              <div className="text-[11px] text-muted-foreground/80 mt-0.5">
-                Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 mb-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="relative shrink-0">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/20">
+                <Bot className="w-6 h-6 text-primary-foreground" />
               </div>
-            )}
+              {running && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-atlas-success opacity-75" />
+                  <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-atlas-success ring-2 ring-card" />
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-base leading-tight">IA URYN</span>
+                <span
+                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-full ${
+                    running ? "bg-atlas-success/15 text-atlas-success" : "bg-secondary text-muted-foreground"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      running ? "bg-atlas-success animate-pulse" : "bg-muted-foreground"
+                    }`}
+                  />
+                  {running ? "Operando" : "Pausada"}
+                </span>
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                Plano <span className="text-foreground font-medium">{brl(plan.amount)}</span> · {plan.daily}% ao dia
+              </div>
+              {activatedAt && (
+                <div className="text-[11px] text-muted-foreground/80 mt-0.5">
+                  Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onPauseToggle}
-            className="h-10 px-4 rounded-xl border border-border bg-secondary hover:bg-accent transition-colors flex items-center gap-2 text-sm font-medium"
-          >
-            {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {running ? "Pausar" : "Retomar"}
-          </button>
-          <button
-            onClick={onStop}
-            className="h-10 px-4 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-2 text-sm font-medium"
-          >
-            <Power className="w-4 h-4" />
-            Desativar
-          </button>
+          <div className="flex items-center gap-2 sm:shrink-0">
+            <button
+              onClick={onPauseToggle}
+              className="flex-1 sm:flex-none h-11 px-4 rounded-xl border border-border bg-secondary hover:bg-accent active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm font-medium"
+            >
+              {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {running ? "Pausar" : "Retomar"}
+            </button>
+            <button
+              onClick={onStop}
+              className="flex-1 sm:flex-none h-11 px-4 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm font-medium"
+            >
+              <Power className="w-4 h-4" />
+              Desativar
+            </button>
+          </div>
         </div>
       </div>
 

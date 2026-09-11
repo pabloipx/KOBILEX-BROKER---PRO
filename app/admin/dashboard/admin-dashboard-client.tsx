@@ -132,6 +132,9 @@ export default function AdminDashboardClient() {
 
   // Robo IA
   const [iaUsers, setIaUsers] = useState<any[]>([])
+  const [iaMetaDraft, setIaMetaDraft] = useState<Record<string, string>>({})
+  const [iaMetaSavingId, setIaMetaSavingId] = useState<string | null>(null)
+  const [iaEarningSavingId, setIaEarningSavingId] = useState<string | null>(null)
   const [iaLoading, setIaLoading] = useState(false)
   const [iaSavingId, setIaSavingId] = useState<string | null>(null)
   const [iaDraft, setIaDraft] = useState<Record<string, string>>({})
@@ -389,6 +392,63 @@ export default function AdminDashboardClient() {
       setError(err.message)
     } finally {
       setIaSavingId(null)
+    }
+  }
+
+  const handleSaveMeta = async (userId: string) => {
+    const raw = iaMetaDraft[userId]
+    setIaMetaSavingId(userId)
+    setIaSuccess(null)
+    try {
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({
+          action: "set_ia_meta",
+          userId,
+          meta: raw === undefined || raw === "" ? null : Number(raw),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao salvar meta")
+      setIaUsers((prev) =>
+        prev.map((u) =>
+          u.userId === userId
+            ? { ...u, metaOverride: data.metaOverride, effectiveMeta: data.effectiveMeta }
+            : u,
+        ),
+      )
+      setIaMetaDraft((prev) => {
+        const next = { ...prev }
+        delete next[userId]
+        return next
+      })
+      setIaSuccess(userId)
+      setTimeout(() => setIaSuccess(null), 2000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setIaMetaSavingId(null)
+    }
+  }
+
+  const handleToggleEarning = async (userId: string, enabled: boolean) => {
+    setIaEarningSavingId(userId)
+    try {
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({ action: "set_ia_earning", userId, enabled }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao alterar rendimento")
+      setIaUsers((prev) =>
+        prev.map((u) => (u.userId === userId ? { ...u, earningEnabled: data.earningEnabled } : u)),
+      )
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setIaEarningSavingId(null)
     }
   }
 
@@ -1601,6 +1661,11 @@ export default function AdminDashboardClient() {
                               >
                                 {u.paused ? "Pausada" : "Operando"}
                               </span>
+                              {u.earningEnabled === false ? (
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                                  Sem rendimento
+                                </span>
+                              ) : null}
                             </div>
                             <p className="text-xs text-gray-400 truncate">{u.user_email}</p>
                             <p className="text-[11px] text-gray-500 mt-1">
@@ -1626,7 +1691,12 @@ export default function AdminDashboardClient() {
                           </div>
                           <div className="bg-[#0B0F14] rounded-lg p-3">
                             <p className="text-[11px] text-gray-400">Meta diaria</p>
-                            <p className="font-semibold text-white">{formatCurrency(u.dailyMeta)}</p>
+                            <p className="font-semibold text-white">
+                              {formatCurrency(u.effectiveMeta ?? u.dailyMeta)}
+                            </p>
+                            {u.metaOverride != null ? (
+                              <p className="text-[10px] text-primary">personalizada</p>
+                            ) : null}
                           </div>
                           <div className="bg-[#0B0F14] rounded-lg p-3">
                             <p className="text-[11px] text-gray-400">Assertividade atual</p>
@@ -1674,6 +1744,49 @@ export default function AdminDashboardClient() {
                           >
                             <Eye className="w-4 h-4 mr-1" />
                             Ver detalhes
+                          </Button>
+                        </div>
+
+                        {/* Controlar meta diaria e ligar/desligar rendimento */}
+                        <div className="flex items-end gap-3 mt-3 flex-wrap border-t border-[#2A3142] pt-3">
+                          <div>
+                            <label className="text-[11px] text-gray-400 block mb-1">Meta diaria (R$)</label>
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              placeholder={`Plano: ${formatCurrency(u.dailyMeta)}`}
+                              value={iaMetaDraft[u.userId] ?? (u.metaOverride != null ? String(u.metaOverride) : "")}
+                              onChange={(e) =>
+                                setIaMetaDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
+                              }
+                              className="w-36 bg-[#0B0F14] border-[#2A3142] text-white"
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSaveMeta(u.userId)}
+                            disabled={iaMetaSavingId === u.userId}
+                            className="border-[#2A3142] text-gray-300"
+                          >
+                            {iaMetaSavingId === u.userId ? "Salvando..." : "Salvar meta"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleToggleEarning(u.userId, u.earningEnabled === false)}
+                            disabled={iaEarningSavingId === u.userId}
+                            className={
+                              u.earningEnabled === false
+                                ? "bg-green-600 hover:bg-green-600/90 text-white"
+                                : "bg-red-600 hover:bg-red-600/90 text-white"
+                            }
+                          >
+                            {iaEarningSavingId === u.userId
+                              ? "..."
+                              : u.earningEnabled === false
+                                ? "Ligar rendimento"
+                                : "Desligar rendimento"}
                           </Button>
                         </div>
                       </div>

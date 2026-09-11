@@ -242,6 +242,9 @@ export async function GET(req: NextRequest) {
           const balance = balances?.find((b: any) => b.user_id === p.userId)
           const s = p.value
           const dailyMeta = round2(Number(s.amount || 0) * (Number(s.daily || 0) / 100))
+          const hasOverride =
+            s.metaOverride != null && Number.isFinite(Number(s.metaOverride)) && Number(s.metaOverride) >= 0
+          const effectiveMeta = hasOverride ? round2(Number(s.metaOverride)) : dailyMeta
           return {
             userId: p.userId,
             user_name: profile?.full_name || "Usuario",
@@ -251,6 +254,9 @@ export async function GET(req: NextRequest) {
             amount: Number(s.amount || 0),
             daily: Number(s.daily || 0),
             dailyMeta,
+            metaOverride: hasOverride ? round2(Number(s.metaOverride)) : null,
+            effectiveMeta,
+            earningEnabled: s.earningEnabled !== false,
             totalCredited: round2(Number(s.totalCredited || 0)),
             creditedToday: round2(Number(s.creditedToday || 0)),
             assertiveness: Number(s.assertiveness ?? 87),
@@ -312,6 +318,11 @@ export async function GET(req: NextRequest) {
           amount: Number(state?.amount || 0),
           daily: Number(state?.daily || 0),
           dailyMeta: round2(Number(state?.amount || 0) * (Number(state?.daily || 0) / 100)),
+          metaOverride:
+            state?.metaOverride != null && Number.isFinite(Number(state.metaOverride))
+              ? round2(Number(state.metaOverride))
+              : null,
+          earningEnabled: state?.earningEnabled !== false,
           totalCredited: round2(Number(state?.totalCredited || 0)),
           creditedToday: round2(Number(state?.creditedToday || 0)),
           assertiveness: Number(state?.assertiveness ?? 87),
@@ -387,6 +398,90 @@ export async function POST(req: NextRequest) {
         .eq("id", existing.id)
 
       return NextResponse.json({ success: true, assertiveness })
+    }
+
+    if (action === "set_ia_meta") {
+      // Define (ou remove) a meta diária personalizada de um usuário na IA.
+      // meta null/vazia => volta para a meta padrão do plano.
+      const userId = payload.userId
+      const rawMeta = payload.meta
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      if (rawMeta === null || rawMeta === undefined || rawMeta === "") {
+        state.metaOverride = null
+      } else {
+        const meta = Number(rawMeta)
+        if (!Number.isFinite(meta) || meta < 0) {
+          return NextResponse.json({ error: "Meta invalida" }, { status: 400 })
+        }
+        state.metaOverride = round2(meta)
+      }
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      const effectiveMeta =
+        state.metaOverride != null
+          ? state.metaOverride
+          : round2(Number(state.amount || 0) * (Number(state.daily || 0) / 100))
+
+      return NextResponse.json({ success: true, metaOverride: state.metaOverride, effectiveMeta })
+    }
+
+    if (action === "set_ia_earning") {
+      // Liga/desliga o rendimento de um usuário na IA. Desligado, nada é creditado.
+      const userId = payload.userId
+      const enabled = !!payload.enabled
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.earningEnabled = enabled
+      // Ao religar, zera o marco de acerto para não creditar um lote pelo tempo em que ficou desligado.
+      if (enabled) state.lastSettleAt = new Date().toISOString()
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      return NextResponse.json({ success: true, earningEnabled: enabled })
     }
 
     if (action === "update_balance") {

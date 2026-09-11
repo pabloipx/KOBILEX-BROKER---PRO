@@ -28,6 +28,8 @@ type IaState = {
   creditedToday?: number // rendimento já creditado dentro do dia atual (teto = meta diária)
   dayKey?: string // dia (YYYY-MM-DD, fuso -3) do acumulado atual; ao virar o dia, zera
   assertiveness?: number // taxa de acerto exibida ao usuário (controlada pelo admin)
+  metaOverride?: number | null // meta diária personalizada (R$) definida pelo admin; sobrepõe a meta do plano
+  earningEnabled?: boolean // admin pode desligar o rendimento deste usuário (default: true)
 }
 
 const DEFAULT_ASSERTIVENESS = 87 // taxa de acerto padrão exibida ao usuário
@@ -129,13 +131,18 @@ async function settle(
   const now = Date.now()
   const balance = await readBalance(admin, userId)
 
-  if (state.paused) {
+  // Admin pode congelar o rendimento (pausa) ou desligá-lo por completo (earningEnabled=false).
+  if (state.paused || state.earningEnabled === false) {
     return { state, balance, credited: 0 }
   }
 
   // Teto diário = meta do dia (a % sobre o investido). O rendimento sobe aos poucos
   // ao longo do dia até bater essa meta e então para, voltando a render no dia seguinte.
-  const dailyMeta = round2(state.amount * (state.daily / 100))
+  // Meta do dia: usa a meta personalizada do admin quando definida; senão, a meta do plano (a % sobre o investido).
+  const dailyMeta =
+    state.metaOverride != null && Number.isFinite(state.metaOverride) && state.metaOverride >= 0
+      ? round2(state.metaOverride)
+      : round2(state.amount * (state.daily / 100))
   const todayKey = dayKeyOf(now)
 
   let creditedToday = state.creditedToday || 0
@@ -288,6 +295,8 @@ export async function POST(req: Request) {
       creditedToday: 0,
       dayKey: dayKeyOf(now),
       assertiveness: DEFAULT_ASSERTIVENESS,
+      metaOverride: null,
+      earningEnabled: true,
     }
     await saveState(admin, settingKey, state)
     return NextResponse.json({ state, balance: newBalance })

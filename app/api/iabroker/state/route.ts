@@ -242,7 +242,9 @@ async function settle(
     const target = tradesTargetToday
     if (target <= 0 || dailyMeta <= 0) return
     const progress = Math.min(1, creditedToday / dailyMeta)
-    const shouldHave = progress >= 1 ? target : Math.floor(progress * target)
+    // Assim que há rendimento creditado, a 1ª entrada já aparece (ceil). A entrada final
+    // (que reconcilia o dia) fica reservada para quando a meta fecha (progress >= 1).
+    const shouldHave = progress >= 1 ? target : Math.min(target - 1, Math.ceil(progress * target))
     const rows: ReturnType<typeof buildAiTradeRow>[] = []
     while (tradesToday < shouldHave) {
       const isFinal = tradesToday + 1 === target
@@ -363,7 +365,9 @@ async function settleLoss(
     const target = tradesTargetToday
     if (target <= 0 || dailyLoss <= 0) return
     const progress = Math.min(1, lostToday / dailyLoss)
-    const shouldHave = progress >= 1 ? target : Math.floor(progress * target)
+    // Assim que há prejuízo debitado, a 1ª entrada já aparece (ceil). A entrada final
+    // (que reconcilia o dia no vermelho) fica reservada para quando o alvo fecha (progress >= 1).
+    const shouldHave = progress >= 1 ? target : Math.min(target - 1, Math.ceil(progress * target))
     const rows: ReturnType<typeof buildAiTradeRow>[] = []
     while (tradesToday < shouldHave) {
       const isFinal = tradesToday + 1 === target

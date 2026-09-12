@@ -934,40 +934,38 @@ function ActivePanel({
         </div>
       </div>
 
-      {/* Métricas */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <StatCard icon={<Wallet className="w-4 h-4 text-primary" />} label="Saldo na carteira" value={brl(balance)} />
-        <StatCard icon={<Zap className="w-4 h-4" />} label="Investido" value={brl(plan.amount)} />
-        <StatCard
-          icon={<TrendingUp className="w-4 h-4 text-atlas-success" />}
-          label="Lucro hoje"
-          value={brl(todayProfit)}
-          accent
-        />
-        <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
-        <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
-      </div>
-
-      {/* Rendimento já gerado pela IA */}
-      <div className="rounded-2xl border border-atlas-success/30 bg-gradient-to-br from-atlas-success/10 to-transparent p-5 mb-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+      {/* Rendimento já gerado pela IA — card de destaque */}
+      <div className="rounded-2xl border border-atlas-success/30 bg-gradient-to-br from-atlas-success/10 to-transparent p-4 sm:p-5 mb-4">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+          <TrendingUp className="w-4 h-4 text-atlas-success" />
+          Rendimento já gerado pela IA
+        </div>
+        <div className="text-3xl sm:text-4xl font-bold text-atlas-success leading-none">{brl(totalEarned)}</div>
+        <div className="text-xs text-muted-foreground mt-1.5">
+          Acumulado desde a ativação · {count} {count === 1 ? "entrada" : "entradas"}
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-atlas-success/15">
           <div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <TrendingUp className="w-4 h-4 text-atlas-success" />
-              Rendimento já gerado pela IA
-            </div>
-            <div className="text-3xl sm:text-4xl font-bold text-atlas-success">{brl(totalEarned)}</div>
-            <div className="text-xs text-muted-foreground mt-1.5">
-              Acumulado desde a ativação · {count} {count === 1 ? "entrada" : "entradas"}
-            </div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-0.5">Lucro hoje</div>
+            <div className="text-lg font-bold text-atlas-success">{brl(todayProfit)}</div>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground mb-1">Retorno sobre o investido</div>
-            <div className="text-2xl font-bold">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-0.5">
+              Retorno sobre o investido
+            </div>
+            <div className="text-lg font-bold">
               {plan.amount > 0 ? ((totalEarned / plan.amount) * 100).toFixed(2) : "0.00"}%
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Métricas — grade equilibrada (2×2 no mobile, 4 no desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <StatCard icon={<Wallet className="w-4 h-4 text-primary" />} label="Saldo na carteira" value={brl(balance)} />
+        <StatCard icon={<Zap className="w-4 h-4" />} label="Investido" value={brl(plan.amount)} />
+        <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
+        <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">

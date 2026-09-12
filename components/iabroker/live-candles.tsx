@@ -21,7 +21,7 @@ function makeInitial(): Candle[] {
   return candles
 }
 
-export function LiveCandles({ active }: { active: boolean }) {
+export function LiveCandles({ active = true }: { active?: boolean }) {
   const [candles, setCandles] = useState<Candle[]>(() => makeInitial())
   const lastClose = useRef(candles[candles.length - 1].close)
 

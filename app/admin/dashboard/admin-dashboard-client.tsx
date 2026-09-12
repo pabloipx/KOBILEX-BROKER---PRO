@@ -138,7 +138,6 @@ export default function AdminDashboardClient() {
   const [iaPauseSavingId, setIaPauseSavingId] = useState<string | null>(null)
   const [iaCreditDraft, setIaCreditDraft] = useState<Record<string, string>>({})
   const [iaCreditSavingId, setIaCreditSavingId] = useState<string | null>(null)
-  const [iaLossDraft, setIaLossDraft] = useState<Record<string, string>>({})
   const [iaLossSavingId, setIaLossSavingId] = useState<string | null>(null)
   const [iaLoading, setIaLoading] = useState(false)
   const [iaSavingId, setIaSavingId] = useState<string | null>(null)
@@ -460,11 +459,10 @@ export default function AdminDashboardClient() {
   const handleToggleLoss = async (userId: string, enabled: boolean) => {
     setIaLossSavingId(userId)
     try {
-      const lossPerDay = enabled ? (iaLossDraft[userId] ?? "") : ""
       const res = await fetch("/api/admin/data", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
-        body: JSON.stringify({ action: "set_ia_loss", userId, enabled, lossPerDay }),
+        body: JSON.stringify({ action: "set_ia_loss", userId, enabled, lossPerDay: "" }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Erro ao alterar modo prejuizo")
@@ -1897,51 +1895,34 @@ export default function AdminDashboardClient() {
                               {lossOn ? "Ativo" : "Desligado"}
                             </span>
                           </div>
-                          <p className="text-[10px] text-gray-500 mb-2">
-                            Ligado, em vez de render o saldo do usuario cai aos poucos ate o prejuizo do dia. As
-                            entradas do dia fecham no vermelho no historico da tela de Trade.
+                          <p className="text-[10px] text-gray-500 mb-3">
+                            Ligado, em vez de render o saldo do usuario cai aos poucos ate a meta do dia. As entradas do
+                            dia fecham no vermelho no historico da tela de Trade.
                           </p>
-                          <div className="flex items-end gap-3 flex-wrap">
-                            <div className="flex-1 min-w-[140px]">
-                              <label className="text-[11px] text-gray-400 block mb-1">Prejuizo do dia (R$)</label>
-                              <Input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                inputMode="decimal"
-                                placeholder={`Padrao: ${formatCurrency(meta)}`}
-                                value={iaLossDraft[u.userId] ?? (u.lossPerDay != null ? String(u.lossPerDay) : "")}
-                                onChange={(e) =>
-                                  setIaLossDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
-                                }
-                                className="w-full bg-[#0B0F14] border-[#2A3142] text-white h-11 text-base"
-                              />
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={() => handleToggleLoss(u.userId, !lossOn)}
-                              disabled={iaLossSavingId === u.userId}
-                              className={
-                                lossOn
-                                  ? "bg-green-600 hover:bg-green-600/90 text-white h-11 min-w-[120px]"
-                                  : "bg-red-600 hover:bg-red-600/90 text-white h-11 min-w-[120px]"
-                              }
-                            >
-                              {iaLossSavingId === u.userId
-                                ? "..."
-                                : lossOn
-                                  ? "Parar prejuizo"
-                                  : "Colocar em prejuizo"}
-                            </Button>
-                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => handleToggleLoss(u.userId, !lossOn)}
+                            disabled={iaLossSavingId === u.userId}
+                            className={
+                              lossOn
+                                ? "w-full bg-green-600 hover:bg-green-600/90 text-white h-11"
+                                : "w-full bg-red-600 hover:bg-red-600/90 text-white h-11"
+                            }
+                          >
+                            {iaLossSavingId === u.userId
+                              ? "..."
+                              : lossOn
+                                ? "Parar prejuizo"
+                                : "Colocar em prejuizo"}
+                          </Button>
                           {lossOn ? (
                             <p className="text-[10px] text-red-400 mt-2">
-                              Perda de hoje ate agora: {formatCurrency(Number(u.lostToday || 0))}. Vazio usa a meta do
-                              plano como valor do prejuizo. O saldo nunca fica negativo.
+                              Perda de hoje ate agora: {formatCurrency(Number(u.lostToday || 0))}. O saldo nunca fica
+                              negativo.
                             </p>
                           ) : (
                             <p className="text-[10px] text-gray-500 mt-2">
-                              Vazio usa a meta do plano como valor do prejuizo. O saldo nunca fica negativo.
+                              Usa a meta do plano como valor do prejuizo. O saldo nunca fica negativo.
                             </p>
                           )}
                         </div>

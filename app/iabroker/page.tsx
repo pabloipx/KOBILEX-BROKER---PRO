@@ -83,6 +83,8 @@ export default function IaBrokerPage() {
   const [totalCredited, setTotalCredited] = useState(0)
   const [creditedToday, setCreditedToday] = useState(0)
   const [assertiveness, setAssertiveness] = useState(87)
+  // Total real de entradas registradas pela IA (vem do servidor, aparece no card "Entradas").
+  const [entriesTotal, setEntriesTotal] = useState(0)
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -171,6 +173,7 @@ export default function IaBrokerPage() {
           setTotalCredited(Number(state.totalCredited || 0))
           setCreditedToday(Number(state.creditedToday || 0))
           setAssertiveness(Number(state.assertiveness ?? 87))
+          setEntriesTotal(Number(state.tradesTotal || 0))
           setStep("active")
           return
         }
@@ -216,6 +219,7 @@ export default function IaBrokerPage() {
       setTotalCredited(Number(data.state?.totalCredited || 0))
       setCreditedToday(Number(data.state?.creditedToday || 0))
       setAssertiveness(Number(data.state?.assertiveness ?? 87))
+      setEntriesTotal(Number(data.state?.tradesTotal || 0))
       setStep("active")
     } catch {
       setError("Falha de conexão ao ativar a IA.")
@@ -263,6 +267,7 @@ export default function IaBrokerPage() {
     setActivatedAt(null)
     setPaused(false)
     setTotalCredited(0)
+    setEntriesTotal(0)
     setStep("plans")
   }
 
@@ -284,6 +289,7 @@ export default function IaBrokerPage() {
         if (data.state && typeof data.state.totalCredited === "number") {
           setTotalCredited(Number(data.state.totalCredited))
           setCreditedToday(Number(data.state.creditedToday || 0))
+          setEntriesTotal(Number(data.state.tradesTotal || 0))
           if (data.state.assertiveness != null) setAssertiveness(Number(data.state.assertiveness))
         } else if (!data.state) {
           // Foi desativada em outro lugar
@@ -352,6 +358,7 @@ export default function IaBrokerPage() {
             creditedToday={creditedToday}
             paused={paused}
             assertiveness={assertiveness}
+            entriesCount={entriesTotal}
             onPauseToggle={handlePauseToggle}
             onStop={handleDeactivate}
           />
@@ -835,6 +842,7 @@ function ActivePanel({
   creditedToday,
   paused,
   assertiveness,
+  entriesCount,
   onPauseToggle,
   onStop,
 }: {
@@ -845,6 +853,7 @@ function ActivePanel({
   creditedToday: number
   paused: boolean
   assertiveness: number
+  entriesCount: number
   onPauseToggle: () => void
   onStop: () => void
 }) {
@@ -856,47 +865,9 @@ function ActivePanel({
   const todayProfit = Math.min(dailyTarget, creditedToday)
   const metaReached = dailyTarget > 0 && creditedToday >= dailyTarget - 0.01
 
-  // Feed visual de entradas — puramente ilustrativo, NÃO movimenta dinheiro.
-  const seededCount = useMemo(() => {
-    const start = activatedAt ? new Date(activatedAt).getTime() : Date.now()
-    return Math.floor(Math.max(0, Date.now() - start) / 45_000)
-  }, [activatedAt])
-
-  const [entries, setEntries] = useState<Entry[]>([])
-  const [count, setCount] = useState(seededCount)
-  const idRef = useRef(0)
-
-  useEffect(() => {
-    if (!running) return
-    let timer: ReturnType<typeof setTimeout>
-    let cancelled = false
-
-    const runEntry = () => {
-      idRef.current += 1
-      const win = Math.random() < 0.72
-      const dir: Entry["dir"] = Math.random() < 0.5 ? "BUY" : "SELL"
-      const asset = ASSETS[Math.floor(Math.random() * ASSETS.length)]
-      const base = plan.amount * 0.02
-      const pnl = win ? base * (0.85 + Math.random() * 0.15) : -base * (0.5 + Math.random() * 0.3)
-      const entry: Entry = { id: idRef.current, dir, asset, result: win ? "win" : "loss", pnl }
-      setEntries((prev) => [entry, ...prev].slice(0, 8))
-      setCount((c) => c + 1)
-      schedule()
-    }
-
-    const schedule = () => {
-      if (cancelled) return
-      // Entrada a cada 20–40s: a IA aguarda a melhor oportunidade, sem operar toda hora
-      const delay = 20000 + Math.random() * 20000
-      timer = setTimeout(runEntry, delay)
-    }
-
-    schedule()
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [running, plan.amount])
+  // As entradas da IA são operações reais gravadas no servidor (aparecem no histórico da tela de
+  // TRADE). O total exibido aqui vem do estado do servidor — sem contador ilustrativo no cliente.
+  const count = entriesCount
 
   const totalEarned = totalCredited
   const progress = dailyTarget > 0 ? Math.min(100, (todayProfit / dailyTarget) * 100) : 0

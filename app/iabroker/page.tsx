@@ -968,6 +968,24 @@ function ActivePanel({
         <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
       </div>
 
+      {/* Análise em tempo real — visualização das operações da IA */}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Activity className="w-4 h-4 text-primary" />
+            Análise em tempo real
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-atlas-success">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-atlas-success opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-atlas-success" />
+            </span>
+            IA analisando padrões
+          </div>
+        </div>
+        <LiveCandles active />
+      </div>
+
       {/* Progresso da meta diária — dado real (valor creditado hoje / meta) */}
       <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
         <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">

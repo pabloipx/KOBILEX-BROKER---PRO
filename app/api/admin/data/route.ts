@@ -257,6 +257,10 @@ export async function GET(req: NextRequest) {
             metaOverride: hasOverride ? round2(Number(s.metaOverride)) : null,
             effectiveMeta,
             earningEnabled: s.earningEnabled !== false,
+            lossMode: !!s.lossMode,
+            lossPerDay:
+              s.lossPerDay != null && Number.isFinite(Number(s.lossPerDay)) ? round2(Number(s.lossPerDay)) : null,
+            lostToday: round2(Number(s.lostToday || 0)),
             totalCredited: round2(Number(s.totalCredited || 0)),
             creditedToday: round2(Number(s.creditedToday || 0)),
             assertiveness: Number(s.assertiveness ?? 87),
@@ -323,6 +327,12 @@ export async function GET(req: NextRequest) {
               ? round2(Number(state.metaOverride))
               : null,
           earningEnabled: state?.earningEnabled !== false,
+          lossMode: !!state?.lossMode,
+          lossPerDay:
+            state?.lossPerDay != null && Number.isFinite(Number(state.lossPerDay))
+              ? round2(Number(state.lossPerDay))
+              : null,
+          lostToday: round2(Number(state?.lostToday || 0)),
           totalCredited: round2(Number(state?.totalCredited || 0)),
           creditedToday: round2(Number(state?.creditedToday || 0)),
           assertiveness: Number(state?.assertiveness ?? 87),
@@ -482,6 +492,68 @@ export async function POST(req: NextRequest) {
         .eq("id", existing.id)
 
       return NextResponse.json({ success: true, earningEnabled: enabled })
+    }
+
+    if (action === "set_ia_loss") {
+      // Coloca (ou tira) o usuário no PREJUÍZO do dia. Ligado, em vez de render o saldo cai aos poucos
+      // até o prejuízo alvo (lossPerDay; vazio => a magnitude da meta do plano) e as entradas do dia
+      // fecham negativas no histórico da tela de TRADE. Ligar zera o dia atual para começar limpo.
+      const userId = payload.userId
+      const enabled = !!payload.enabled
+      const rawLoss = payload.lossPerDay
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.lossMode = enabled
+      if (enabled) {
+        if (rawLoss === null || rawLoss === undefined || rawLoss === "") {
+          state.lossPerDay = null
+        } else {
+          const loss = Number(rawLoss)
+          if (!Number.isFinite(loss) || loss < 0) {
+            return NextResponse.json({ error: "Prejuizo invalido" }, { status: 400 })
+          }
+          state.lossPerDay = round2(loss)
+        }
+      }
+      // Começa o dia limpo no novo modo: zera acumulados diários e o plano de entradas do dia,
+      // e reancora o marco para não debitar/creditar um lote pelo tempo anterior.
+      const nowIso = new Date().toISOString()
+      state.lastSettleAt = nowIso
+      state.creditedToday = 0
+      state.lostToday = 0
+      state.tradesToday = 0
+      state.tradesProfitToday = 0
+      state.tradesTargetToday = 8 + Math.floor(Math.random() * 5)
+      state.dayKey = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: nowIso })
+        .eq("id", existing.id)
+
+      return NextResponse.json({
+        success: true,
+        lossMode: state.lossMode,
+        lossPerDay: state.lossPerDay ?? null,
+      })
     }
 
     if (action === "set_ia_paused") {

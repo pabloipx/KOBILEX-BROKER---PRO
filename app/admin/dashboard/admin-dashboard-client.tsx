@@ -135,6 +135,9 @@ export default function AdminDashboardClient() {
   const [iaMetaDraft, setIaMetaDraft] = useState<Record<string, string>>({})
   const [iaMetaSavingId, setIaMetaSavingId] = useState<string | null>(null)
   const [iaEarningSavingId, setIaEarningSavingId] = useState<string | null>(null)
+  const [iaPauseSavingId, setIaPauseSavingId] = useState<string | null>(null)
+  const [iaCreditDraft, setIaCreditDraft] = useState<Record<string, string>>({})
+  const [iaCreditSavingId, setIaCreditSavingId] = useState<string | null>(null)
   const [iaLoading, setIaLoading] = useState(false)
   const [iaSavingId, setIaSavingId] = useState<string | null>(null)
   const [iaDraft, setIaDraft] = useState<Record<string, string>>({})
@@ -449,6 +452,65 @@ export default function AdminDashboardClient() {
       setError(err.message)
     } finally {
       setIaEarningSavingId(null)
+    }
+  }
+
+  const handleTogglePause = async (userId: string, paused: boolean) => {
+    setIaPauseSavingId(userId)
+    try {
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({ action: "set_ia_paused", userId, paused }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao alterar pausa")
+      setIaUsers((prev) => prev.map((u) => (u.userId === userId ? { ...u, paused: data.paused } : u)))
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setIaPauseSavingId(null)
+    }
+  }
+
+  const handleSaveCreditedToday = async (userId: string) => {
+    const raw = iaCreditDraft[userId]
+    if (raw === undefined || raw === "") return
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value < 0) return
+    setIaCreditSavingId(userId)
+    setIaSuccess(null)
+    try {
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({ action: "set_ia_credited_today", userId, amount: value }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao salvar ganho do dia")
+      setIaUsers((prev) =>
+        prev.map((u) =>
+          u.userId === userId
+            ? {
+                ...u,
+                creditedToday: data.creditedToday,
+                totalCredited: data.totalCredited,
+                balance_real: data.balance_real,
+              }
+            : u,
+        ),
+      )
+      setIaCreditDraft((prev) => {
+        const next = { ...prev }
+        delete next[userId]
+        return next
+      })
+      setIaSuccess(userId)
+      setTimeout(() => setIaSuccess(null), 2000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setIaCreditSavingId(null)
     }
   }
 
@@ -1645,6 +1707,12 @@ export default function AdminDashboardClient() {
                   {iaUsers.map((u) => {
                     const draft = iaDraft[u.userId]
                     const dirty = draft !== undefined && Number(draft) !== Number(u.assertiveness)
+                    const meta = Number(u.effectiveMeta ?? u.dailyMeta ?? 0)
+                    const today = Number(u.creditedToday || 0)
+                    const remaining = Math.max(0, Math.round((meta - today) * 100) / 100)
+                    const progress = meta > 0 ? Math.min(100, Math.round((today / meta) * 100)) : 0
+                    const metaReached = meta > 0 && today >= meta
+                    const earningOff = u.earningEnabled === false
                     return (
                       <div
                         key={u.userId}
@@ -1652,7 +1720,7 @@ export default function AdminDashboardClient() {
                       >
                         <div className="flex items-start justify-between gap-4 flex-wrap">
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-semibold text-white truncate">{u.user_name}</p>
                               <span
                                 className={`text-[11px] px-2 py-0.5 rounded-full ${
@@ -1661,9 +1729,18 @@ export default function AdminDashboardClient() {
                               >
                                 {u.paused ? "Pausada" : "Operando"}
                               </span>
-                              {u.earningEnabled === false ? (
+                              {earningOff ? (
                                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
                                   Sem rendimento
+                                </span>
+                              ) : (
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-400">
+                                  Ganhando
+                                </span>
+                              )}
+                              {metaReached ? (
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                                  Meta batida
                                 </span>
                               ) : null}
                             </div>
@@ -1679,114 +1756,201 @@ export default function AdminDashboardClient() {
                           </div>
                         </div>
 
-                        {/* Resultados */}
+                        {/* Progresso da meta de hoje */}
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between text-[11px] mb-1">
+                            <span className="text-gray-400">Progresso da meta de hoje</span>
+                            <span className={metaReached ? "text-primary font-semibold" : "text-gray-300"}>
+                              {formatCurrency(today)} / {formatCurrency(meta)} ({progress}%)
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-[#0B0F14] overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${metaReached ? "bg-primary" : "bg-green-500"}`}
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-1">Falta hoje: {formatCurrency(remaining)}</p>
+                        </div>
+
+                        {/* Resultados detalhados */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                           <div className="bg-[#0B0F14] rounded-lg p-3">
                             <p className="text-[11px] text-gray-400">Rendimento total</p>
                             <p className="font-semibold text-green-500">{formatCurrency(u.totalCredited)}</p>
                           </div>
                           <div className="bg-[#0B0F14] rounded-lg p-3">
-                            <p className="text-[11px] text-gray-400">Hoje</p>
-                            <p className="font-semibold text-green-500">{formatCurrency(u.creditedToday)}</p>
+                            <p className="text-[11px] text-gray-400">Ganho hoje</p>
+                            <p className="font-semibold text-green-500">{formatCurrency(today)}</p>
                           </div>
                           <div className="bg-[#0B0F14] rounded-lg p-3">
                             <p className="text-[11px] text-gray-400">Meta diaria</p>
-                            <p className="font-semibold text-white">
-                              {formatCurrency(u.effectiveMeta ?? u.dailyMeta)}
-                            </p>
+                            <p className="font-semibold text-white">{formatCurrency(meta)}</p>
                             {u.metaOverride != null ? (
                               <p className="text-[10px] text-primary">personalizada</p>
-                            ) : null}
+                            ) : (
+                              <p className="text-[10px] text-gray-500">padrao do plano</p>
+                            )}
                           </div>
                           <div className="bg-[#0B0F14] rounded-lg p-3">
-                            <p className="text-[11px] text-gray-400">Assertividade atual</p>
+                            <p className="text-[11px] text-gray-400">Assertividade</p>
                             <p className="font-semibold text-primary">{u.assertiveness}%</p>
                           </div>
                         </div>
 
-                        {/* Editar assertividade */}
-                        <div className="flex items-end gap-3 mt-4 flex-wrap">
-                          <div>
-                            <label className="text-[11px] text-gray-400 block mb-1">Ajustar assertividade (%)</label>
-                            <Input
-                              type="number"
-                              min={1}
-                              max={100}
-                              value={draft ?? String(u.assertiveness)}
-                              onChange={(e) =>
-                                setIaDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
-                              }
-                              className="w-28 bg-[#0B0F14] border-[#2A3142] text-white"
-                            />
+                        {/* Controle do ganho de hoje */}
+                        <div className="mt-4 border-t border-[#2A3142] pt-4">
+                          <p className="text-xs font-semibold text-white mb-2">Controlar ganho de hoje</p>
+                          <div className="flex items-end gap-3 flex-wrap">
+                            <div className="flex-1 min-w-[140px]">
+                              <label className="text-[11px] text-gray-400 block mb-1">Ganho de hoje (R$)</label>
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                inputMode="decimal"
+                                placeholder={formatCurrency(today)}
+                                value={iaCreditDraft[u.userId] ?? String(today)}
+                                onChange={(e) =>
+                                  setIaCreditDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
+                                }
+                                className="w-full bg-[#0B0F14] border-[#2A3142] text-white h-11 text-base"
+                              />
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveCreditedToday(u.userId)}
+                              disabled={iaCreditSavingId === u.userId}
+                              className="bg-primary hover:bg-primary/90 text-primary-foreground h-11 min-w-[90px]"
+                            >
+                              {iaCreditSavingId === u.userId ? "..." : "Definir"}
+                            </Button>
                           </div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setIaCreditDraft((prev) => ({ ...prev, [u.userId]: String(meta) }))}
+                              className="border-[#2A3142] text-gray-300 h-9"
+                            >
+                              Bater meta ({formatCurrency(meta)})
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setIaCreditDraft((prev) => ({ ...prev, [u.userId]: "0" }))}
+                              className="border-[#2A3142] text-gray-300 h-9"
+                            >
+                              Zerar hoje
+                            </Button>
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-2">
+                            A diferenca em relacao ao ja creditado hoje entra (ou sai) do saldo real do usuario.
+                          </p>
+                        </div>
+
+                        {/* Meta diaria personalizada */}
+                        <div className="mt-4 border-t border-[#2A3142] pt-4">
+                          <p className="text-xs font-semibold text-white mb-2">Meta diaria</p>
+                          <div className="flex items-end gap-3 flex-wrap">
+                            <div className="flex-1 min-w-[140px]">
+                              <label className="text-[11px] text-gray-400 block mb-1">Meta diaria (R$)</label>
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                inputMode="decimal"
+                                placeholder={`Plano: ${formatCurrency(u.dailyMeta)}`}
+                                value={iaMetaDraft[u.userId] ?? (u.metaOverride != null ? String(u.metaOverride) : "")}
+                                onChange={(e) =>
+                                  setIaMetaDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
+                                }
+                                className="w-full bg-[#0B0F14] border-[#2A3142] text-white h-11 text-base"
+                              />
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSaveMeta(u.userId)}
+                              disabled={iaMetaSavingId === u.userId}
+                              className="border-[#2A3142] text-gray-300 h-11 min-w-[90px]"
+                            >
+                              {iaMetaSavingId === u.userId ? "..." : "Salvar"}
+                            </Button>
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-2">Vazio volta para a meta padrao do plano.</p>
+                        </div>
+
+                        {/* Assertividade */}
+                        <div className="mt-4 border-t border-[#2A3142] pt-4">
+                          <p className="text-xs font-semibold text-white mb-2">Assertividade exibida</p>
+                          <div className="flex items-end gap-3 flex-wrap">
+                            <div className="flex-1 min-w-[140px]">
+                              <label className="text-[11px] text-gray-400 block mb-1">Assertividade (%)</label>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={100}
+                                inputMode="numeric"
+                                value={draft ?? String(u.assertiveness)}
+                                onChange={(e) =>
+                                  setIaDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
+                                }
+                                className="w-full bg-[#0B0F14] border-[#2A3142] text-white h-11 text-base"
+                              />
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveAssertiveness(u.userId)}
+                              disabled={!dirty || iaSavingId === u.userId}
+                              className="bg-primary hover:bg-primary/90 text-primary-foreground h-11 min-w-[90px]"
+                            >
+                              {iaSavingId === u.userId ? (
+                                "..."
+                              ) : iaSuccess === u.userId ? (
+                                <Check className="w-4 h-4" />
+                              ) : (
+                                "Salvar"
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Acoes: ligar/desligar rendimento, pausar, detalhes */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4 border-t border-[#2A3142] pt-4">
                           <Button
                             size="sm"
-                            onClick={() => handleSaveAssertiveness(u.userId)}
-                            disabled={!dirty || iaSavingId === u.userId}
-                            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                            onClick={() => handleToggleEarning(u.userId, earningOff)}
+                            disabled={iaEarningSavingId === u.userId}
+                            className={
+                              earningOff
+                                ? "bg-green-600 hover:bg-green-600/90 text-white h-11"
+                                : "bg-red-600 hover:bg-red-600/90 text-white h-11"
+                            }
                           >
-                            {iaSavingId === u.userId ? (
-                              "Salvando..."
-                            ) : iaSuccess === u.userId ? (
-                              <>
-                                <Check className="w-4 h-4 mr-1" />
-                                Salvo
-                              </>
-                            ) : (
-                              "Salvar"
-                            )}
+                            {iaEarningSavingId === u.userId
+                              ? "..."
+                              : earningOff
+                                ? "Ligar rendimento"
+                                : "Desligar rendimento"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleTogglePause(u.userId, !u.paused)}
+                            disabled={iaPauseSavingId === u.userId}
+                            className="border-[#2A3142] text-gray-300 h-11"
+                          >
+                            {iaPauseSavingId === u.userId ? "..." : u.paused ? "Retomar IA" : "Pausar IA"}
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => openIaDetail(u.userId)}
-                            className="border-[#2A3142] text-gray-300"
+                            className="border-[#2A3142] text-gray-300 h-11"
                           >
                             <Eye className="w-4 h-4 mr-1" />
-                            Ver detalhes
-                          </Button>
-                        </div>
-
-                        {/* Controlar meta diaria e ligar/desligar rendimento */}
-                        <div className="flex items-end gap-3 mt-3 flex-wrap border-t border-[#2A3142] pt-3">
-                          <div>
-                            <label className="text-[11px] text-gray-400 block mb-1">Meta diaria (R$)</label>
-                            <Input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              placeholder={`Plano: ${formatCurrency(u.dailyMeta)}`}
-                              value={iaMetaDraft[u.userId] ?? (u.metaOverride != null ? String(u.metaOverride) : "")}
-                              onChange={(e) =>
-                                setIaMetaDraft((prev) => ({ ...prev, [u.userId]: e.target.value }))
-                              }
-                              className="w-36 bg-[#0B0F14] border-[#2A3142] text-white"
-                            />
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleSaveMeta(u.userId)}
-                            disabled={iaMetaSavingId === u.userId}
-                            className="border-[#2A3142] text-gray-300"
-                          >
-                            {iaMetaSavingId === u.userId ? "Salvando..." : "Salvar meta"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleToggleEarning(u.userId, u.earningEnabled === false)}
-                            disabled={iaEarningSavingId === u.userId}
-                            className={
-                              u.earningEnabled === false
-                                ? "bg-green-600 hover:bg-green-600/90 text-white"
-                                : "bg-red-600 hover:bg-red-600/90 text-white"
-                            }
-                          >
-                            {iaEarningSavingId === u.userId
-                              ? "..."
-                              : u.earningEnabled === false
-                                ? "Ligar rendimento"
-                                : "Desligar rendimento"}
+                            Detalhes
                           </Button>
                         </div>
                       </div>

@@ -484,6 +484,121 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, earningEnabled: enabled })
     }
 
+    if (action === "set_ia_paused") {
+      // Pausa/retoma a IA do usuário. Pausada, o settle congela e nada é creditado,
+      // mas o estado (plano, meta, acumulados) é preservado.
+      const userId = payload.userId
+      const paused = !!payload.paused
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.paused = paused
+      // Ao retomar, reancora o marco de acerto para não creditar um lote acumulado pelo tempo pausado.
+      if (!paused) state.lastSettleAt = new Date().toISOString()
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      return NextResponse.json({ success: true, paused })
+    }
+
+    if (action === "set_ia_credited_today") {
+      // Define exatamente quanto o usuário "ganhou hoje" na IA. O admin controla o ganho diário:
+      // a diferença em relação ao já creditado hoje é lançada (ou estornada) no saldo real, com
+      // transação registrada, e os acumulados (hoje/total) são ajustados.
+      const userId = payload.userId
+      const rawTarget = Number(payload.amount)
+      if (!userId || !Number.isFinite(rawTarget) || rawTarget < 0) {
+        return NextResponse.json({ error: "Valor invalido" }, { status: 400 })
+      }
+      const target = round2(rawTarget)
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      // Dia atual no fuso America/Sao_Paulo (UTC-3), igual ao usado no settle da IA.
+      const nowIso = new Date().toISOString()
+      const todayKey = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+      const currentToday = state.dayKey === todayKey ? round2(Number(state.creditedToday || 0)) : 0
+      const delta = round2(target - currentToday)
+
+      // Ajusta o saldo real pela diferença e registra a transação correspondente.
+      const { data: bal } = await supabase
+        .from("user_balances")
+        .select("balance_real")
+        .eq("user_id", userId)
+        .maybeSingle()
+      const currentBalance = Number(bal?.balance_real || 0)
+      const newBalance = round2(currentBalance + delta)
+
+      await supabase.from("user_balances").upsert(
+        { user_id: userId, balance_real: newBalance, updated_at: nowIso },
+        { onConflict: "user_id" },
+      )
+
+      if (delta !== 0) {
+        await supabase.from("transactions").insert({
+          user_id: userId,
+          type: "ia_yield",
+          amount: delta,
+          balance_after: newBalance,
+          account_type: "real",
+          description: delta >= 0 ? "Ajuste de ganho do dia (admin)" : "Estorno de ganho do dia (admin)",
+        })
+      }
+
+      state.creditedToday = target
+      state.dayKey = todayKey
+      state.totalCredited = round2(Math.max(0, Number(state.totalCredited || 0) + delta))
+      state.lastSettleAt = nowIso
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: nowIso })
+        .eq("id", existing.id)
+
+      return NextResponse.json({
+        success: true,
+        creditedToday: target,
+        totalCredited: state.totalCredited,
+        balance_real: newBalance,
+      })
+    }
+
     if (action === "update_balance") {
       const userId = payload.userId
       const balanceReal = payload.balanceReal ?? payload.balance_real

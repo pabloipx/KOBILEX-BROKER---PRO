@@ -968,43 +968,27 @@ function ActivePanel({
         <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
-        {/* Gráfico */}
-        <div className="lg:col-span-3 rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-medium flex items-center gap-2">
-              <Activity className="w-4 h-4 text-primary" />
-              Análise em tempo real
-            </div>
-            {running && (
-              <div className="flex items-center gap-1.5 text-xs text-atlas-success">
-                <span className="h-1.5 w-1.5 rounded-full bg-atlas-success animate-pulse" />
-                IA analisando padrões
-              </div>
-            )}
-          </div>
-          <div className="h-48 sm:h-56">
-            <LiveCandles active={running} />
-          </div>
-          {/* Progresso da meta */}
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-              <span>Progresso da meta diária</span>
-              <span>{progress.toFixed(0)}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-secondary overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-success transition-all duration-700"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
+      {/* Progresso da meta diária — dado real (valor creditado hoje / meta) */}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+          <span className="font-medium text-foreground">Progresso da meta diária</span>
+          <span>
+            {brl(todayProfit)} / {brl(dailyTarget)} · {progress.toFixed(0)}%
+          </span>
         </div>
+        <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-success transition-all duration-700"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        {metaReached && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-atlas-success">
+            <Check className="w-3.5 h-3.5" />
+            Meta de hoje concluída
+          </div>
+        )}
       </div>
-
-      <p className="text-center text-xs text-muted-foreground mt-6 max-w-xl mx-auto text-pretty">
-        A IA opera automaticamente com base na análise de mercado. Resultados passados não garantem retornos futuros.
-      </p>
     </div>
   )
 }

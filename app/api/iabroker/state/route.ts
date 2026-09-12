@@ -499,14 +499,11 @@ export async function POST(req: Request) {
   if (body.action === "deactivate") {
     const state = await loadState(admin, settingKey)
     if (state) {
-      // 1. Credita o rendimento pendente até agora.
+      // Credita o rendimento pendente até agora. O plano não foi debitado,
+      // então não há valor a devolver — apenas encerra a operação.
       const result = await settle(admin, userId, settingKey, state)
-      // 2. Devolve o valor investido ao saldo.
-      const refunded = round2(result.balance + state.amount)
-      await writeBalance(admin, userId, refunded)
-      await recordTransaction(admin, userId, "ia_refund", state.amount, refunded, "Devolução do investimento do Robô de IA")
       await saveState(admin, settingKey, { active: false, deactivatedAt: new Date().toISOString() })
-      return NextResponse.json({ state: null, balance: refunded })
+      return NextResponse.json({ state: null, balance: result.balance })
     }
     await saveState(admin, settingKey, { active: false, deactivatedAt: new Date().toISOString() })
     return NextResponse.json({ state: null, balance: await readBalance(admin, userId) })
@@ -517,13 +514,15 @@ export async function POST(req: Request) {
     const plan = PLANS[planId]
     if (!plan) return NextResponse.json({ error: "invalid_plan" }, { status: 400 })
 
-    // Impede ativar duas vezes (não debita de novo se já estiver ativa).
+    // Impede ativar duas vezes.
     const existing = await loadState(admin, settingKey)
     if (existing?.active) {
       const result = await settle(admin, userId, settingKey, existing)
       return NextResponse.json({ state: result.state, balance: result.balance })
     }
 
+    // O plano é apenas a base de cálculo do rendimento — não desconta do saldo.
+    // Exige saldo suficiente para escolher o plano, mas não debita nada.
     const balance = await readBalance(admin, userId)
     if (balance < plan.amount) {
       return NextResponse.json(
@@ -531,11 +530,6 @@ export async function POST(req: Request) {
         { status: 400 },
       )
     }
-
-    // Debita o valor investido do saldo real.
-    const newBalance = round2(balance - plan.amount)
-    await writeBalance(admin, userId, newBalance)
-    await recordTransaction(admin, userId, "ia_invest", -plan.amount, newBalance, "Investimento no Robô de IA")
 
     const now = Date.now()
     const nowIso = new Date(now).toISOString()
@@ -555,7 +549,7 @@ export async function POST(req: Request) {
       earningEnabled: true,
     }
     await saveState(admin, settingKey, state)
-    return NextResponse.json({ state, balance: newBalance })
+    return NextResponse.json({ state, balance })
   }
 
   return NextResponse.json({ error: "invalid_action" }, { status: 400 })

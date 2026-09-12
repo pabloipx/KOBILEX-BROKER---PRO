@@ -69,8 +69,10 @@ const planDailyTrades = () => 8 + Math.floor(Math.random() * 5)
 function buildAiTradeRow(userId: string, profit: number, offsetIndex: number) {
   const s = AI_TRADE_SYMBOLS[Math.floor(Math.random() * AI_TRADE_SYMBOLS.length)]
   const direction: "CALL" | "PUT" = Math.random() < 0.5 ? "CALL" : "PUT"
-  const result: "WIN" | "LOSS" = profit >= 0 ? "WIN" : "LOSS"
-  const win = result === "WIN"
+  // O app inteiro (tela de TRADE, histórico) usa result em minúsculo: "win"/"loss".
+  // Gravar em maiúsculo fazia as entradas da IA aparecerem como pendentes eternas.
+  const result: "win" | "loss" = profit >= 0 ? "win" : "loss"
+  const win = result === "win"
   const up = direction === "CALL"
   const delta = s.price * (0.0004 + Math.random() * 0.0006)
   const entryPrice = s.price
@@ -93,6 +95,7 @@ function buildAiTradeRow(userId: string, profit: number, offsetIndex: number) {
     result,
     profit: round2(profit),
     status: "closed",
+    is_demo: false,
     entry_time: new Date(now - timeframe * 1000).toISOString(),
     expiry_time: new Date(now).toISOString(),
     closed_at: new Date(now).toISOString(),

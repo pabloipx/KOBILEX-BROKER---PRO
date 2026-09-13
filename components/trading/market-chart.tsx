@@ -1196,6 +1196,22 @@ function ChartCore({
       // ex.: dentro de iframes/preview ou abas em segundo plano).
       const renderFrame = () => {
         if (dead || !seriesRef.current) return
+
+        // ===== Deteccao direta de congelamento (robusta em qualquer ambiente) =====
+        // Em vez de confiar so nos eventos de visibilidade — que no mobile as vezes nem disparam
+        // (o navegador suspende JS/timers ao trocar de app, e o retorno pode vir por pageshow,
+        // bfcache ou simplesmente pelo watchdog) — medimos o salto de tempo desde o ultimo frame.
+        // Se o loop ficou parado tempo demais, o proximo frame desenharia uma unica vela-ponte
+        // gigante cobrindo todo o periodo ausente (o "candle bugado" que so o F5 corrigia).
+        // Reconstruir a serie pelo datafeed recria corretamente as velas do intervalo. Como isso
+        // roda dentro do proprio renderFrame, cobre TODO caminho de retomada, nao so os eventos.
+        const nowMs = Date.now()
+        if (lastFrameAt > 0 && nowMs - lastFrameAt > 2000 && loadedSymbolRef.current !== null && loadDataRef.current) {
+          lastFrameAt = nowMs
+          loadDataRef.current()
+          return
+        }
+
         const sym = latest.current.symbol
         const tf = latest.current.timeframe
         // Le o preco vivo DIRETO do motor deterministico a cada frame, usando o simbolo atual.
@@ -1363,6 +1379,9 @@ function ChartCore({
       }
       document.addEventListener("visibilitychange", onVisible)
       window.addEventListener("focus", onVisible)
+      // pageshow cobre o retorno pelo cache de historico (bfcache) do iOS Safari, onde nem
+      // visibilitychange nem focus disparam de forma confiavel ao voltar para a aba.
+      window.addEventListener("pageshow", onVisible)
     }
 
     boot()

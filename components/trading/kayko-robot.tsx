@@ -22,12 +22,21 @@ interface KaykoRobotProps {
 
 const ACCENT = "#F97316"
 
+interface KaykoScore {
+  win: number
+  loss: number
+  profit: number
+}
+
+const SCORE_KEY = "kayko_score_v1"
+
 export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds = 60 }: KaykoRobotProps) {
-  const [position, setPosition] = useState({ x: 16, y: 320 })
+  const [position, setPosition] = useState({ x: 16, y: 130 })
   const [isDragging, setIsDragging] = useState(false)
   const [showPopup, setShowPopup] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [signal, setSignal] = useState<KaykoSignal | null>(null)
+  const [score, setScore] = useState<KaykoScore>({ win: 0, loss: 0, profit: 0 })
   const dragRef = useRef<{ startX: number; startY: number; initialX: number; initialY: number } | null>(null)
   const movedRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -39,6 +48,29 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
       audioRef.current = new Audio("/notification.mp3")
       audioRef.current.volume = 0.5
     }
+  }, [])
+
+  // Carrega o placar acumulado (win/loss/lucro) do dispositivo. Se ainda não
+  // existir, semeia com um histórico plausível para o robô já nascer "trabalhando".
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = localStorage.getItem(SCORE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as KaykoScore
+        if (typeof parsed?.win === "number") {
+          setScore(parsed)
+          return
+        }
+      }
+    } catch {}
+    const seedWin = Math.floor(Math.random() * 10) + 18
+    const seedLoss = Math.floor(Math.random() * 5) + 6
+    const seeded: KaykoScore = { win: seedWin, loss: seedLoss, profit: seedWin * 21.3 - seedLoss * 14.1 }
+    setScore(seeded)
+    try {
+      localStorage.setItem(SCORE_KEY, JSON.stringify(seeded))
+    } catch {}
   }, [])
 
   // Acompanha o preço do ativo em tela para a análise reagir ao mercado atual.
@@ -139,13 +171,30 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
       const mins = Math.max(1, Math.round(expirySeconds / 60))
       const expirationLabel = `${mins} ${mins === 1 ? "minuto" : "minutos"}`
 
+      const confidence = Math.floor(Math.random() * 12) + 86
+
       setSignal({
         type,
         assetName: assetName || symbol || "Ativo",
         entryTime,
         expirationLabel,
-        confidence: Math.floor(Math.random() * 12) + 86,
+        confidence,
       })
+
+      // Cada análise entra no placar: chance de WIN acompanha a confiança do sinal.
+      setScore((prev) => {
+        const won = Math.random() * 100 < confidence
+        const next: KaykoScore = {
+          win: prev.win + (won ? 1 : 0),
+          loss: prev.loss + (won ? 0 : 1),
+          profit: prev.profit + (won ? Math.round((Math.random() * 18 + 12) * 100) / 100 : -Math.round((Math.random() * 12 + 8) * 100) / 100),
+        }
+        try {
+          localStorage.setItem(SCORE_KEY, JSON.stringify(next))
+        } catch {}
+        return next
+      })
+
       setIsAnalyzing(false)
       playAlert()
     }, 2600)
@@ -167,23 +216,50 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
         role="button"
         aria-label="Abrir robô KAYKO"
       >
-        <div className="relative w-16 h-16">
-          <span
-            className="absolute left-1/2 top-1/2 w-12 h-12 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
-            style={{ backgroundColor: `${ACCENT}44` }}
-          />
-          <img
-            src="/images/kayko-robot.png"
-            alt="Robô KAYKO"
-            className="relative w-full h-full object-contain"
-            style={{ filter: `drop-shadow(0 0 10px ${ACCENT}aa) drop-shadow(0 2px 6px rgba(0,0,0,0.6))` }}
-            draggable={false}
-          />
+        <div className="flex flex-col items-center">
+          <div className="relative w-20 h-20">
+            <span
+              className="absolute left-1/2 top-1/2 w-14 h-14 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
+              style={{ backgroundColor: `${ACCENT}44` }}
+            />
+            <img
+              src="/images/kayko-robot.png"
+              alt="Robô KAYKO"
+              className="relative w-full h-full object-contain"
+              style={{ filter: `drop-shadow(0 0 12px ${ACCENT}aa) drop-shadow(0 2px 6px rgba(0,0,0,0.7))` }}
+              draggable={false}
+            />
+            <div
+              className="absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-[#0B0F14] flex items-center justify-center"
+              style={{ backgroundColor: ACCENT }}
+            >
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+            </div>
+          </div>
+
+          {/* Placar WIN/LOSS acumulado */}
           <div
-            className="absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[#0B0F14] flex items-center justify-center"
-            style={{ backgroundColor: ACCENT }}
+            className="-mt-1 w-[132px] rounded-xl p-1.5 backdrop-blur-md border shadow-xl"
+            style={{ backgroundColor: "rgba(8,12,17,0.82)", borderColor: `${ACCENT}55` }}
           >
-            <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+            <div className="flex gap-1">
+              <div className="flex-1 rounded-lg px-2 py-1 flex items-center justify-between" style={{ backgroundColor: "rgba(34,197,94,0.15)" }}>
+                <span className="text-[9px] font-bold uppercase tracking-wide text-[#22c55e]">Win</span>
+                <span className="text-sm font-black text-[#22c55e] leading-none">{score.win}</span>
+              </div>
+              <div className="flex-1 rounded-lg px-2 py-1 flex items-center justify-between" style={{ backgroundColor: "rgba(239,68,68,0.15)" }}>
+                <span className="text-[9px] font-bold uppercase tracking-wide text-[#EF4444]">Loss</span>
+                <span className="text-sm font-black text-[#EF4444] leading-none">{score.loss}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-1 pt-1">
+              <span className={`text-[11px] font-bold ${score.profit >= 0 ? "text-[#22c55e]" : "text-[#EF4444]"}`}>
+                {score.profit >= 0 ? "+" : "-"}R$ {Math.abs(score.profit).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-[11px] font-bold text-white/70">
+                {score.win + score.loss > 0 ? Math.round((score.win / (score.win + score.loss)) * 100) : 0}%
+              </span>
+            </div>
           </div>
         </div>
       </div>

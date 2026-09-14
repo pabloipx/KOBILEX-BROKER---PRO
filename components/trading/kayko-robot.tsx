@@ -20,7 +20,7 @@ interface KaykoRobotProps {
   expirySeconds?: number
 }
 
-const ACCENT = "#22d3ee"
+const ACCENT = "#F97316"
 
 export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds = 60 }: KaykoRobotProps) {
   const [position, setPosition] = useState({ x: 16, y: 320 })
@@ -167,24 +167,20 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
         role="button"
         aria-label="Abrir robô KAYKO"
       >
-        <div className="relative">
+        <div className="relative w-16 h-16">
           <span
-            className="absolute inset-0 rounded-full animate-ping"
-            style={{ backgroundColor: `${ACCENT}55` }}
+            className="absolute left-1/2 top-1/2 w-12 h-12 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
+            style={{ backgroundColor: `${ACCENT}44` }}
+          />
+          <img
+            src="/images/kayko-robot.png"
+            alt="Robô KAYKO"
+            className="relative w-full h-full object-contain"
+            style={{ filter: `drop-shadow(0 0 10px ${ACCENT}aa) drop-shadow(0 2px 6px rgba(0,0,0,0.6))` }}
+            draggable={false}
           />
           <div
-            className="relative w-14 h-14 rounded-full overflow-hidden border-2 shadow-lg"
-            style={{ borderColor: ACCENT, boxShadow: `0 0 18px ${ACCENT}66` }}
-          >
-            <img
-              src="/images/kayko-robot.png"
-              alt="Robô KAYKO"
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-          </div>
-          <div
-            className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-[#0B0F14] flex items-center justify-center"
+            className="absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[#0B0F14] flex items-center justify-center"
             style={{ backgroundColor: ACCENT }}
           >
             <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
@@ -204,11 +200,13 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
             {/* Header */}
             <div className="relative p-5 border-b border-white/5" style={{ background: `linear-gradient(135deg, ${ACCENT}1f 0%, #0a0e13 70%)` }}>
               <div className="flex items-center gap-4">
-                <div
-                  className="w-14 h-14 rounded-2xl overflow-hidden ring-2"
-                  style={{ boxShadow: `0 0 16px ${ACCENT}55`, borderColor: ACCENT }}
-                >
-                  <img src="/images/kayko-robot.png" alt="Robô KAYKO" className="w-full h-full object-cover" />
+                <div className="w-14 h-14 flex items-center justify-center shrink-0">
+                  <img
+                    src="/images/kayko-robot.png"
+                    alt="Robô KAYKO"
+                    className="w-full h-full object-contain"
+                    style={{ filter: `drop-shadow(0 0 8px ${ACCENT}88)` }}
+                  />
                 </div>
                 <div className="flex-1">
                   <h2 className="text-white font-black text-lg tracking-wide">

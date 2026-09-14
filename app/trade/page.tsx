@@ -413,14 +413,30 @@ export default function TradePage() {
 
     const checkUser = async () => {
       try {
-        const {
-          data: { user: currentUser },
-          error,
-        } = await supabase.auth.getUser()
+        // A verificacao de sessao nao pode depender apenas de `getUser()`: ele faz uma chamada de
+        // rede e, no mobile (Safari, conexao instavel ou retorno de bfcache/app minimizado), essa
+        // promessa pode nunca resolver — deixando a tela travada em "Carregando..." para sempre.
+        //
+        // Por isso: primeiro pegamos a sessao local (sincrona, sem rede) para liberar a tela rapido;
+        // e validamos `getUser()` com um timeout. Se a rede travar, usamos o usuario da sessao local
+        // como fallback em vez de ficar preso.
+        const withTimeout = (p: Promise<any>, ms: number): Promise<any> => {
+          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))
+          return Promise.race([p, timeout])
+        }
+
+        const sessionResult = await withTimeout(supabase.auth.getSession(), 4000)
+        const sessionUser = sessionResult?.data?.session?.user ?? null
+
+        const getUserResult = await withTimeout(supabase.auth.getUser(), 6000)
 
         if (!mountedRef.current) return
 
-        if (error || !currentUser) {
+        // Sem sessao local E sem usuario validado => nao ha login: manda pro login.
+        const currentUser = getUserResult?.data?.user ?? sessionUser
+        const hardError = getUserResult?.error
+
+        if (!currentUser || (hardError && !sessionUser)) {
           router.replace("/auth/login")
           return
         }

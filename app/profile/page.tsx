@@ -25,8 +25,11 @@ import {
   Award,
   Lock,
   Check,
+  Bot,
+  Power,
 } from "lucide-react"
 import { computeRank, RANKS, type RankProgress } from "@/lib/ranks"
+import { KaykoActivateModal } from "@/components/trading/kayko-activate-modal"
 
 interface UserProfile {
   id: string
@@ -66,8 +69,30 @@ export default function ProfilePage() {
   const [recentWithdrawals, setRecentWithdrawals] = useState<RecentWithdrawal[]>([])
   const [rank, setRank] = useState<RankProgress>(() => computeRank(0, 0))
   const [loading, setLoading] = useState(true)
+  const [kaykoActive, setKaykoActive] = useState(false)
+  const [showKaykoModal, setShowKaykoModal] = useState(false)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    try {
+      setKaykoActive(localStorage.getItem("kayko_robot_active") === "1")
+    } catch {
+      setKaykoActive(false)
+    }
+  }, [])
+
+  const setKayko = (active: boolean) => {
+    try {
+      if (active) localStorage.setItem("kayko_robot_active", "1")
+      else localStorage.removeItem("kayko_robot_active")
+      // Notifica a tela de trade (mesma aba) para refletir na hora.
+      window.dispatchEvent(new Event("kayko:changed"))
+    } catch {
+      // ignora
+    }
+    setKaykoActive(active)
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -533,6 +558,52 @@ export default function ProfilePage() {
         )}
       </div>
 
+      {/* Robô KAYKO */}
+      <div className="px-4 pt-6">
+        <button
+          onClick={() => (kaykoActive ? setKayko(false) : setShowKaykoModal(true))}
+          className="w-full text-left p-5 rounded-2xl border active:scale-[0.99] transition-transform"
+          style={{
+            borderColor: kaykoActive ? "#22d3ee55" : "#1F2933",
+            background: kaykoActive
+              ? "linear-gradient(135deg, #22d3ee18 0%, #121826 100%)"
+              : "#121826",
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
+                style={{ backgroundColor: "#22d3ee1f", boxShadow: kaykoActive ? "0 0 16px #22d3ee55" : "none" }}
+              >
+                <img src="/images/kayko-robot.png" alt="Robô KAYKO" className="w-full h-full object-cover" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">
+                    Robô <span style={{ color: "#22d3ee" }}>KAYKO</span>
+                  </h3>
+                  <Bot className="w-4 h-4" style={{ color: "#22d3ee" }} />
+                </div>
+                <p className="text-[#6B7280] text-xs truncate">
+                  {kaykoActive ? "Ativo na tela de trade" : "Analisa o ativo e mostra a entrada"}
+                </p>
+              </div>
+            </div>
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0"
+              style={{
+                color: kaykoActive ? "#04121a" : "#22d3ee",
+                backgroundColor: kaykoActive ? "#22d3ee" : "#22d3ee1f",
+              }}
+            >
+              <Power className="w-3.5 h-3.5" />
+              {kaykoActive ? "Ativado" : "Ativar"}
+            </span>
+          </div>
+        </button>
+      </div>
+
       {/* Action Cards */}
       <div className="px-4 pt-6 space-y-3">
         {/* Deposit */}
@@ -634,6 +705,12 @@ export default function ProfilePage() {
           <span className="text-[#EF4444]">Sair da conta</span>
         </button>
       </div>
+
+      <KaykoActivateModal
+        isOpen={showKaykoModal}
+        onClose={() => setShowKaykoModal(false)}
+        onActivated={() => setKayko(true)}
+      />
     </div>
   )
 }

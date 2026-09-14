@@ -7,6 +7,7 @@ import { MarketChart } from "@/components/trading/market-chart"
 import { SidebarMenu } from "@/components/trading/sidebar-menu"
 import { TraderIAModal } from "@/components/trading/trader-ia-modal"
 import { TraderIAWatermark } from "@/components/trading/trader-ia-watermark"
+import { KaykoRobot } from "@/components/trading/kayko-robot"
 import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
 import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
 import { AssetPanel } from "@/components/trading/asset-panel"
@@ -211,6 +212,34 @@ export default function TradePage() {
   // Trader IA
   const [showTraderIAModal, setTraderIAModalOpen] = useState(false)
   const [isTraderIAActive, setIsTraderIAActive] = useState(false)
+
+  // Robô KAYKO: ativado pelo perfil (senha) e persistido no dispositivo. A tela de trade
+  // apenas lê o estado — reage a mudanças em outra aba/página e ao voltar do segundo plano.
+  const [isKaykoActive, setIsKaykoActive] = useState(false)
+  useEffect(() => {
+    const read = () => {
+      try {
+        setIsKaykoActive(localStorage.getItem("kayko_robot_active") === "1")
+      } catch {
+        setIsKaykoActive(false)
+      }
+    }
+    read()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "kayko_robot_active") read()
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") read()
+    }
+    window.addEventListener("storage", onStorage)
+    window.addEventListener("kayko:changed", read as EventListener)
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener("kayko:changed", read as EventListener)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [])
 
   // Trader sentiment (simulated)
 
@@ -1281,6 +1310,15 @@ export default function TradePage() {
         <div className="flex-1 min-h-0 relative">
           <div className="absolute inset-0">
             {isTraderIAActive && <TraderIAWatermark isActive={isTraderIAActive} />}
+            {isKaykoActive && (
+              <KaykoRobot
+                isActive={isKaykoActive}
+                assetName={selectedAsset?.name}
+                symbol={selectedSymbol}
+                price={price}
+                expirySeconds={expiryTime}
+              />
+            )}
             <MarketChart
               candles={candles || []}
               currentPrice={price || 0}

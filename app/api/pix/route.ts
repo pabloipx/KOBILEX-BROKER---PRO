@@ -22,15 +22,46 @@ function isValidCpf(raw: string): boolean {
   return d2 === Number(cpf[10])
 }
 
-// A AmploPay valida o formato do e-mail e recusa a cobranca com GATEWAY_INVALID_DATA
-// ("Invalid email") quando ele e malformado. Muitos perfis antigos tem e-mail invalido gravado
-// (cadastro errado, telefone no lugar do e-mail, etc.), entao NUNCA enviamos o e-mail do perfil
-// direto: so usamos se passar nesta checagem, senao caimos num fallback garantidamente valido.
+// A AmploPay valida CADA campo do cliente e recusa a cobranca inteira com GATEWAY_INVALID_DATA
+// quando qualquer um esta malformado. Muitos perfis antigos tem dados tortos gravados (e-mail
+// invalido, telefone vazio, nome com lixo), entao NUNCA enviamos os campos do perfil direto:
+// cada um passa por uma sanitizacao que garante um valor sempre aceito pelo provedor.
+
+// E-mail: recusado com "Invalid email" quando malformado. Usa o do perfil so se for valido,
+// senao cai num fallback garantidamente valido.
 function sanitizeEmail(raw: string | null | undefined, userId: string): string {
-  const email = (raw || "").trim()
+  const email = (raw || "").trim().toLowerCase()
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   if (valid) return email
   return `user-${userId.slice(0, 8)}@urynbrokertrade.com`
+}
+
+// Telefone: recusado com "Invalid phone number" quando nao e um numero BR plausivel. Aceita 10
+// (fixo) ou 11 (celular) digitos com DDD; remove o codigo de pais "55" quando presente. Se o
+// perfil nao tiver um telefone valido, cai num celular padrao valido (NUNCA "00000000000", que a
+// AmploPay rejeita).
+function sanitizePhone(raw: string | null | undefined): string {
+  let digits = (raw || "").replace(/\D/g, "")
+  // Remove o codigo de pais BR quando o numero vem com ele (ex.: 55 + DDD + numero).
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
+    digits = digits.slice(2)
+  }
+  // DDD valido (11-99) + 10 ou 11 digitos no total.
+  const ddd = Number(digits.slice(0, 2))
+  const plausivel = (digits.length === 10 || digits.length === 11) && ddd >= 11 && ddd <= 99
+  if (plausivel) return digits
+  return "11987654321"
+}
+
+// Nome: a AmploPay aceita nome com uma palavra so, mas rejeita string vazia ou so com lixo.
+// Mantem letras, espacos e acentos; garante um fallback quando nao sobra nada utilizavel.
+function sanitizeName(raw: string | null | undefined): string {
+  const name = (raw || "")
+    .replace(/[^\p{L}\s.'-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (name.length >= 2) return name.slice(0, 80)
+  return "Cliente"
 }
 
 export async function POST(request: NextRequest) {
@@ -110,11 +141,12 @@ export async function POST(request: NextRequest) {
         amount: numericAmount,
         identifier: identifier,
         client: {
-          // Cobranca gerada com o CPF informado pelo lead. Nome/e-mail/telefone vem do
-          // perfil quando disponiveis (AmploPay exige esses campos), com fallback seguro.
-          name: profile?.full_name?.trim() || "Cliente",
+          // Cobranca gerada com o CPF informado pelo lead. Nome/e-mail/telefone vem do perfil,
+          // mas SEMPRE sanitizados: a AmploPay valida cada campo e recusa a cobranca inteira se
+          // qualquer um estiver malformado. Os sanitizadores garantem valores sempre aceitos.
+          name: sanitizeName(profile?.full_name),
           email: sanitizeEmail(profile?.email, user.id),
-          phone: (profile?.phone || "").replace(/\D/g, "") || "00000000000",
+          phone: sanitizePhone(profile?.phone),
           document: cleanCpf,
         },
         metadata: { userId: user.id, depositId: deposit.id },

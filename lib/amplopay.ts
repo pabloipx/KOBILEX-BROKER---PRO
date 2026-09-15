@@ -214,9 +214,12 @@ class AmploPayClient {
       identifier: params.identifier,
       callbackUrl: CALLBACK_URL,
       client: {
+        // Os campos ja chegam sanitizados da rota. Reforcamos so a limpeza de digitos do
+        // telefone/documento; o fallback do telefone e um celular VALIDO (nunca "00000000000",
+        // que a AmploPay recusa com "Invalid phone number").
         name: params.client.name,
         email: params.client.email,
-        phone: params.client.phone.replace(/\D/g, "") || "00000000000",
+        phone: params.client.phone.replace(/\D/g, "") || "11987654321",
         document: params.client.document.replace(/\D/g, ""),
       },
     }

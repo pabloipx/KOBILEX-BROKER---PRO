@@ -239,6 +239,24 @@ export default function DepositPage() {
     return clean
   }
 
+  // Valida CPF pelos digitos verificadores. A AmploPay rejeita CPF matematicamente invalido com
+  // "Documento invalido" (GATEWAY_INVALID_DATA), entao barramos aqui antes de chamar o provedor.
+  const isValidCpf = (raw: string): boolean => {
+    const cpf = raw.replace(/\D/g, "")
+    if (cpf.length !== 11) return false
+    if (/^(\d)\1{10}$/.test(cpf)) return false // todos os digitos iguais
+    let sum = 0
+    for (let i = 0; i < 9; i++) sum += Number(cpf[i]) * (10 - i)
+    let d1 = (sum * 10) % 11
+    if (d1 === 10) d1 = 0
+    if (d1 !== Number(cpf[9])) return false
+    sum = 0
+    for (let i = 0; i < 10; i++) sum += Number(cpf[i]) * (11 - i)
+    let d2 = (sum * 10) % 11
+    if (d2 === 10) d2 = 0
+    return d2 === Number(cpf[10])
+  }
+
   const handlePixDeposit = async () => {
     if (!acceptTerms) {
       setError("Voce precisa aceitar os termos e condicoes")
@@ -255,8 +273,8 @@ export default function DepositPage() {
     }
 
     const cleanCpf = pixCpf.replace(/\D/g, "")
-    if (cleanCpf.length !== 11) {
-      setError("Informe um CPF valido (11 digitos)")
+    if (!isValidCpf(cleanCpf)) {
+      setError("CPF invalido. Confira os numeros e tente novamente.")
       return
     }
 
@@ -327,8 +345,8 @@ export default function DepositPage() {
     }
 
     const cleanCpf = cardCpf.replace(/\D/g, "")
-    if (cleanCpf.length !== 11) {
-      setError("CPF invalido")
+    if (!isValidCpf(cleanCpf)) {
+      setError("CPF invalido. Confira os numeros e tente novamente.")
       return
     }
 

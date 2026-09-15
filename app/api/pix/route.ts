@@ -4,6 +4,24 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { approveDeposit, isPaidStatus } from "@/lib/deposits"
 import { validatePromoCode } from "@/lib/promo-codes"
 
+// Valida CPF pelos digitos verificadores. A AmploPay rejeita CPF matematicamente invalido com
+// "Documento invalido" (GATEWAY_INVALID_DATA), entao barramos antes de chamar o provedor.
+function isValidCpf(raw: string): boolean {
+  const cpf = raw.replace(/\D/g, "")
+  if (cpf.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(cpf)) return false
+  let sum = 0
+  for (let i = 0; i < 9; i++) sum += Number(cpf[i]) * (10 - i)
+  let d1 = (sum * 10) % 11
+  if (d1 === 10) d1 = 0
+  if (d1 !== Number(cpf[9])) return false
+  sum = 0
+  for (let i = 0; i < 10; i++) sum += Number(cpf[i]) * (11 - i)
+  let d2 = (sum * 10) % 11
+  if (d2 === 10) d2 = 0
+  return d2 === Number(cpf[10])
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { createClient } = await import("@/lib/supabase/server")
@@ -27,9 +45,12 @@ export async function POST(request: NextRequest) {
     }
 
     // CPF informado pelo lead na tela de deposito. A cobranca PIX e gerada com ESTE documento.
+    // Validamos os digitos verificadores AQUI tambem: a AmploPay recusa CPF matematicamente
+    // invalido com "Documento invalido" (GATEWAY_INVALID_DATA), e o cliente pode burlar a
+    // validacao do front. Barrando no servidor, nunca chamamos o provedor com CPF invalido.
     const cleanCpf = typeof cpf === "string" ? cpf.replace(/\D/g, "") : ""
-    if (cleanCpf.length !== 11) {
-      return NextResponse.json({ error: "CPF invalido. Informe os 11 digitos do seu CPF." }, { status: 400 })
+    if (!isValidCpf(cleanCpf)) {
+      return NextResponse.json({ error: "CPF invalido. Confira os numeros e tente novamente." }, { status: 400 })
     }
 
     // Fetch user profile

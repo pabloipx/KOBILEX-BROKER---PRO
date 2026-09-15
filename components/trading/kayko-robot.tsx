@@ -29,6 +29,15 @@ interface KaykoScore {
 }
 
 const SCORE_KEY = "kayko_score_v1"
+const ACTIVATED_KEY = "kayko_activated_at"
+
+function getActivatedAt(): number {
+  try {
+    return Number(localStorage.getItem(ACTIVATED_KEY)) || 0
+  } catch {
+    return 0
+  }
+}
 
 export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds = 60 }: KaykoRobotProps) {
   const [position, setPosition] = useState({ x: 16, y: 130 })
@@ -50,21 +59,33 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
     }
   }, [])
 
-  // Carrega o placar do dispositivo. O placar começa em 0 x 0 na ativação (feita no
-  // perfil) e só sobe conforme o RESULTADO REAL das entradas que o usuário faz na tela
-  // de trade — nunca é semeado com números fictícios.
+  // Carrega o placar do dispositivo, mas SOMENTE se ele pertence à ativação atual.
+  // O placar fica atrelado ao carimbo de ativação (kayko_activated_at): qualquer placar
+  // de uma ativação anterior (ou legado sem carimbo) é zerado — assim, ao ativar, começa
+  // sempre em 0 x 0 e só sobe pelo resultado real das entradas feitas depois de ativar.
   useEffect(() => {
     if (typeof window === "undefined") return
     try {
+      let activatedAt = getActivatedAt()
+      // Ativação legada sem carimbo: cria um agora para o placar contar a partir daqui.
+      if (isActive && activatedAt === 0) {
+        activatedAt = Date.now()
+        localStorage.setItem(ACTIVATED_KEY, String(activatedAt))
+      }
       const raw = localStorage.getItem(SCORE_KEY)
       if (raw) {
-        const parsed = JSON.parse(raw) as KaykoScore
-        if (typeof parsed?.win === "number") {
+        const parsed = JSON.parse(raw) as KaykoScore & { for?: number }
+        if (typeof parsed?.win === "number" && parsed.for === activatedAt) {
           setScore({ win: parsed.win, loss: parsed.loss ?? 0, profit: parsed.profit ?? 0 })
+          return
         }
       }
+      // Placar de outra ativação (ou legado) => começa 0 x 0 para esta ativação.
+      const zero: KaykoScore = { win: 0, loss: 0, profit: 0 }
+      setScore(zero)
+      localStorage.setItem(SCORE_KEY, JSON.stringify({ ...zero, for: activatedAt }))
     } catch {}
-  }, [])
+  }, [isActive])
 
   // O placar sobe pelo resultado real de cada operação encerrada na tela de trade.
   // A própria página dispara "kayko:trade-result" ao fechar uma entrada (win/loss + lucro).
@@ -75,10 +96,7 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
       if (!detail || (detail.result !== "win" && detail.result !== "loss")) return
       // Só conta entradas abertas a partir do momento da ativação — entradas que já
       // estavam abertas antes de ativar o robô não entram no placar.
-      let activatedAt = 0
-      try {
-        activatedAt = Number(localStorage.getItem("kayko_activated_at")) || 0
-      } catch {}
+      const activatedAt = getActivatedAt()
       if (activatedAt > 0 && typeof detail.openedAt === "number" && detail.openedAt < activatedAt) return
       const won = detail.result === "win"
       const delta = typeof detail.profit === "number" ? detail.profit : 0
@@ -89,7 +107,7 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
           profit: Math.round((prev.profit + delta) * 100) / 100,
         }
         try {
-          localStorage.setItem(SCORE_KEY, JSON.stringify(next))
+          localStorage.setItem(SCORE_KEY, JSON.stringify({ ...next, for: activatedAt }))
         } catch {}
         return next
       })

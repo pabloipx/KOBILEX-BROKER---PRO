@@ -587,15 +587,6 @@ export default function TradePage() {
           continue
         }
 
-        // Placar do robô KAYKO: reflete o resultado real desta entrada.
-        if (mountedRef.current) {
-          window.dispatchEvent(
-            new CustomEvent("kayko:trade-result", {
-              detail: { result, profit: profitAmount },
-            }),
-          )
-        }
-
         // Se ganhou, creditar o saldo
         if (isWin) {
           const balanceField = trade.is_demo ? "balance_demo" : "balance_real"

@@ -263,6 +263,16 @@ export default function TradePage() {
     [availableAssets],
   )
 
+  // Callbacks estáveis para os filhos memoizados (SidebarMenu / AssetPanel). Sem isso, uma nova
+  // função seria criada a cada render (~10x/s pelo tick de preço) e o React.memo desses componentes
+  // não teria efeito — eles re-renderizariam junto com a página mesmo sem mudança real de estado.
+  const handleCloseSidebar = useCallback(() => setSidebarOpen(false), [])
+  const handleOpenTraderIAFromMenu = useCallback(() => {
+    setSidebarOpen(false)
+    setTraderIAModalOpen(true)
+  }, [])
+  const handleCloseAssetPanel = useCallback(() => setShowAssetPanel(false), [])
+
   // Relógio que reavalia o horário de mercado periodicamente (para abrir/fechar sozinho).
   const [clockTick, setClockTick] = useState(() => Date.now())
   useEffect(() => {
@@ -1659,13 +1669,10 @@ export default function TradePage() {
       {/* Modals and Sidebars */}
       <SidebarMenu
         isOpen={showSidebar}
-        onClose={() => setSidebarOpen(false)}
+        onClose={handleCloseSidebar}
         balance={currentBalance}
         userName={user?.user_metadata?.name || user?.email?.split("@")[0]}
-        onOpenTraderIA={() => {
-          setSidebarOpen(false)
-          setTraderIAModalOpen(true)
-        }}
+        onOpenTraderIA={handleOpenTraderIAFromMenu}
         userId={user?.id}
         historyRefresh={historyRefresh}
       />
@@ -1687,7 +1694,7 @@ export default function TradePage() {
         selectedSymbol={selectedSymbol}
         openTabs={openTabs}
         onSelect={setSelectedSymbol}
-        onClose={() => setShowAssetPanel(false)}
+        onClose={handleCloseAssetPanel}
         clockTick={clockTick}
       />
 

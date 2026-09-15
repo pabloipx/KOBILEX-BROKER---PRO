@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import { Search, X, Lock, Clock, Check } from "lucide-react"
 import { getMarketStatus } from "@/lib/market-hours"
@@ -55,7 +55,7 @@ const MARKET_TABS = [
   { id: "open", label: "Mercado aberto" },
 ] as const
 
-export function AssetPanel({
+function AssetPanelBase({
   open,
   assets,
   selectedSymbol,
@@ -343,3 +343,7 @@ export function AssetPanel({
     </div>
   )
 }
+
+// Memoizado para não re-renderizar a lista de ativos a cada tick de preço da tela de trade.
+// As props são estáveis (o callback onClose é estabilizado com useCallback no componente pai).
+export const AssetPanel = memo(AssetPanelBase)

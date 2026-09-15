@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useCallback, useRef } from "react"
+import { memo, useEffect, useState, useCallback, useRef } from "react"
 import { Clock, Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
@@ -40,7 +40,7 @@ function sortTrades(trades: Trade[]): Trade[] {
   })
 }
 
-export function TradeHistorySidebar({ userId, refreshTrigger, isDemo }: TradeHistorySidebarProps) {
+function TradeHistorySidebarBase({ userId, refreshTrigger, isDemo }: TradeHistorySidebarProps) {
   const [trades, setTrades] = useState<Trade[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(Date.now())
@@ -361,3 +361,8 @@ export function TradeHistorySidebar({ userId, refreshTrigger, isDemo }: TradeHis
     </div>
   )
 }
+
+// Memoizado: a tela de trade re-renderiza ~10x/s (tick do preço ao vivo). Como as props aqui
+// são todas primitivas (userId, refreshTrigger, isDemo), o memo evita re-renderizar esta lista
+// (que busca do banco e tem seu próprio timer) a cada tick — só re-renderiza quando algo real muda.
+export const TradeHistorySidebar = memo(TradeHistorySidebarBase)

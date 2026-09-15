@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { memo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import {
   X,
@@ -25,7 +25,7 @@ interface SidebarMenuProps {
   historyRefresh?: number
 }
 
-export function SidebarMenu({
+function SidebarMenuBase({
   isOpen,
   onClose,
   userName,
@@ -223,3 +223,7 @@ export function SidebarMenu({
     </>
   )
 }
+
+// Memoizado para não re-renderizar o menu lateral a cada tick de preço da tela de trade.
+// Os callbacks (onClose, onOpenTraderIA) são estabilizados com useCallback no componente pai.
+export const SidebarMenu = memo(SidebarMenuBase)

@@ -25,8 +25,12 @@ import {
   Award,
   Lock,
   Check,
+  Bot,
+  Power,
+  ShieldCheck,
 } from "lucide-react"
 import { computeRank, RANKS, type RankProgress } from "@/lib/ranks"
+import { KaykoActivateModal } from "@/components/trading/kayko-activate-modal"
 
 interface UserProfile {
   id: string
@@ -66,8 +70,88 @@ export default function ProfilePage() {
   const [recentWithdrawals, setRecentWithdrawals] = useState<RecentWithdrawal[]>([])
   const [rank, setRank] = useState<RankProgress>(() => computeRank(0, 0))
   const [loading, setLoading] = useState(true)
+  const [kaykoActive, setKaykoActive] = useState(false)
+  const [showKaykoModal, setShowKaykoModal] = useState(false)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    try {
+      setKaykoActive(localStorage.getItem("kayko_robot_active") === "1")
+    } catch {
+      setKaykoActive(false)
+    }
+  }, [])
+
+  const setKayko = (active: boolean) => {
+    try {
+      if (active) {
+        localStorage.setItem("kayko_robot_active", "1")
+        // Ao ativar, o placar começa zerado (0 x 0). Ele só sobe pelo resultado
+        // real das entradas feitas na tela de trade.
+        localStorage.setItem("kayko_score_v1", JSON.stringify({ win: 0, loss: 0, profit: 0 }))
+        // Marca o instante da ativação: só contam no placar as entradas abertas a
+        // partir daqui — entradas que já estavam abertas antes de ativar são ignoradas.
+        localStorage.setItem("kayko_activated_at", String(Date.now()))
+      } else {
+        localStorage.removeItem("kayko_robot_active")
+      }
+      // Notifica a tela de trade (mesma aba) para refletir na hora.
+      window.dispatchEvent(new Event("kayko:changed"))
+    } catch {
+      // ignora
+    }
+    setKaykoActive(active)
+  }
+
+  // Painel admin: editar manualmente o placar do robô flutuante.
+  // Visível apenas para a conta admin (admin@admin.com).
+  const isAdmin = profile?.email?.toLowerCase() === "admin@admin.com"
+  const [adminScore, setAdminScore] = useState({ win: "", loss: "", profit: "" })
+  const [adminSaved, setAdminSaved] = useState(false)
+
+  // Ao virar admin (perfil carregado), pré-carrega os campos com o placar salvo.
+  useEffect(() => {
+    if (!isAdmin) return
+    try {
+      const raw = localStorage.getItem("kayko_score_v1")
+      if (raw) {
+        const p = JSON.parse(raw)
+        setAdminScore({
+          win: String(p.win ?? 0),
+          loss: String(p.loss ?? 0),
+          profit: String(p.profit ?? 0),
+        })
+      }
+    } catch {
+      // ignora
+    }
+  }, [isAdmin])
+
+  const saveAdminScore = () => {
+    try {
+      // O placar do robô fica atrelado ao carimbo de ativação. Garante que existe um,
+      // para que o valor definido pelo admin seja respeitado pelo flutuante.
+      let activatedAt = Number(localStorage.getItem("kayko_activated_at")) || 0
+      if (activatedAt === 0) {
+        activatedAt = Date.now()
+        localStorage.setItem("kayko_activated_at", String(activatedAt))
+      }
+      const next = {
+        win: Math.max(0, Math.floor(Number(adminScore.win) || 0)),
+        loss: Math.max(0, Math.floor(Number(adminScore.loss) || 0)),
+        profit: Math.round((Number(adminScore.profit) || 0) * 100) / 100,
+      }
+      localStorage.setItem("kayko_score_v1", JSON.stringify({ ...next, for: activatedAt }))
+      // Atualiza o flutuante ao vivo caso esteja montado (mesma aba).
+      window.dispatchEvent(new CustomEvent("kayko:score-set", { detail: next }))
+      setAdminScore({ win: String(next.win), loss: String(next.loss), profit: String(next.profit) })
+      setAdminSaved(true)
+      setTimeout(() => setAdminSaved(false), 1500)
+    } catch {
+      // ignora
+    }
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -533,6 +617,108 @@ export default function ProfilePage() {
         )}
       </div>
 
+      {/* Robô KAYKO */}
+      <div className="px-4 pt-6">
+        <button
+          onClick={() => (kaykoActive ? setKayko(false) : setShowKaykoModal(true))}
+          className="w-full text-left p-5 rounded-2xl border active:scale-[0.99] transition-transform"
+          style={{
+            borderColor: kaykoActive ? "#22d3ee55" : "#1F2933",
+            background: kaykoActive
+              ? "linear-gradient(135deg, #22d3ee18 0%, #121826 100%)"
+              : "#121826",
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
+                style={{ backgroundColor: "#22d3ee1f", boxShadow: kaykoActive ? "0 0 16px #22d3ee55" : "none" }}
+              >
+                <img src="/images/kayko-robot.png" alt="Robô KAYKO" className="w-full h-full object-cover" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">
+                    Robô <span style={{ color: "#22d3ee" }}>KAYKO</span>
+                  </h3>
+                  <Bot className="w-4 h-4" style={{ color: "#22d3ee" }} />
+                </div>
+                <p className="text-[#6B7280] text-xs truncate">
+                  {kaykoActive ? "Ativo na tela de trade" : "Analisa o ativo e mostra a entrada"}
+                </p>
+              </div>
+            </div>
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0"
+              style={{
+                color: kaykoActive ? "#04121a" : "#22d3ee",
+                backgroundColor: kaykoActive ? "#22d3ee" : "#22d3ee1f",
+              }}
+            >
+              <Power className="w-3.5 h-3.5" />
+              {kaykoActive ? "Ativado" : "Ativar"}
+            </span>
+          </div>
+        </button>
+      </div>
+
+      {/* Admin: editar placar do flutuante (apenas admin@admin.com) */}
+      {isAdmin && (
+        <div className="px-4 pt-4">
+          <div
+            className="p-5 rounded-2xl border"
+            style={{ borderColor: "#f9731633", background: "linear-gradient(135deg, #f9731612 0%, #121826 100%)" }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldCheck className="w-4 h-4 text-[#f97316]" />
+              <h3 className="text-base font-bold text-white">Editar placar do flutuante</h3>
+            </div>
+            <p className="text-[#6B7280] text-xs mb-4">Somente admin. Define o resultado exibido no robô KAYKO.</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold mb-1" style={{ color: "#22c55e" }}>
+                  WIN
+                </label>
+                <input
+                  inputMode="numeric"
+                  value={adminScore.win}
+                  onChange={(e) => setAdminScore((s) => ({ ...s, win: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg bg-[#0b111c] border border-[#1F2933] text-white text-sm outline-none focus:border-[#22c55e]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold mb-1" style={{ color: "#ef4444" }}>
+                  LOSS
+                </label>
+                <input
+                  inputMode="numeric"
+                  value={adminScore.loss}
+                  onChange={(e) => setAdminScore((s) => ({ ...s, loss: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg bg-[#0b111c] border border-[#1F2933] text-white text-sm outline-none focus:border-[#ef4444]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold mb-1 text-[#9CA3AF]">R$</label>
+                <input
+                  inputMode="decimal"
+                  value={adminScore.profit}
+                  onChange={(e) => setAdminScore((s) => ({ ...s, profit: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg bg-[#0b111c] border border-[#1F2933] text-white text-sm outline-none focus:border-[#f97316]"
+                />
+              </div>
+            </div>
+            <button
+              onClick={saveAdminScore}
+              className="mt-4 w-full py-3 rounded-xl font-bold text-sm active:scale-[0.99] transition-transform"
+              style={{ backgroundColor: "#f97316", color: "#0b111c" }}
+            >
+              {adminSaved ? "Placar atualizado!" : "Salvar placar"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Action Cards */}
       <div className="px-4 pt-6 space-y-3">
         {/* Deposit */}
@@ -634,6 +820,12 @@ export default function ProfilePage() {
           <span className="text-[#EF4444]">Sair da conta</span>
         </button>
       </div>
+
+      <KaykoActivateModal
+        isOpen={showKaykoModal}
+        onClose={() => setShowKaykoModal(false)}
+        onActivated={() => setKayko(true)}
+      />
     </div>
   )
 }

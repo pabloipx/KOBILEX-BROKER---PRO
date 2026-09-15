@@ -7,6 +7,7 @@ import { MarketChart } from "@/components/trading/market-chart"
 import { SidebarMenu } from "@/components/trading/sidebar-menu"
 import { TraderIAModal } from "@/components/trading/trader-ia-modal"
 import { TraderIAWatermark } from "@/components/trading/trader-ia-watermark"
+import { KaykoRobot } from "@/components/trading/kayko-robot"
 import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
 import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
 import { AssetPanel } from "@/components/trading/asset-panel"
@@ -212,6 +213,34 @@ export default function TradePage() {
   const [showTraderIAModal, setTraderIAModalOpen] = useState(false)
   const [isTraderIAActive, setIsTraderIAActive] = useState(false)
 
+  // Robô KAYKO: ativado pelo perfil (senha) e persistido no dispositivo. A tela de trade
+  // apenas lê o estado — reage a mudanças em outra aba/página e ao voltar do segundo plano.
+  const [isKaykoActive, setIsKaykoActive] = useState(false)
+  useEffect(() => {
+    const read = () => {
+      try {
+        setIsKaykoActive(localStorage.getItem("kayko_robot_active") === "1")
+      } catch {
+        setIsKaykoActive(false)
+      }
+    }
+    read()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "kayko_robot_active") read()
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") read()
+    }
+    window.addEventListener("storage", onStorage)
+    window.addEventListener("kayko:changed", read as EventListener)
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener("kayko:changed", read as EventListener)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [])
+
   // Trader sentiment (simulated)
 
   const { price, candles, isConnected, realReady, realHistoryReady } = useGlobalOTC(
@@ -233,6 +262,16 @@ export default function TradePage() {
     (sym: string) => availableAssets.find((a) => a.symbol === sym),
     [availableAssets],
   )
+
+  // Callbacks estáveis para os filhos memoizados (SidebarMenu / AssetPanel). Sem isso, uma nova
+  // função seria criada a cada render (~10x/s pelo tick de preço) e o React.memo desses componentes
+  // não teria efeito — eles re-renderizariam junto com a página mesmo sem mudança real de estado.
+  const handleCloseSidebar = useCallback(() => setSidebarOpen(false), [])
+  const handleOpenTraderIAFromMenu = useCallback(() => {
+    setSidebarOpen(false)
+    setTraderIAModalOpen(true)
+  }, [])
+  const handleCloseAssetPanel = useCallback(() => setShowAssetPanel(false), [])
 
   // Relógio que reavalia o horário de mercado periodicamente (para abrir/fechar sozinho).
   const [clockTick, setClockTick] = useState(() => Date.now())
@@ -384,14 +423,30 @@ export default function TradePage() {
 
     const checkUser = async () => {
       try {
-        const {
-          data: { user: currentUser },
-          error,
-        } = await supabase.auth.getUser()
+        // A verificacao de sessao nao pode depender apenas de `getUser()`: ele faz uma chamada de
+        // rede e, no mobile (Safari, conexao instavel ou retorno de bfcache/app minimizado), essa
+        // promessa pode nunca resolver — deixando a tela travada em "Carregando..." para sempre.
+        //
+        // Por isso: primeiro pegamos a sessao local (sincrona, sem rede) para liberar a tela rapido;
+        // e validamos `getUser()` com um timeout. Se a rede travar, usamos o usuario da sessao local
+        // como fallback em vez de ficar preso.
+        const withTimeout = (p: Promise<any>, ms: number): Promise<any> => {
+          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))
+          return Promise.race([p, timeout])
+        }
+
+        const sessionResult = await withTimeout(supabase.auth.getSession(), 4000)
+        const sessionUser = sessionResult?.data?.session?.user ?? null
+
+        const getUserResult = await withTimeout(supabase.auth.getUser(), 6000)
 
         if (!mountedRef.current) return
 
-        if (error || !currentUser) {
+        // Sem sessao local E sem usuario validado => nao ha login: manda pro login.
+        const currentUser = getUserResult?.data?.user ?? sessionUser
+        const hardError = getUserResult?.error
+
+        if (!currentUser || (hardError && !sessionUser)) {
           router.replace("/auth/login")
           return
         }
@@ -722,9 +777,19 @@ export default function TradePage() {
 
         try {
           // Resultado REAL baseado no movimento do preco, para TODOS os usuarios
-          // (sem vitoria forcada para demo nem para afiliado)
+          // (sem vitoria forcada para demo nem para afiliado).
+          //
+          // IMPORTANTE: a saida usa a MESMA fonte de preco da entrada — o motor multi-ativos
+          // (multiAssetEngine), que tambem alimenta o grafico. A entrada e capturada de
+          // multiAssetEngine.getCurrentPrice (ver openTrade) e o caminho da rede de seguranca ja
+          // liquida pelo motor. Este caminho, porem, comparava a saida contra `price` (o feed
+          // `use-global-otc` do topo da tela), um numero DIFERENTE do motor. Quando os dois
+          // divergiam, uma operacao que o usuario viu fechar no verde no grafico podia ser marcada
+          // como loss — era exatamente o "foi green e marcou loss". Agora ambos usam o motor.
+          const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
+          const exitPrice = enginePrice > 0 ? enginePrice : price
           const isWin =
-            trade.direction === "CALL" ? price > trade.entryPrice : price < trade.entryPrice
+            trade.direction === "CALL" ? exitPrice > trade.entryPrice : exitPrice < trade.entryPrice
           const result = isWin ? "win" : "loss"
           const profitAmount = isWin ? Math.round(trade.amount * (payout / 100) * 100) / 100 : 0
 
@@ -843,6 +908,12 @@ export default function TradePage() {
           }
 
           if (mountedRef.current) {
+            // Placar do robô KAYKO: reflete o resultado real desta entrada.
+            window.dispatchEvent(
+              new CustomEvent("kayko:trade-result", {
+                detail: { result, profit: isWin ? profitAmount : -trade.amount, openedAt: trade.timestamp },
+              }),
+            )
             // Entra na fila em vez de sobrescrever o resultado anterior.
             setResultQueue((prev) => [
               ...prev,
@@ -1281,6 +1352,15 @@ export default function TradePage() {
         <div className="flex-1 min-h-0 relative">
           <div className="absolute inset-0">
             {isTraderIAActive && <TraderIAWatermark isActive={isTraderIAActive} />}
+            {isKaykoActive && (
+              <KaykoRobot
+                isActive={isKaykoActive}
+                assetName={selectedAsset?.name}
+                symbol={selectedSymbol}
+                price={price}
+                expirySeconds={expiryTime}
+              />
+            )}
             <MarketChart
               candles={candles || []}
               currentPrice={price || 0}
@@ -1599,13 +1679,10 @@ export default function TradePage() {
       {/* Modals and Sidebars */}
       <SidebarMenu
         isOpen={showSidebar}
-        onClose={() => setSidebarOpen(false)}
+        onClose={handleCloseSidebar}
         balance={currentBalance}
         userName={user?.user_metadata?.name || user?.email?.split("@")[0]}
-        onOpenTraderIA={() => {
-          setSidebarOpen(false)
-          setTraderIAModalOpen(true)
-        }}
+        onOpenTraderIA={handleOpenTraderIAFromMenu}
         userId={user?.id}
         historyRefresh={historyRefresh}
       />
@@ -1627,7 +1704,7 @@ export default function TradePage() {
         selectedSymbol={selectedSymbol}
         openTabs={openTabs}
         onSelect={setSelectedSymbol}
-        onClose={() => setShowAssetPanel(false)}
+        onClose={handleCloseAssetPanel}
         clockTick={clockTick}
       />
 

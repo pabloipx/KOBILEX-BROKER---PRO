@@ -143,6 +143,9 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
     }
     document.addEventListener("visibilitychange", onVisible)
     window.addEventListener("focus", onVisible)
+    // pageshow: retomada pelo cache de historico (bfcache) do iOS Safari, onde os outros
+    // eventos nao disparam de forma confiavel ao voltar para a aba.
+    window.addEventListener("pageshow", onVisible)
 
     return () => {
       mountedRef.current = false
@@ -150,6 +153,7 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
       clearInterval(watchdog)
       document.removeEventListener("visibilitychange", onVisible)
       window.removeEventListener("focus", onVisible)
+      window.removeEventListener("pageshow", onVisible)
     }
   }, [validSymbol, timeframe, asset.decimals])
 

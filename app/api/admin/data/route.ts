@@ -206,6 +206,146 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ kycRequests: kycWithProfiles })
     }
 
+    if (type === "ia_users") {
+      // Estados do Robô de IA ficam em platform_settings, chave ia_broker_state:<userId>.
+      const { data: settings, error: settingsError } = await supabase
+        .from("platform_settings")
+        .select("setting_key, setting_value, updated_at")
+        .like("setting_key", "ia_broker_state:%")
+
+      if (settingsError) throw settingsError
+
+      const parsed = (settings || [])
+        .map((row: any) => {
+          const userId = String(row.setting_key).replace("ia_broker_state:", "")
+          let value: any = null
+          try {
+            value = typeof row.setting_value === "string" ? JSON.parse(row.setting_value) : row.setting_value
+          } catch {
+            value = null
+          }
+          return { userId, value, updatedAt: row.updated_at }
+        })
+        .filter((r: any) => r.value && r.value.active)
+
+      if (parsed.length === 0) return NextResponse.json({ iaUsers: [] })
+
+      const userIds = parsed.map((p: any) => p.userId)
+      const [{ data: profiles }, { data: balances }] = await Promise.all([
+        supabase.from("profiles").select("id, full_name, email").in("id", userIds),
+        supabase.from("user_balances").select("user_id, balance_real").in("user_id", userIds),
+      ])
+
+      const iaUsers = parsed
+        .map((p: any) => {
+          const profile = profiles?.find((x: any) => x.id === p.userId)
+          const balance = balances?.find((b: any) => b.user_id === p.userId)
+          const s = p.value
+          const dailyMeta = round2(Number(s.amount || 0) * (Number(s.daily || 0) / 100))
+          const hasOverride =
+            s.metaOverride != null && Number.isFinite(Number(s.metaOverride)) && Number(s.metaOverride) >= 0
+          const effectiveMeta = hasOverride ? round2(Number(s.metaOverride)) : dailyMeta
+          return {
+            userId: p.userId,
+            user_name: profile?.full_name || "Usuario",
+            user_email: profile?.email || "Email nao encontrado",
+            balance_real: Number(balance?.balance_real || 0),
+            planId: s.planId || "",
+            amount: Number(s.amount || 0),
+            daily: Number(s.daily || 0),
+            dailyMeta,
+            metaOverride: hasOverride ? round2(Number(s.metaOverride)) : null,
+            effectiveMeta,
+            earningEnabled: s.earningEnabled !== false,
+            lossMode: !!s.lossMode,
+            lossPerDay:
+              s.lossPerDay != null && Number.isFinite(Number(s.lossPerDay)) ? round2(Number(s.lossPerDay)) : null,
+            lostToday: round2(Number(s.lostToday || 0)),
+            totalCredited: round2(Number(s.totalCredited || 0)),
+            creditedToday: round2(Number(s.creditedToday || 0)),
+            assertiveness: Number(s.assertiveness ?? 87),
+            paused: !!s.paused,
+            activatedAt: s.activatedAt || null,
+            updatedAt: p.updatedAt,
+          }
+        })
+        .sort((a: any, b: any) => new Date(b.activatedAt || 0).getTime() - new Date(a.activatedAt || 0).getTime())
+
+      return NextResponse.json({ iaUsers })
+    }
+
+    if (type === "ia_user_detail") {
+      const userId = searchParams.get("userId") || ""
+      if (!userId) return NextResponse.json({ error: "userId obrigatorio" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const [{ data: setting }, { data: profile }, { data: balance }, { data: txs }] = await Promise.all([
+        supabase.from("platform_settings").select("setting_value, updated_at").eq("setting_key", settingKey).maybeSingle(),
+        supabase.from("profiles").select("id, full_name, email, phone, created_at").eq("id", userId).maybeSingle(),
+        supabase.from("user_balances").select("balance_real").eq("user_id", userId).maybeSingle(),
+        // Histórico de movimentações geradas pela IA (investimento, rendimentos, devolução).
+        supabase
+          .from("transactions")
+          .select("id, type, amount, balance_after, description, created_at")
+          .eq("user_id", userId)
+          .in("type", ["ia_invest", "ia_yield", "ia_refund"])
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ])
+
+      let state: any = null
+      if (setting?.setting_value) {
+        try {
+          state = typeof setting.setting_value === "string" ? JSON.parse(setting.setting_value) : setting.setting_value
+        } catch {
+          state = null
+        }
+      }
+
+      const transactions = txs || []
+      const totalYield = round2(
+        transactions.filter((t: any) => t.type === "ia_yield").reduce((s: number, t: any) => s + Number(t.amount || 0), 0),
+      )
+      const yieldCount = transactions.filter((t: any) => t.type === "ia_yield").length
+
+      return NextResponse.json({
+        detail: {
+          userId,
+          user_name: profile?.full_name || "Usuario",
+          user_email: profile?.email || "Email nao encontrado",
+          phone: profile?.phone || null,
+          member_since: profile?.created_at || null,
+          balance_real: Number(balance?.balance_real || 0),
+          active: !!state?.active,
+          paused: !!state?.paused,
+          planId: state?.planId || "",
+          amount: Number(state?.amount || 0),
+          daily: Number(state?.daily || 0),
+          dailyMeta: round2(Number(state?.amount || 0) * (Number(state?.daily || 0) / 100)),
+          metaOverride:
+            state?.metaOverride != null && Number.isFinite(Number(state.metaOverride))
+              ? round2(Number(state.metaOverride))
+              : null,
+          earningEnabled: state?.earningEnabled !== false,
+          lossMode: !!state?.lossMode,
+          lossPerDay:
+            state?.lossPerDay != null && Number.isFinite(Number(state.lossPerDay))
+              ? round2(Number(state.lossPerDay))
+              : null,
+          lostToday: round2(Number(state?.lostToday || 0)),
+          totalCredited: round2(Number(state?.totalCredited || 0)),
+          creditedToday: round2(Number(state?.creditedToday || 0)),
+          assertiveness: Number(state?.assertiveness ?? 87),
+          activatedAt: state?.activatedAt || null,
+          lastSettleAt: state?.lastSettleAt || null,
+          updatedAt: setting?.updated_at || null,
+          totalYield,
+          yieldCount,
+          transactions,
+        },
+      })
+    }
+
     return NextResponse.json({ error: "Tipo invalido" }, { status: 400 })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -233,6 +373,303 @@ export async function POST(req: NextRequest) {
     const payload = actionData || body
 
     console.log("[v0] Payload:", JSON.stringify(payload))
+
+    if (action === "set_ia_assertiveness") {
+      const userId = payload.userId
+      const raw = Number(payload.assertiveness)
+      if (!userId || !Number.isFinite(raw)) {
+        return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+      }
+      // Limita entre 1% e 100% e arredonda para inteiro.
+      const assertiveness = Math.max(1, Math.min(100, Math.round(raw)))
+      const settingKey = `ia_broker_state:${userId}`
+
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.assertiveness = assertiveness
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      return NextResponse.json({ success: true, assertiveness })
+    }
+
+    if (action === "set_ia_meta") {
+      // Define (ou remove) a meta diária personalizada de um usuário na IA.
+      // meta null/vazia => volta para a meta padrão do plano.
+      const userId = payload.userId
+      const rawMeta = payload.meta
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      if (rawMeta === null || rawMeta === undefined || rawMeta === "") {
+        state.metaOverride = null
+      } else {
+        const meta = Number(rawMeta)
+        if (!Number.isFinite(meta) || meta < 0) {
+          return NextResponse.json({ error: "Meta invalida" }, { status: 400 })
+        }
+        state.metaOverride = round2(meta)
+      }
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      const effectiveMeta =
+        state.metaOverride != null
+          ? state.metaOverride
+          : round2(Number(state.amount || 0) * (Number(state.daily || 0) / 100))
+
+      return NextResponse.json({ success: true, metaOverride: state.metaOverride, effectiveMeta })
+    }
+
+    if (action === "set_ia_earning") {
+      // Liga/desliga o rendimento de um usuário na IA. Desligado, nada é creditado.
+      const userId = payload.userId
+      const enabled = !!payload.enabled
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.earningEnabled = enabled
+      // Ao religar, zera o marco de acerto para não creditar um lote pelo tempo em que ficou desligado.
+      if (enabled) state.lastSettleAt = new Date().toISOString()
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      return NextResponse.json({ success: true, earningEnabled: enabled })
+    }
+
+    if (action === "set_ia_loss") {
+      // Coloca (ou tira) o usuário no PREJUÍZO do dia. Ligado, em vez de render o saldo cai aos poucos
+      // até o prejuízo alvo (lossPerDay; vazio => a magnitude da meta do plano) e as entradas do dia
+      // fecham negativas no histórico da tela de TRADE. Ligar zera o dia atual para começar limpo.
+      const userId = payload.userId
+      const enabled = !!payload.enabled
+      const rawLoss = payload.lossPerDay
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.lossMode = enabled
+      if (enabled) {
+        if (rawLoss === null || rawLoss === undefined || rawLoss === "") {
+          state.lossPerDay = null
+        } else {
+          const loss = Number(rawLoss)
+          if (!Number.isFinite(loss) || loss < 0) {
+            return NextResponse.json({ error: "Prejuizo invalido" }, { status: 400 })
+          }
+          state.lossPerDay = round2(loss)
+        }
+      }
+      // Começa o dia limpo no novo modo: zera acumulados diários e o plano de entradas do dia,
+      // e reancora o marco para não debitar/creditar um lote pelo tempo anterior.
+      const nowIso = new Date().toISOString()
+      state.lastSettleAt = nowIso
+      state.creditedToday = 0
+      state.lostToday = 0
+      state.tradesToday = 0
+      state.tradesProfitToday = 0
+      state.tradesTargetToday = 8 + Math.floor(Math.random() * 5)
+      state.dayKey = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: nowIso })
+        .eq("id", existing.id)
+
+      return NextResponse.json({
+        success: true,
+        lossMode: state.lossMode,
+        lossPerDay: state.lossPerDay ?? null,
+      })
+    }
+
+    if (action === "set_ia_paused") {
+      // Pausa/retoma a IA do usuário. Pausada, o settle congela e nada é creditado,
+      // mas o estado (plano, meta, acumulados) é preservado.
+      const userId = payload.userId
+      const paused = !!payload.paused
+      if (!userId) return NextResponse.json({ error: "Dados invalidos" }, { status: 400 })
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      state.paused = paused
+      // Ao retomar, reancora o marco de acerto para não creditar um lote acumulado pelo tempo pausado.
+      if (!paused) state.lastSettleAt = new Date().toISOString()
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      return NextResponse.json({ success: true, paused })
+    }
+
+    if (action === "set_ia_credited_today") {
+      // Define exatamente quanto o usuário "ganhou hoje" na IA. O admin controla o ganho diário:
+      // a diferença em relação ao já creditado hoje é lançada (ou estornada) no saldo real, com
+      // transação registrada, e os acumulados (hoje/total) são ajustados.
+      const userId = payload.userId
+      const rawTarget = Number(payload.amount)
+      if (!userId || !Number.isFinite(rawTarget) || rawTarget < 0) {
+        return NextResponse.json({ error: "Valor invalido" }, { status: 400 })
+      }
+      const target = round2(rawTarget)
+
+      const settingKey = `ia_broker_state:${userId}`
+      const { data: existing } = await supabase
+        .from("platform_settings")
+        .select("id, setting_value")
+        .eq("setting_key", settingKey)
+        .maybeSingle()
+
+      if (!existing?.setting_value) {
+        return NextResponse.json({ error: "Estado da IA nao encontrado" }, { status: 404 })
+      }
+
+      let state: any
+      try {
+        state = typeof existing.setting_value === "string" ? JSON.parse(existing.setting_value) : existing.setting_value
+      } catch {
+        return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
+      }
+
+      // Dia atual no fuso America/Sao_Paulo (UTC-3), igual ao usado no settle da IA.
+      const nowIso = new Date().toISOString()
+      const todayKey = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+      const currentToday = state.dayKey === todayKey ? round2(Number(state.creditedToday || 0)) : 0
+      const delta = round2(target - currentToday)
+
+      // Ajusta o saldo real pela diferença e registra a transação correspondente.
+      const { data: bal } = await supabase
+        .from("user_balances")
+        .select("balance_real")
+        .eq("user_id", userId)
+        .maybeSingle()
+      const currentBalance = Number(bal?.balance_real || 0)
+      const newBalance = round2(currentBalance + delta)
+
+      await supabase.from("user_balances").upsert(
+        { user_id: userId, balance_real: newBalance, updated_at: nowIso },
+        { onConflict: "user_id" },
+      )
+
+      if (delta !== 0) {
+        await supabase.from("transactions").insert({
+          user_id: userId,
+          type: "ia_yield",
+          amount: delta,
+          balance_after: newBalance,
+          account_type: "real",
+          description: delta >= 0 ? "Ajuste de ganho do dia (admin)" : "Estorno de ganho do dia (admin)",
+        })
+      }
+
+      state.creditedToday = target
+      state.dayKey = todayKey
+      state.totalCredited = round2(Math.max(0, Number(state.totalCredited || 0) + delta))
+      state.lastSettleAt = nowIso
+
+      await supabase
+        .from("platform_settings")
+        .update({ setting_value: JSON.stringify(state), updated_at: nowIso })
+        .eq("id", existing.id)
+
+      return NextResponse.json({
+        success: true,
+        creditedToday: target,
+        totalCredited: state.totalCredited,
+        balance_real: newBalance,
+      })
+    }
 
     if (action === "update_balance") {
       const userId = payload.userId

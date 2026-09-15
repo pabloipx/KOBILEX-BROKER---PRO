@@ -81,36 +81,84 @@ class AmploPayClient {
     }
   }
 
+  // Codigos de status que indicam indisponibilidade TEMPORARIA do provedor (nao e culpa do
+  // pedido em si). Nesses casos vale a pena tentar de novo automaticamente antes de desistir.
+  private static readonly TRANSIENT_STATUS = new Set([408, 429, 500, 502, 503, 504])
+
+  // Mensagem unica e amigavel para qualquer indisponibilidade temporaria. NUNCA devolvemos o
+  // HTML cru da pagina de erro do provedor (ex.: "<html>...503 Service Temporarily...") para o
+  // cliente - isso vazava lixo tecnico na tela de deposito.
+  private static readonly UNAVAILABLE_MESSAGE =
+    "O provedor de pagamento esta temporariamente indisponivel. Aguarde alguns instantes e tente gerar o PIX novamente."
+
   private async request(method: string, path: string, body?: any): Promise<any> {
     const url = `${BASE_URL}${path}`
+    const maxAttempts = 3
 
-    console.log(`[v0] AmploPay ${method} ${url}`)
+    let lastTransientStatus = 0
 
-    const res = await fetch(url, {
-      method,
-      headers: this.headers(),
-      body: body ? JSON.stringify(body) : undefined,
-    })
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`[v0] AmploPay ${method} ${url} (tentativa ${attempt}/${maxAttempts})`)
 
-    const text = await res.text()
+      let res: Response
+      try {
+        res = await fetch(url, {
+          method,
+          headers: this.headers(),
+          body: body ? JSON.stringify(body) : undefined,
+        })
+      } catch (networkErr: any) {
+        // Falha de rede (DNS, timeout, conexao recusada) tambem e transitoria.
+        console.error(`[v0] AmploPay falha de rede (tentativa ${attempt}):`, networkErr?.message)
+        lastTransientStatus = 503
+        if (attempt < maxAttempts) {
+          await this.sleep(attempt * 600)
+          continue
+        }
+        throw new Error(AmploPayClient.UNAVAILABLE_MESSAGE)
+      }
 
-    // Tentar parsear JSON
-    let data: any
-    try {
-      data = JSON.parse(text)
-    } catch {
-      console.error(`[v0] AmploPay resposta nao-JSON (${res.status}):`, text.slice(0, 300))
-      throw new Error(`AmploPay retornou resposta invalida (HTTP ${res.status}): ${text.slice(0, 100)}`)
+      const text = await res.text()
+
+      // Erro transitorio do provedor (503 etc.): tenta de novo com um pequeno intervalo.
+      if (AmploPayClient.TRANSIENT_STATUS.has(res.status)) {
+        console.error(`[v0] AmploPay indisponivel (HTTP ${res.status}, tentativa ${attempt}):`, text.slice(0, 200))
+        lastTransientStatus = res.status
+        if (attempt < maxAttempts) {
+          await this.sleep(attempt * 600)
+          continue
+        }
+        throw new Error(AmploPayClient.UNAVAILABLE_MESSAGE)
+      }
+
+      // Tentar parsear JSON
+      let data: any
+      try {
+        data = JSON.parse(text)
+      } catch {
+        // Resposta nao-JSON num status nao-transitorio (ex.: pagina HTML de erro). Nao vaza o
+        // HTML para o cliente - mostra a mensagem amigavel.
+        console.error(`[v0] AmploPay resposta nao-JSON (${res.status}):`, text.slice(0, 300))
+        throw new Error(AmploPayClient.UNAVAILABLE_MESSAGE)
+      }
+
+      console.log(`[v0] AmploPay response ${res.status}:`, JSON.stringify(data).slice(0, 500))
+
+      if (!res.ok) {
+        const msg = data.message || data.errorCode || `HTTP ${res.status}`
+        throw new Error(`AmploPay erro (${data.errorCode || res.status}): ${msg}`)
+      }
+
+      return data
     }
 
-    console.log(`[v0] AmploPay response ${res.status}:`, JSON.stringify(data).slice(0, 500))
+    // Se esgotou as tentativas sem sucesso.
+    console.error(`[v0] AmploPay esgotou tentativas (ultimo status ${lastTransientStatus})`)
+    throw new Error(AmploPayClient.UNAVAILABLE_MESSAGE)
+  }
 
-    if (!res.ok) {
-      const msg = data.message || data.errorCode || `HTTP ${res.status}`
-      throw new Error(`AmploPay erro (${data.errorCode || res.status}): ${msg}`)
-    }
-
-    return data
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   async ping(): Promise<boolean> {

@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const supabaseAdmin = createAdminClient()
 
     const body = await request.json()
-    const { amount, promoCode } = body
+    const { amount, promoCode, cpf } = body
 
     const numericAmount =
       typeof amount === "string" ? Number.parseFloat(amount.replace(/[^\d.,]/g, "").replace(",", ".")) : Number(amount)
@@ -26,12 +26,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Valor minimo: R$ 50,00" }, { status: 400 })
     }
 
-    // Dados fixos para todas as transacoes PIX
-    const FIXED_CLIENT = {
-      name: "Anthony Pedro Henrique Nicolas Barbosa",
-      email: "anthony.pedro.barbosa@bb.com.br",
-      phone: "91984355084",
-      document: "84054702040",
+    // CPF informado pelo lead na tela de deposito. A cobranca PIX e gerada com ESTE documento.
+    const cleanCpf = typeof cpf === "string" ? cpf.replace(/\D/g, "") : ""
+    if (cleanCpf.length !== 11) {
+      return NextResponse.json({ error: "CPF invalido. Informe os 11 digitos do seu CPF." }, { status: 400 })
     }
 
     // Fetch user profile
@@ -79,7 +77,14 @@ export async function POST(request: NextRequest) {
       const pixResponse = await amplopay.createPixPayment({
         amount: numericAmount,
         identifier: identifier,
-        client: FIXED_CLIENT,
+        client: {
+          // Cobranca gerada com o CPF informado pelo lead. Nome/e-mail/telefone vem do
+          // perfil quando disponiveis (AmploPay exige esses campos), com fallback seguro.
+          name: profile?.full_name?.trim() || "Cliente",
+          email: profile?.email?.trim() || "cliente@urynbrokertrade.com",
+          phone: (profile?.phone || "").replace(/\D/g, "") || "00000000000",
+          document: cleanCpf,
+        },
         metadata: { userId: user.id, depositId: deposit.id },
       })
 

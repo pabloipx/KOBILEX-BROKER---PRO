@@ -44,6 +44,7 @@ export default function DepositPage() {
 
   // PIX state
   const [pixData, setPixData] = useState<PixPaymentData | null>(null)
+  const [pixCpf, setPixCpf] = useState("")
   const [copied, setCopied] = useState(false)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [checkingStatus, setCheckingStatus] = useState(false)
@@ -253,6 +254,12 @@ export default function DepositPage() {
       return
     }
 
+    const cleanCpf = pixCpf.replace(/\D/g, "")
+    if (cleanCpf.length !== 11) {
+      setError("Informe um CPF valido (11 digitos)")
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
@@ -263,6 +270,7 @@ export default function DepositPage() {
         body: JSON.stringify({
           amount: depositAmount,
           promoCode: appliedPromoCode,
+          cpf: cleanCpf,
         }),
       })
       const data = await response.json()
@@ -868,6 +876,23 @@ export default function DepositPage() {
                 pagamentos são processados pelo provedor em até 5 minutos.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* PIX: CPF do lead (usado para gerar a cobranca) */}
+        {method === "pix" && (
+          <div>
+            <label className="block text-sm text-white mb-2 font-medium">CPF do titular</label>
+            <input
+              type="text"
+              value={pixCpf}
+              onChange={(e) => setPixCpf(formatCpf(e.target.value))}
+              placeholder="000.000.000-00"
+              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#f97316] outline-none"
+              inputMode="numeric"
+              autoComplete="off"
+            />
+            <p className="mt-2 text-xs text-[#6b7280]">Use apenas o seu proprio CPF. O PIX sera gerado com este documento.</p>
           </div>
         )}
 

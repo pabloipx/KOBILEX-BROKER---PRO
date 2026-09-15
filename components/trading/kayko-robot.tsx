@@ -221,10 +221,12 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
       else if (bias < 0) type = Math.random() < 0.7 ? "PUT" : "CALL"
       else type = Math.random() < 0.5 ? "CALL" : "PUT"
 
-      // Horário de entrada: início do próximo minuto cheio (padrão de sinais).
+      // Horário de entrada: sempre de 4 a 5 minutos à frente do momento do sinal,
+      // no início do minuto cheio (padrão de sinais).
       const entry = new Date()
       entry.setSeconds(0, 0)
-      entry.setMinutes(entry.getMinutes() + 1)
+      const minutesAhead = Math.random() < 0.5 ? 4 : 5
+      entry.setMinutes(entry.getMinutes() + minutesAhead)
       const entryTime = entry.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 
       const mins = Math.max(1, Math.round(expirySeconds / 60))

@@ -116,6 +116,22 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
     return () => window.removeEventListener("kayko:trade-result", onResult as EventListener)
   }, [])
 
+  // Placar definido manualmente pelo admin (tela de perfil). Atualiza o flutuante ao vivo.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onSet = (e: Event) => {
+      const detail = (e as CustomEvent<Partial<KaykoScore>>).detail
+      if (!detail) return
+      setScore({
+        win: Math.max(0, Math.floor(detail.win ?? 0)),
+        loss: Math.max(0, Math.floor(detail.loss ?? 0)),
+        profit: Math.round((detail.profit ?? 0) * 100) / 100,
+      })
+    }
+    window.addEventListener("kayko:score-set", onSet as EventListener)
+    return () => window.removeEventListener("kayko:score-set", onSet as EventListener)
+  }, [])
+
   // Acompanha o preço do ativo em tela para a análise reagir ao mercado atual.
   useEffect(() => {
     if (typeof price !== "number" || isNaN(price)) return

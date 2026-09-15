@@ -22,6 +22,17 @@ function isValidCpf(raw: string): boolean {
   return d2 === Number(cpf[10])
 }
 
+// A AmploPay valida o formato do e-mail e recusa a cobranca com GATEWAY_INVALID_DATA
+// ("Invalid email") quando ele e malformado. Muitos perfis antigos tem e-mail invalido gravado
+// (cadastro errado, telefone no lugar do e-mail, etc.), entao NUNCA enviamos o e-mail do perfil
+// direto: so usamos se passar nesta checagem, senao caimos num fallback garantidamente valido.
+function sanitizeEmail(raw: string | null | undefined, userId: string): string {
+  const email = (raw || "").trim()
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  if (valid) return email
+  return `user-${userId.slice(0, 8)}@urynbrokertrade.com`
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { createClient } = await import("@/lib/supabase/server")
@@ -102,7 +113,7 @@ export async function POST(request: NextRequest) {
           // Cobranca gerada com o CPF informado pelo lead. Nome/e-mail/telefone vem do
           // perfil quando disponiveis (AmploPay exige esses campos), com fallback seguro.
           name: profile?.full_name?.trim() || "Cliente",
-          email: profile?.email?.trim() || "cliente@urynbrokertrade.com",
+          email: sanitizeEmail(profile?.email, user.id),
           phone: (profile?.phone || "").replace(/\D/g, "") || "00000000000",
           document: cleanCpf,
         },

@@ -145,8 +145,24 @@ class AmploPayClient {
       console.log(`[v0] AmploPay response ${res.status}:`, JSON.stringify(data).slice(0, 500))
 
       if (!res.ok) {
+        // A AmploPay devolve o motivo REAL do erro num array `details` (ex.: qual campo e invalido
+        // e por que). A mensagem generica so diz "verifique 'details'", entao anexamos esse
+        // detalhe aqui - senao o diagnostico fica cego, como no bug do e-mail invalido.
+        let detailStr = ""
+        if (Array.isArray(data.details) && data.details.length > 0) {
+          detailStr =
+            " - " +
+            data.details
+              .map((d: any) => {
+                const field = Array.isArray(d?.path) ? d.path.join(".") : d?.path || ""
+                const reason = d?.message || d?.code || d?.validation || ""
+                return [field, reason].filter(Boolean).join(": ")
+              })
+              .filter(Boolean)
+              .join("; ")
+        }
         const msg = data.message || data.errorCode || `HTTP ${res.status}`
-        throw new Error(`AmploPay erro (${data.errorCode || res.status}): ${msg}`)
+        throw new Error(`AmploPay erro (${data.errorCode || res.status}): ${msg}${detailStr}`)
       }
 
       return data

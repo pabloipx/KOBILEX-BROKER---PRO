@@ -20,7 +20,8 @@ type IaState = {
   active: boolean
   paused?: boolean
   planId: string
-  amount: number // valor investido (debitado do saldo na ativação)
+  amount: number // banca do plano (base de cálculo do rendimento)
+  principalDebited?: boolean // true/ausente = banca foi debitada do saldo na ativação (código antigo, custodial). false = banca NÃO debitada (código atual). Controla se a banca é devolvida ao desativar.
   daily: number // percentual ao dia
   activatedAt: string
   lastSettleAt: string // marco do último acerto de rendimento
@@ -499,11 +500,27 @@ export async function POST(req: Request) {
   if (body.action === "deactivate") {
     const state = await loadState(admin, settingKey)
     if (state) {
-      // Credita o rendimento pendente até agora. O plano não foi debitado,
-      // então não há valor a devolver — apenas encerra a operação.
+      // 1. Credita o rendimento pendente até agora.
       const result = await settle(admin, userId, settingKey, state)
+      let finalBalance = result.balance
+      // 2. Migração: estados ativados sob o código antigo (custodial) TIVERAM a banca do plano
+      // debitada do saldo na ativação (principalDebited ausente/true). Ao finalizar, devolvemos essa
+      // banca para que ela volte ao saldo JUNTO com o lucro — corrigindo o caso em que "sumiam os
+      // R$5.000 e sobrava só o lucro". Estados novos (principalDebited === false) não debitaram nada.
+      if (state.principalDebited !== false && state.amount > 0) {
+        finalBalance = round2(result.balance + state.amount)
+        await writeBalance(admin, userId, finalBalance)
+        await recordTransaction(
+          admin,
+          userId,
+          "ia_refund",
+          state.amount,
+          finalBalance,
+          "Devolução da banca do Robô de IA",
+        )
+      }
       await saveState(admin, settingKey, { active: false, deactivatedAt: new Date().toISOString() })
-      return NextResponse.json({ state: null, balance: result.balance })
+      return NextResponse.json({ state: null, balance: finalBalance })
     }
     await saveState(admin, settingKey, { active: false, deactivatedAt: new Date().toISOString() })
     return NextResponse.json({ state: null, balance: await readBalance(admin, userId) })
@@ -538,6 +555,7 @@ export async function POST(req: Request) {
       paused: false,
       planId,
       amount: plan.amount,
+      principalDebited: false, // modelo atual: a banca NÃO é debitada, então nada será devolvido ao desativar
       daily: plan.daily,
       activatedAt: nowIso,
       lastSettleAt: nowIso,

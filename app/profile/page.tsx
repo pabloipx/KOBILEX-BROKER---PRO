@@ -89,6 +89,9 @@ export default function ProfilePage() {
         // Ao ativar, o placar começa zerado (0 x 0). Ele só sobe pelo resultado
         // real das entradas feitas na tela de trade.
         localStorage.setItem("kayko_score_v1", JSON.stringify({ win: 0, loss: 0, profit: 0 }))
+        // Marca o instante da ativação: só contam no placar as entradas abertas a
+        // partir daqui — entradas que já estavam abertas antes de ativar são ignoradas.
+        localStorage.setItem("kayko_activated_at", String(Date.now()))
       } else {
         localStorage.removeItem("kayko_robot_active")
       }

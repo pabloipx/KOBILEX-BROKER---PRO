@@ -891,7 +891,7 @@ export default function TradePage() {
             // Placar do robô KAYKO: reflete o resultado real desta entrada.
             window.dispatchEvent(
               new CustomEvent("kayko:trade-result", {
-                detail: { result, profit: isWin ? profitAmount : -trade.amount },
+                detail: { result, profit: isWin ? profitAmount : -trade.amount, openedAt: trade.timestamp },
               }),
             )
             // Entra na fila em vez de sobrescrever o resultado anterior.

@@ -71,8 +71,15 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
   useEffect(() => {
     if (typeof window === "undefined") return
     const onResult = (e: Event) => {
-      const detail = (e as CustomEvent<{ result?: "win" | "loss"; profit?: number }>).detail
+      const detail = (e as CustomEvent<{ result?: "win" | "loss"; profit?: number; openedAt?: number }>).detail
       if (!detail || (detail.result !== "win" && detail.result !== "loss")) return
+      // Só conta entradas abertas a partir do momento da ativação — entradas que já
+      // estavam abertas antes de ativar o robô não entram no placar.
+      let activatedAt = 0
+      try {
+        activatedAt = Number(localStorage.getItem("kayko_activated_at")) || 0
+      } catch {}
+      if (activatedAt > 0 && typeof detail.openedAt === "number" && detail.openedAt < activatedAt) return
       const won = detail.result === "win"
       const delta = typeof detail.profit === "number" ? detail.profit : 0
       setScore((prev) => {

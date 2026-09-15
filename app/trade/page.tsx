@@ -777,9 +777,19 @@ export default function TradePage() {
 
         try {
           // Resultado REAL baseado no movimento do preco, para TODOS os usuarios
-          // (sem vitoria forcada para demo nem para afiliado)
+          // (sem vitoria forcada para demo nem para afiliado).
+          //
+          // IMPORTANTE: a saida usa a MESMA fonte de preco da entrada — o motor multi-ativos
+          // (multiAssetEngine), que tambem alimenta o grafico. A entrada e capturada de
+          // multiAssetEngine.getCurrentPrice (ver openTrade) e o caminho da rede de seguranca ja
+          // liquida pelo motor. Este caminho, porem, comparava a saida contra `price` (o feed
+          // `use-global-otc` do topo da tela), um numero DIFERENTE do motor. Quando os dois
+          // divergiam, uma operacao que o usuario viu fechar no verde no grafico podia ser marcada
+          // como loss — era exatamente o "foi green e marcou loss". Agora ambos usam o motor.
+          const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
+          const exitPrice = enginePrice > 0 ? enginePrice : price
           const isWin =
-            trade.direction === "CALL" ? price > trade.entryPrice : price < trade.entryPrice
+            trade.direction === "CALL" ? exitPrice > trade.entryPrice : exitPrice < trade.entryPrice
           const result = isWin ? "win" : "loss"
           const profitAmount = isWin ? Math.round(trade.amount * (payout / 100) * 100) / 100 : 0
 

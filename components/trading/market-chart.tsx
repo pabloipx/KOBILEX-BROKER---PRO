@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { memo, useEffect, useMemo, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 import { getBars, subscribeBars, unsubscribeBars } from "@/lib/price-engine/datafeed"
@@ -2108,10 +2108,44 @@ function ChartCore({
   )
 }
 
-export function MarketChart(props: Props) {
+// Comparador do memo: o grafico anima-se sozinho num rAF de 60fps que le o preco vivo DIRETO
+// do motor (multiAssetEngine.getCurrentPrice) e as barras do datafeed — por isso `currentPrice`
+// e `candles` sao apenas fallback e NAO precisam disparar re-render do React. Ignora-los aqui
+// impede que este componente de ~2100 linhas (com useMemo de indicadores) reconcilie ~10x/s
+// junto com o tick de preco da pagina, que era a causa da sensacao de "travado".
+// So re-renderiza quando muda algo que o React realmente precisa aplicar na serie/overlays.
+function marketChartPropsEqual(prev: Props, next: Props) {
+  if (
+    prev.symbol !== next.symbol ||
+    prev.timeframe !== next.timeframe ||
+    prev.reloadKey !== next.reloadKey ||
+    prev.payout !== next.payout ||
+    prev.hoverDirection !== next.hoverDirection
+  ) {
+    return false
+  }
+  const a = prev.activeTrades || []
+  const b = next.activeTrades || []
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (
+      a[i].id !== b[i].id ||
+      a[i].symbol !== b[i].symbol ||
+      a[i].entryPrice !== b[i].entryPrice ||
+      a[i].direction !== b[i].direction ||
+      a[i].expiryTime !== b[i].expiryTime ||
+      a[i].timestamp !== b[i].timestamp
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+export const MarketChart = memo(function MarketChart(props: Props) {
   return (
     <ChartErrorBoundary>
       <ChartCore {...props} />
     </ChartErrorBoundary>
   )
-}
+}, marketChartPropsEqual)

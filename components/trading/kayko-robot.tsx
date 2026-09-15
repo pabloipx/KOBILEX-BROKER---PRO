@@ -50,8 +50,9 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
     }
   }, [])
 
-  // Carrega o placar acumulado (win/loss/lucro) do dispositivo. Se ainda não
-  // existir, semeia com um histórico plausível para o robô já nascer "trabalhando".
+  // Carrega o placar do dispositivo. O placar começa em 0 x 0 na ativação (feita no
+  // perfil) e só sobe conforme o RESULTADO REAL das entradas que o usuário faz na tela
+  // de trade — nunca é semeado com números fictícios.
   useEffect(() => {
     if (typeof window === "undefined") return
     try {
@@ -59,18 +60,35 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
       if (raw) {
         const parsed = JSON.parse(raw) as KaykoScore
         if (typeof parsed?.win === "number") {
-          setScore(parsed)
-          return
+          setScore({ win: parsed.win, loss: parsed.loss ?? 0, profit: parsed.profit ?? 0 })
         }
       }
     } catch {}
-    const seedWin = Math.floor(Math.random() * 10) + 18
-    const seedLoss = Math.floor(Math.random() * 5) + 6
-    const seeded: KaykoScore = { win: seedWin, loss: seedLoss, profit: seedWin * 21.3 - seedLoss * 14.1 }
-    setScore(seeded)
-    try {
-      localStorage.setItem(SCORE_KEY, JSON.stringify(seeded))
-    } catch {}
+  }, [])
+
+  // O placar sobe pelo resultado real de cada operação encerrada na tela de trade.
+  // A própria página dispara "kayko:trade-result" ao fechar uma entrada (win/loss + lucro).
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onResult = (e: Event) => {
+      const detail = (e as CustomEvent<{ result?: "win" | "loss"; profit?: number }>).detail
+      if (!detail || (detail.result !== "win" && detail.result !== "loss")) return
+      const won = detail.result === "win"
+      const delta = typeof detail.profit === "number" ? detail.profit : 0
+      setScore((prev) => {
+        const next: KaykoScore = {
+          win: prev.win + (won ? 1 : 0),
+          loss: prev.loss + (won ? 0 : 1),
+          profit: Math.round((prev.profit + delta) * 100) / 100,
+        }
+        try {
+          localStorage.setItem(SCORE_KEY, JSON.stringify(next))
+        } catch {}
+        return next
+      })
+    }
+    window.addEventListener("kayko:trade-result", onResult as EventListener)
+    return () => window.removeEventListener("kayko:trade-result", onResult as EventListener)
   }, [])
 
   // Acompanha o preço do ativo em tela para a análise reagir ao mercado atual.
@@ -181,20 +199,8 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
         confidence,
       })
 
-      // Cada análise entra no placar: chance de WIN acompanha a confiança do sinal.
-      setScore((prev) => {
-        const won = Math.random() * 100 < confidence
-        const next: KaykoScore = {
-          win: prev.win + (won ? 1 : 0),
-          loss: prev.loss + (won ? 0 : 1),
-          profit: prev.profit + (won ? Math.round((Math.random() * 18 + 12) * 100) / 100 : -Math.round((Math.random() * 12 + 8) * 100) / 100),
-        }
-        try {
-          localStorage.setItem(SCORE_KEY, JSON.stringify(next))
-        } catch {}
-        return next
-      })
-
+      // A análise apenas gera o sinal. O placar NÃO muda aqui — ele só sobe pelo
+      // resultado real da operação quando ela é encerrada na tela de trade.
       setIsAnalyzing(false)
       playAlert()
     }, 2600)

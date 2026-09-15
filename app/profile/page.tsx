@@ -84,8 +84,14 @@ export default function ProfilePage() {
 
   const setKayko = (active: boolean) => {
     try {
-      if (active) localStorage.setItem("kayko_robot_active", "1")
-      else localStorage.removeItem("kayko_robot_active")
+      if (active) {
+        localStorage.setItem("kayko_robot_active", "1")
+        // Ao ativar, o placar começa zerado (0 x 0). Ele só sobe pelo resultado
+        // real das entradas feitas na tela de trade.
+        localStorage.setItem("kayko_score_v1", JSON.stringify({ win: 0, loss: 0, profit: 0 }))
+      } else {
+        localStorage.removeItem("kayko_robot_active")
+      }
       // Notifica a tela de trade (mesma aba) para refletir na hora.
       window.dispatchEvent(new Event("kayko:changed"))
     } catch {

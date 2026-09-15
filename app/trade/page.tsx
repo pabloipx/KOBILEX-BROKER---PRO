@@ -587,6 +587,15 @@ export default function TradePage() {
           continue
         }
 
+        // Placar do robô KAYKO: reflete o resultado real desta entrada.
+        if (mountedRef.current) {
+          window.dispatchEvent(
+            new CustomEvent("kayko:trade-result", {
+              detail: { result, profit: profitAmount },
+            }),
+          )
+        }
+
         // Se ganhou, creditar o saldo
         if (isWin) {
           const balanceField = trade.is_demo ? "balance_demo" : "balance_real"
@@ -888,6 +897,12 @@ export default function TradePage() {
           }
 
           if (mountedRef.current) {
+            // Placar do robô KAYKO: reflete o resultado real desta entrada.
+            window.dispatchEvent(
+              new CustomEvent("kayko:trade-result", {
+                detail: { result, profit: isWin ? profitAmount : -trade.amount },
+              }),
+            )
             // Entra na fila em vez de sobrescrever o resultado anterior.
             setResultQueue((prev) => [
               ...prev,

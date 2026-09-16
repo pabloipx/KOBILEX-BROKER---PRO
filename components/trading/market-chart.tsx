@@ -1332,10 +1332,22 @@ function ChartCore({
         lastFrameAt = Date.now()
       }
 
-      // ===== Loop suave a 60fps via requestAnimationFrame =====
+      // ===== Loop de render com limite de taxa (~20fps) via requestAnimationFrame =====
+      // O rAF dispara ~60x/s, mas cada renderFrame redesenha o canvas do grafico, reescreve o
+      // innerHTML do header e reposiciona o contador — trabalho pesado o suficiente para, a 60fps,
+      // manter a thread principal ocupada e ATRASAR a resposta a toques/cliques no mobile.
+      // Um grafico de opcoes e visualmente identico a ~20fps, entao limitamos o trabalho real a
+      // cada ~48ms (mantendo o rAF apenas para agendar e pausar sozinho em segundo plano). Isso
+      // corta ~3x o trabalho de render por segundo e libera a thread para responder aos botoes.
+      const FRAME_INTERVAL_MS = 48
+      let lastRenderAt = 0
       const tick = () => {
         if (dead) return
-        renderFrame()
+        const now = Date.now()
+        if (now - lastRenderAt >= FRAME_INTERVAL_MS) {
+          lastRenderAt = now
+          renderFrame()
+        }
         animFrameRef.current = requestAnimationFrame(tick)
       }
       lastFrameAt = Date.now()

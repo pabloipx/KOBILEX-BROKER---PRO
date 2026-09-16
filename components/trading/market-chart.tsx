@@ -489,6 +489,10 @@ function ChartCore({
   // Simbolo cujos dados ja estao carregados na serie. Enquanto null (durante o carregamento),
   // o loop de render nao aplica preco — evita "vela gigante" ao trocar de ativo.
   const loadedSymbolRef = useRef<string | null>(null)
+  // Timestamp (ms) do inicio da busca de historico via rede. 0 = nenhuma em andamento.
+  // Impede que o retry de 400ms empilhe varios fetch concorrentes ao mesmo endpoint
+  // (efeito manada), que era o motivo de o grafico demorar muito a carregar.
+  const barsFetchStartedRef = useRef(0)
   // Funcao que reconfigura opcoes + recarrega os dados na MESMA serie (sem recriar o grafico).
   const loadDataRef = useRef<null | (() => void)>(null)
 
@@ -1102,13 +1106,16 @@ function ChartCore({
         // montava as velas so a partir do motor local: no forex isso dependia do feed ja ter
         // preenchido o store, e a fonte anterior devolvia velas achatadas
         // (open=high=low=close), que e o motivo de o desenho nao bater com o mercado real.
+        barsFetchStartedRef.current = Date.now()
         void getBars(sym as any, tf as any)
           .then((bars) => {
+            barsFetchStartedRef.current = 0
             // Uma carga mais nova comecou no meio do caminho: descarta esta resposta.
             if (dead || myToken !== loadToken || !seriesRef.current || !chartRef.current) return
             applyBars(dedup(bars as Candle[]))
           })
           .catch((err) => {
+            barsFetchStartedRef.current = 0
             console.error("[v0] Falha ao montar o historico do grafico:", err)
             if (dead || myToken !== loadToken) return
             applyBars([])
@@ -1455,7 +1462,12 @@ function ChartCore({
   useEffect(() => {
     if (!loading) return
     const id = setInterval(() => {
-      if (loadedSymbolRef.current === null) loadDataRef.current?.()
+      if (loadedSymbolRef.current !== null) return
+      // Nao empilha fetch: so tenta de novo se nenhuma busca esta em andamento
+      // (ou se a atual travou por mais de 4s).
+      const inFlight = barsFetchStartedRef.current > 0 && Date.now() - barsFetchStartedRef.current < 4000
+      if (inFlight) return
+      loadDataRef.current?.()
     }, 400)
     return () => clearInterval(id)
   }, [loading, symbol, timeframe])

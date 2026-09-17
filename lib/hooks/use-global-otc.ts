@@ -69,14 +69,28 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
   }, [])
 
   // Loop de animacao: recalcula o preco vivo deterministicamente a cada frame.
+  //
+  // IMPORTANTE — este efeito usa um flag `alive` LOCAL (nao o mountedRef compartilhado) e mantem
+  // no maximo UM requestAnimationFrame pendente por vez. Isso corrige dois bugs que travavam a
+  // corretora ao minimizar/voltar a aba ou ao trocar de par rapidamente:
+  //   1) MULTIPLICACAO DE LOOPS: antes o watchdog chamava step(), e step() reagendava um rAF. Em
+  //      segundo plano o rAF congela mas o watchdog continua enfileirando rAFs; ao voltar, TODOS
+  //      disparavam de uma vez, cada um iniciando seu proprio loop -> dezenas de loops paralelos.
+  //      Agora o watchdog chama apenas compute() (que NAO agenda rAF), entao nada se multiplica.
+  //   2) RESSURREICAO DE LOOPS ANTIGOS: o mountedRef compartilhado volta a true no efeito seguinte,
+  //      entao um rAF antigo enfileirado podia disparar depois da troca de par e rodar com o
+  //      simbolo antigo. O flag `alive` e capturado por-efeito e fica false para sempre no cleanup,
+  //      entao callbacks obsoletos abortam de vez.
   useEffect(() => {
     mountedRef.current = true
+    let alive = true
     let raf = 0
     let lastFrame = 0
     realRevRef.current = -1
 
-    const step = () => {
-      if (!mountedRef.current) return
+    // Faz o trabalho de UM frame. NAO agenda o proximo rAF — quem agenda e o loop/onVisible.
+    // Assim o watchdog pode chama-lo para avancar a interpolacao sem criar novos loops.
+    const compute = () => {
       const nowMs = Date.now()
       const now = nowMs / 1000
       const cs = Math.floor(now / timeframe) * timeframe
@@ -145,21 +159,31 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
         setReadyFlags(readyNow)
       }
       lastFrame = nowMs
-      raf = requestAnimationFrame(step)
     }
 
-    raf = requestAnimationFrame(step)
+    // Loop rAF: no maximo UM agendado por vez. Ao entrar, zera `raf` (ja disparou); so reagenda
+    // se ainda estiver vivo. Um callback obsoleto de um efeito anterior aborta aqui via `alive`.
+    const loop = () => {
+      raf = 0
+      if (!alive) return
+      compute()
+      raf = requestAnimationFrame(loop)
+    }
+
+    raf = requestAnimationFrame(loop)
 
     // Watchdog: garante que a interpolacao SEMPRE avance mesmo se o rAF for estrangulado
-    // (preview em iframe, aba em segundo plano, alguns navegadores mobile).
+    // (preview em iframe, aba em segundo plano, alguns navegadores mobile). Chama apenas
+    // compute() — nunca agenda rAF — para nao multiplicar loops em segundo plano.
     const watchdog = setInterval(() => {
-      if (mountedRef.current && Date.now() - lastFrame > 250) step()
+      if (alive && Date.now() - lastFrame > 250) compute()
     }, 250)
 
     const onVisible = () => {
-      if (typeof document !== "undefined" && !document.hidden && mountedRef.current) {
+      if (typeof document !== "undefined" && !document.hidden && alive) {
+        // Cancela o rAF pendente (se houver) e reinicia UM unico loop — nunca acumula.
         if (raf) cancelAnimationFrame(raf)
-        raf = requestAnimationFrame(step)
+        raf = requestAnimationFrame(loop)
       }
     }
     document.addEventListener("visibilitychange", onVisible)
@@ -169,6 +193,7 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
     window.addEventListener("pageshow", onVisible)
 
     return () => {
+      alive = false
       mountedRef.current = false
       if (raf) cancelAnimationFrame(raf)
       clearInterval(watchdog)

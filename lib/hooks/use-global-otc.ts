@@ -118,8 +118,12 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
             }
       }
 
+      // Re-render controlado a ~5x/s (200ms). O grafico NAO depende deste tick — ele anima-se
+      // sozinho num rAF de 60fps lendo o preco direto do motor. Este tick so atualiza o texto
+      // de preco do header e o robo flutuante, para os quais 5x/s e imperceptivel. Antes eram
+      // 10x/s, o que forcava a pagina inteira a reconciliar o dobro de vezes sem necessidade.
       const p = performance.now()
-      if (p - lastUiRef.current > 100) {
+      if (p - lastUiRef.current > 200) {
         lastUiRef.current = p
         setTick((t) => t + 1)
       }

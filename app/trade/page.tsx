@@ -142,14 +142,13 @@ export default function TradePage() {
   const [selectedSymbol, setSelectedSymbol] = useState("EURUSD_OTC")
   // Abas de ativos abertas (estilo IQ Option). O ativo selecionado e sempre uma delas.
   const [openTabs, setOpenTabs] = useState<string[]>(["EURUSD_OTC"])
-  // Tempo selecionado: vale para a ENTRADA e para o GRAFICO ao mesmo tempo.
-  //
-  // Antes existiam dois estados separados (`expiryTime` e `timeframe`) e nada os ligava, apesar
-  // de o segundo estar comentado como "acompanha o tempo selecionado". O resultado era que mudar
-  // o tempo pelas setas alterava so a duracao da operacao e o grafico continuava no periodo
-  // anterior — a troca simplesmente nao aparecia. Com um unico estado os dois nao podem divergir.
+  // Dois tempos INDEPENDENTES:
+  //  - expiryTime: duracao da ENTRADA (controlado pelas setas "Horario").
+  //  - timeframe: periodo do GRAFICO (controlado pelas abas "Tempo do grafico").
+  // O usuario pode deixar os dois diferentes de proposito — por exemplo, operar em 1m
+  // enquanto observa o grafico em 5m. Por isso sao estados separados e nada os liga.
   const [expiryTime, setExpiryTime] = useState<number>(60)
-  const timeframe = expiryTime
+  const [timeframe, setTimeframe] = useState<number>(60)
   const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>([])
   const [isTrading, setIsTrading] = useState(false)
   const [showSidebar, setSidebarOpen] = useState(false)
@@ -328,6 +327,7 @@ export default function TradePage() {
   // tempo indisponivel e a entrada seria recusada pelo servidor.
   useEffect(() => {
     setExpiryTime(prev => normalizeTimeframe(selectedAsset?.symbol, prev))
+    setTimeframe(prev => normalizeTimeframe(selectedAsset?.symbol, prev))
   }, [selectedAsset?.symbol])
 
   // Janela de entrada considerando a duração escolhida: perto do fechamento, uma operação
@@ -1406,19 +1406,19 @@ export default function TradePage() {
             </div>
           </div>
 
-          {/* Tempo de expiração do gráfico - abas estilo corretora */}
+          {/* Tempo de expiração do gráfico - abas estilo corretora (independente do Horario) */}
           <div>
             <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">
-              Tempo (grafico e entrada)
+              Tempo do grafico
             </label>
             <div className="flex items-center gap-1.5 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
               {timeframeOptions.map((tf) => (
                 <button
                   key={tf}
-                  onClick={() => setExpiryTime(tf)}
-                  aria-pressed={expiryTime === tf}
+                  onClick={() => setTimeframe(tf)}
+                  aria-pressed={timeframe === tf}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
-                    expiryTime === tf
+                    timeframe === tf
                       ? "bg-primary text-primary-foreground"
                       : "text-white/60 hover:bg-white/10 hover:text-white"
                   }`}
@@ -1571,16 +1571,16 @@ export default function TradePage() {
                 </button>
               </div>
               <label className="text-white/50 text-[10px] mt-2 mb-1 block font-medium uppercase tracking-wider">
-                Tempo (grafico e entrada)
+                Tempo do grafico
               </label>
               <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
                 {timeframeOptions.map((tf) => (
                   <button
                     key={tf}
-                    onClick={() => setExpiryTime(tf)}
-                    aria-pressed={expiryTime === tf}
+                    onClick={() => setTimeframe(tf)}
+                    aria-pressed={timeframe === tf}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                      expiryTime === tf
+                      timeframe === tf
                         ? "bg-primary text-primary-foreground"
                         : "text-white/60 hover:bg-white/10 hover:text-white"
                     }`}

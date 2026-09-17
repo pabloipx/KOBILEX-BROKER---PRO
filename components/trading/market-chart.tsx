@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { memo, useEffect, useMemo, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 import { getBars, subscribeBars, unsubscribeBars } from "@/lib/price-engine/datafeed"
@@ -489,6 +489,10 @@ function ChartCore({
   // Simbolo cujos dados ja estao carregados na serie. Enquanto null (durante o carregamento),
   // o loop de render nao aplica preco — evita "vela gigante" ao trocar de ativo.
   const loadedSymbolRef = useRef<string | null>(null)
+  // Timestamp (ms) do inicio da busca de historico via rede. 0 = nenhuma em andamento.
+  // Impede que o retry de 400ms empilhe varios fetch concorrentes ao mesmo endpoint
+  // (efeito manada), que era o motivo de o grafico demorar muito a carregar.
+  const barsFetchStartedRef = useRef(0)
   // Funcao que reconfigura opcoes + recarrega os dados na MESMA serie (sem recriar o grafico).
   const loadDataRef = useRef<null | (() => void)>(null)
 
@@ -1102,13 +1106,16 @@ function ChartCore({
         // montava as velas so a partir do motor local: no forex isso dependia do feed ja ter
         // preenchido o store, e a fonte anterior devolvia velas achatadas
         // (open=high=low=close), que e o motivo de o desenho nao bater com o mercado real.
+        barsFetchStartedRef.current = Date.now()
         void getBars(sym as any, tf as any)
           .then((bars) => {
+            barsFetchStartedRef.current = 0
             // Uma carga mais nova comecou no meio do caminho: descarta esta resposta.
             if (dead || myToken !== loadToken || !seriesRef.current || !chartRef.current) return
             applyBars(dedup(bars as Candle[]))
           })
           .catch((err) => {
+            barsFetchStartedRef.current = 0
             console.error("[v0] Falha ao montar o historico do grafico:", err)
             if (dead || myToken !== loadToken) return
             applyBars([])
@@ -1332,10 +1339,22 @@ function ChartCore({
         lastFrameAt = Date.now()
       }
 
-      // ===== Loop suave a 60fps via requestAnimationFrame =====
+      // ===== Loop de render com limite de taxa (~20fps) via requestAnimationFrame =====
+      // O rAF dispara ~60x/s, mas cada renderFrame redesenha o canvas do grafico, reescreve o
+      // innerHTML do header e reposiciona o contador — trabalho pesado o suficiente para, a 60fps,
+      // manter a thread principal ocupada e ATRASAR a resposta a toques/cliques no mobile.
+      // Um grafico de opcoes e visualmente identico a ~20fps, entao limitamos o trabalho real a
+      // cada ~48ms (mantendo o rAF apenas para agendar e pausar sozinho em segundo plano). Isso
+      // corta ~3x o trabalho de render por segundo e libera a thread para responder aos botoes.
+      const FRAME_INTERVAL_MS = 48
+      let lastRenderAt = 0
       const tick = () => {
         if (dead) return
-        renderFrame()
+        const now = Date.now()
+        if (now - lastRenderAt >= FRAME_INTERVAL_MS) {
+          lastRenderAt = now
+          renderFrame()
+        }
         animFrameRef.current = requestAnimationFrame(tick)
       }
       lastFrameAt = Date.now()
@@ -1443,7 +1462,12 @@ function ChartCore({
   useEffect(() => {
     if (!loading) return
     const id = setInterval(() => {
-      if (loadedSymbolRef.current === null) loadDataRef.current?.()
+      if (loadedSymbolRef.current !== null) return
+      // Nao empilha fetch: so tenta de novo se nenhuma busca esta em andamento
+      // (ou se a atual travou por mais de 4s).
+      const inFlight = barsFetchStartedRef.current > 0 && Date.now() - barsFetchStartedRef.current < 4000
+      if (inFlight) return
+      loadDataRef.current?.()
     }, 400)
     return () => clearInterval(id)
   }, [loading, symbol, timeframe])
@@ -2108,10 +2132,44 @@ function ChartCore({
   )
 }
 
-export function MarketChart(props: Props) {
+// Comparador do memo: o grafico anima-se sozinho num rAF de 60fps que le o preco vivo DIRETO
+// do motor (multiAssetEngine.getCurrentPrice) e as barras do datafeed — por isso `currentPrice`
+// e `candles` sao apenas fallback e NAO precisam disparar re-render do React. Ignora-los aqui
+// impede que este componente de ~2100 linhas (com useMemo de indicadores) reconcilie ~10x/s
+// junto com o tick de preco da pagina, que era a causa da sensacao de "travado".
+// So re-renderiza quando muda algo que o React realmente precisa aplicar na serie/overlays.
+function marketChartPropsEqual(prev: Props, next: Props) {
+  if (
+    prev.symbol !== next.symbol ||
+    prev.timeframe !== next.timeframe ||
+    prev.reloadKey !== next.reloadKey ||
+    prev.payout !== next.payout ||
+    prev.hoverDirection !== next.hoverDirection
+  ) {
+    return false
+  }
+  const a = prev.activeTrades || []
+  const b = next.activeTrades || []
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (
+      a[i].id !== b[i].id ||
+      a[i].symbol !== b[i].symbol ||
+      a[i].entryPrice !== b[i].entryPrice ||
+      a[i].direction !== b[i].direction ||
+      a[i].expiryTime !== b[i].expiryTime ||
+      a[i].timestamp !== b[i].timestamp
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+export const MarketChart = memo(function MarketChart(props: Props) {
   return (
     <ChartErrorBoundary>
       <ChartCore {...props} />
     </ChartErrorBoundary>
   )
-}
+}, marketChartPropsEqual)

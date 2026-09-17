@@ -266,9 +266,9 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
         aria-label="Abrir robô KAYKO"
       >
         <div className="flex flex-col items-center">
-          <div className="relative w-20 h-20">
+          <div className="relative w-20 h-20 md:w-28 md:h-28">
             <span
-              className="absolute left-1/2 top-1/2 w-14 h-14 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
+              className="absolute left-1/2 top-1/2 w-14 h-14 md:w-20 md:h-20 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
               style={{ backgroundColor: `${ACCENT}44` }}
             />
             <img
@@ -288,7 +288,7 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
 
           {/* Placar WIN/LOSS acumulado */}
           <div
-            className="-mt-1 w-[132px] rounded-xl p-1.5 backdrop-blur-md border shadow-xl"
+            className="-mt-1 w-[132px] md:w-[168px] rounded-xl p-1.5 md:p-2 backdrop-blur-md border shadow-xl"
             style={{ backgroundColor: "rgba(8,12,17,0.82)", borderColor: `${ACCENT}55` }}
           >
             <div className="flex gap-1">

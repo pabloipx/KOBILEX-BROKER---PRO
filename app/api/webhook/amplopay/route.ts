@@ -123,14 +123,17 @@ export async function POST(request: NextRequest) {
     }
 
     const su = status.toUpperCase()
-    let isPaid = su === "PAID" || su === "OK" || su === "COMPLETED" || su === "APPROVED" || event === "TRANSACTION_PAID" || event === "PAYMENT_CONFIRMED"
+    const payloadSaysPaid = su === "PAID" || su === "OK" || su === "COMPLETED" || su === "APPROVED" || event === "TRANSACTION_PAID" || event === "PAYMENT_CONFIRMED"
     const isFailed = su === "FAILED" || su === "CANCELED" || su === "CANCELLED" || event === "TRANSACTION_CANCELED"
     const isRefunded = su === "REFUNDED" || event === "TRANSACTION_REFUNDED"
 
-    // Se o status do payload nao indicou claramente pago/falho/estornado, confirma ativamente
-    // na AmploPay usando o ID interno. Isso torna a aprovacao imune a variacoes no formato do
-    // webhook — se estiver pago de verdade, credita mesmo assim.
-    if (!isPaid && !isFailed && !isRefunded) {
+    // SEGURANCA: o corpo do webhook NAO e assinado e pode ser forjado. Um atacante poderia enviar
+    // um POST com status "PAID" e o identificador de um deposito pendente para creditar saldo sem
+    // ter pago nada. Por isso NUNCA creditamos confiando no corpo do webhook: o pagamento e SEMPRE
+    // reconfirmado direto na AmploPay pelo ID da transacao (fonte oficial). O valor efetivamente
+    // creditado vem do nosso proprio registro de deposito, nunca do payload.
+    let isPaid = false
+    if (!isFailed && !isRefunded) {
       const providerRef = transactionId || deposit.payment_reference
       if (providerRef) {
         try {
@@ -139,6 +142,16 @@ export async function POST(request: NextRequest) {
         } catch (verifyErr) {
           console.error("[WEBHOOK] Erro na confirmacao ativa:", verifyErr)
         }
+      }
+
+      if (!isPaid && payloadSaysPaid) {
+        // O webhook afirmou "pago" mas nao conseguimos confirmar na AmploPay agora (sem ID de
+        // transacao ou API momentaneamente fora). NAO creditamos por conta do payload: o cron
+        // /api/cron/verify-deposits e o polling de /api/pix reconfirmam depois pela fonte oficial
+        // e creditam entao. Um credito atrasado e sempre preferivel a um credito forjado.
+        console.warn("[WEBHOOK] Pagamento nao confirmado ativamente na AmploPay; credito adiado.", {
+          depositId: deposit.id,
+        })
       }
     }
 

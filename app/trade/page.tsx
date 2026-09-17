@@ -13,6 +13,8 @@ import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
 import { AssetPanel } from "@/components/trading/asset-panel"
 import { useGlobalOTC } from "@/lib/hooks/use-global-otc"
 import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
+import { getLivePrice } from "@/lib/price-engine/live-price-store"
+import { LivePriceText } from "@/components/trading/live-price-text"
 import { playCallSound, playPutSound, playWinSound, playLossSound, unlockAudio } from "@/lib/sounds"
 import Image from "next/image"
 import {
@@ -242,7 +244,11 @@ export default function TradePage() {
 
   // Trader sentiment (simulated)
 
-  const { price, candles, isConnected, realReady, realHistoryReady } = useGlobalOTC(
+  // O preço vivo NÃO é mais lido aqui como estado reativo: ele vai para o live-price-store e é
+  // consumido pelos componentes-folha (header/robô). Assim esta página (~1840 linhas) deixa de
+  // reconciliar ~5x/s no tick de preço, o que era a causa dos cliques/toques lentos. A lógica de
+  // dinheiro (liquidação/abertura) lê o preço sob demanda via multiAssetEngine + getLivePrice().
+  const { candles, isConnected, realReady, realHistoryReady } = useGlobalOTC(
     selectedSymbol,
     timeframe as 60 | 300 | 600 | 900,
   )
@@ -756,7 +762,7 @@ export default function TradePage() {
         if (!mountedRef.current) break
         const expiresAt = trade.timestamp + trade.expiryTime * 1000
 
-        if (now >= expiresAt && price > 0) {
+        if (now >= expiresAt && multiAssetEngine.getCurrentPrice(trade.symbol) > 0) {
           // Skip if already being processed
           if (processedTradesRef.current.has(trade.id)) continue
           tradesToFinalize.push(trade)
@@ -787,7 +793,7 @@ export default function TradePage() {
           // divergiam, uma operacao que o usuario viu fechar no verde no grafico podia ser marcada
           // como loss — era exatamente o "foi green e marcou loss". Agora ambos usam o motor.
           const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
-          const exitPrice = enginePrice > 0 ? enginePrice : price
+          const exitPrice = enginePrice > 0 ? enginePrice : getLivePrice()
           const isWin =
             trade.direction === "CALL" ? exitPrice > trade.entryPrice : exitPrice < trade.entryPrice
           const result = isWin ? "win" : "loss"
@@ -860,7 +866,7 @@ export default function TradePage() {
           const { data: closedRows, error: updateError } = await supabaseRef.current
             .from("trades")
             .update({
-              exit_price: price,
+              exit_price: exitPrice,
               closed_at: new Date().toISOString(),
               status: "closed",
               result,
@@ -936,7 +942,7 @@ export default function TradePage() {
     checkTradeResults()
     const interval = setInterval(checkTradeResults, 500)
     return () => clearInterval(interval)
-  }, [activeTrades, price, user, payout])
+  }, [activeTrades, user, payout])
 
   const executeTrade = useCallback(
     async (direction: "CALL" | "PUT") => {
@@ -995,7 +1001,7 @@ export default function TradePage() {
       // grafico usa para desenhar (e para liquidar no servidor), entao a linha fica sempre
       // dentro da area visivel e o preco de entrada fica consistente com a liquidacao.
       const enginePrice = multiAssetEngine.getCurrentPrice(selectedSymbol)
-      const entryPrice = enginePrice > 0 ? enginePrice : price
+      const entryPrice = enginePrice > 0 ? enginePrice : getLivePrice()
       if (!entryPrice || entryPrice <= 0) {
         setTradeError("Aguardando cotacao do ativo. Tente novamente em instantes.")
         setTimeout(() => setTradeError(null), 3000)
@@ -1096,7 +1102,7 @@ export default function TradePage() {
         setIsTrading(false)
       }
     },
-    [user, amount, currentBalance, selectedSymbol, price, expiryTime, accountType, payout, isTrading, marketStatus],
+    [user, amount, currentBalance, selectedSymbol, expiryTime, accountType, payout, isTrading, marketStatus],
   )
 
   const handleExpiryChange = useCallback(
@@ -1172,9 +1178,10 @@ export default function TradePage() {
                 {selectedAsset?.name || "Selecionar"}
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[#26a69a] text-[10px] font-mono font-semibold">
-                  {price > 0 ? formatFixed(price, selectedAsset?.symbol?.includes("JPY") ? 3 : 5) : "..."}
-                </span>
+                <LivePriceText
+                  decimals={selectedAsset?.symbol?.includes("JPY") ? 3 : 5}
+                  className="text-[#26a69a] text-[10px] font-mono font-semibold"
+                />
                 <span className="text-[9px] px-1 py-[1px] bg-[#26a69a]/15 text-[#26a69a] rounded font-bold">
                   {payout}%
                 </span>
@@ -1357,13 +1364,12 @@ export default function TradePage() {
                 isActive={isKaykoActive}
                 assetName={selectedAsset?.name}
                 symbol={selectedSymbol}
-                price={price}
                 expirySeconds={expiryTime}
               />
             )}
             <MarketChart
               candles={candles || []}
-              currentPrice={price || 0}
+              currentPrice={getLivePrice() || 0}
               activeTrades={activeTradesForChart}
               timeframe={timeframe as 60 | 300 | 600 | 900}
               symbol={selectedSymbol}

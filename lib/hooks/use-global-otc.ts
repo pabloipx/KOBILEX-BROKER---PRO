@@ -5,6 +5,7 @@ import { multiAssetEngine, OTC_ASSETS, type OTCCandle } from "@/lib/price-engine
 import { ensureRealFeed } from "@/lib/price-engine/real-price-feed"
 import { hasRealPrice, getRealRevision, isRealSymbol, getRealCandles } from "@/lib/price-engine/real-price-store"
 import { ensureManipulationSync } from "@/lib/price-engine/manipulation-sync"
+import { publishLivePrice } from "@/lib/price-engine/live-price-store"
 
 /**
  * useGlobalOTC — feed de preco 100% CLIENT-SIDE.
@@ -25,8 +26,13 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
   const validSymbol = OTC_ASSETS.find((a) => a.symbol === symbol)?.symbol || "EURUSD_OTC"
   const asset = OTC_ASSETS.find((a) => a.symbol === validSymbol) || OTC_ASSETS[0]
 
-  // Contador para forcar re-render a uma taxa controlada (nao usamos setState no rAF direto).
-  const [, setTick] = useState(0)
+  // Re-render RARO: dispara apenas quando os flags de "dados reais prontos" mudam (2x no ciclo
+  // de vida), para o gráfico recarregar com o histórico real via reloadKey. O tick de PREÇO
+  // (~5x/s) NÃO re-renderiza mais esta página — ele vai para o live-price-store, e só os
+  // componentes-folha que exibem o preço reagem. Era o setState de 5x/s aqui que reconciliava a
+  // árvore inteira da tela de trade e deixava os cliques lentos.
+  const [, setReadyFlags] = useState(0)
+  const readyFlagsRef = useRef(-1)
 
   const smoothRef = useRef(0)
   const candlesRef = useRef<OTCCandle[]>([])
@@ -118,14 +124,25 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
             }
       }
 
-      // Re-render controlado a ~5x/s (200ms). O grafico NAO depende deste tick — ele anima-se
-      // sozinho num rAF de 60fps lendo o preco direto do motor. Este tick so atualiza o texto
-      // de preco do header e o robo flutuante, para os quais 5x/s e imperceptivel. Antes eram
-      // 10x/s, o que forcava a pagina inteira a reconciliar o dobro de vezes sem necessidade.
+      // Tick de PREÇO a ~5x/s (200ms) — vai para o live-price-store, NÃO re-renderiza esta página.
+      // O gráfico anima-se sozinho num rAF lendo o preço direto do motor; o texto de preço do
+      // header e o robô consomem do store. Assim a árvore gigante da tela de trade não reconcilia
+      // no tick e os cliques ficam responsivos.
       const p = performance.now()
       if (p - lastUiRef.current > 200) {
         lastUiRef.current = p
-        setTick((t) => t + 1)
+        publishLivePrice(price)
+      }
+
+      // Re-render RARO da página: só quando o estado de "dados reais prontos" muda (preço real
+      // chegou / histórico real chegou), para o gráfico recarregar via reloadKey. Isso acontece
+      // ~2x no ciclo de vida — nada a ver com o tick de preço.
+      const readyNow =
+        (isRealSymbol(validSymbol) && hasRealPrice(validSymbol) ? 1 : 0) +
+        (isRealSymbol(validSymbol) && (getRealCandles(validSymbol, timeframe)?.length ?? 0) >= 2 ? 2 : 0)
+      if (readyNow !== readyFlagsRef.current) {
+        readyFlagsRef.current = readyNow
+        setReadyFlags(readyNow)
       }
       lastFrame = nowMs
       raf = requestAnimationFrame(step)

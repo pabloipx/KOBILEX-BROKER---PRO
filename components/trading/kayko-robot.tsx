@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { X, Loader2, TrendingUp, TrendingDown, Radar, Clock, Cpu } from "lucide-react"
+import { subscribeLivePrice, getLivePrice } from "@/lib/price-engine/live-price-store"
 
 interface KaykoSignal {
   type: "CALL" | "PUT"
@@ -16,7 +17,6 @@ interface KaykoRobotProps {
   isActive: boolean
   assetName?: string
   symbol?: string
-  price?: number
   expirySeconds?: number
 }
 
@@ -39,7 +39,7 @@ function getActivatedAt(): number {
   }
 }
 
-export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds = 60 }: KaykoRobotProps) {
+export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: KaykoRobotProps) {
   const [position, setPosition] = useState({ x: 16, y: 130 })
   const [isDragging, setIsDragging] = useState(false)
   const [showPopup, setShowPopup] = useState(false)
@@ -133,12 +133,18 @@ export function KaykoRobot({ isActive, assetName, symbol, price, expirySeconds =
   }, [])
 
   // Acompanha o preço do ativo em tela para a análise reagir ao mercado atual.
+  // Assina o live-price-store diretamente (em vez de receber `price` por prop), para o robô NÃO
+  // forçar a página de trade a re-renderizar no tick de preço. Alimenta apenas um ref, sem setState.
   useEffect(() => {
-    if (typeof price !== "number" || isNaN(price)) return
-    const hist = priceHistoryRef.current
-    hist.push(price)
-    if (hist.length > 40) hist.shift()
-  }, [price])
+    const unsub = subscribeLivePrice(() => {
+      const p = getLivePrice()
+      if (typeof p !== "number" || isNaN(p) || p <= 0) return
+      const hist = priceHistoryRef.current
+      hist.push(p)
+      if (hist.length > 40) hist.shift()
+    })
+    return unsub
+  }, [])
 
   // Ao trocar de ativo, zera o histórico para não misturar tendências de pares diferentes.
   useEffect(() => {

@@ -5,6 +5,7 @@ import { multiAssetEngine, OTC_ASSETS, type OTCCandle } from "@/lib/price-engine
 import { ensureRealFeed } from "@/lib/price-engine/real-price-feed"
 import { hasRealPrice, getRealRevision, isRealSymbol, getRealCandles } from "@/lib/price-engine/real-price-store"
 import { ensureManipulationSync } from "@/lib/price-engine/manipulation-sync"
+import { publishLivePrice } from "@/lib/price-engine/live-price-store"
 
 /**
  * useGlobalOTC — feed de preco 100% CLIENT-SIDE.
@@ -25,8 +26,13 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
   const validSymbol = OTC_ASSETS.find((a) => a.symbol === symbol)?.symbol || "EURUSD_OTC"
   const asset = OTC_ASSETS.find((a) => a.symbol === validSymbol) || OTC_ASSETS[0]
 
-  // Contador para forcar re-render a uma taxa controlada (nao usamos setState no rAF direto).
-  const [, setTick] = useState(0)
+  // Re-render RARO: dispara apenas quando os flags de "dados reais prontos" mudam (2x no ciclo
+  // de vida), para o gráfico recarregar com o histórico real via reloadKey. O tick de PREÇO
+  // (~5x/s) NÃO re-renderiza mais esta página — ele vai para o live-price-store, e só os
+  // componentes-folha que exibem o preço reagem. Era o setState de 5x/s aqui que reconciliava a
+  // árvore inteira da tela de trade e deixava os cliques lentos.
+  const [, setReadyFlags] = useState(0)
+  const readyFlagsRef = useRef(-1)
 
   const smoothRef = useRef(0)
   const candlesRef = useRef<OTCCandle[]>([])
@@ -63,14 +69,28 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
   }, [])
 
   // Loop de animacao: recalcula o preco vivo deterministicamente a cada frame.
+  //
+  // IMPORTANTE — este efeito usa um flag `alive` LOCAL (nao o mountedRef compartilhado) e mantem
+  // no maximo UM requestAnimationFrame pendente por vez. Isso corrige dois bugs que travavam a
+  // corretora ao minimizar/voltar a aba ou ao trocar de par rapidamente:
+  //   1) MULTIPLICACAO DE LOOPS: antes o watchdog chamava step(), e step() reagendava um rAF. Em
+  //      segundo plano o rAF congela mas o watchdog continua enfileirando rAFs; ao voltar, TODOS
+  //      disparavam de uma vez, cada um iniciando seu proprio loop -> dezenas de loops paralelos.
+  //      Agora o watchdog chama apenas compute() (que NAO agenda rAF), entao nada se multiplica.
+  //   2) RESSURREICAO DE LOOPS ANTIGOS: o mountedRef compartilhado volta a true no efeito seguinte,
+  //      entao um rAF antigo enfileirado podia disparar depois da troca de par e rodar com o
+  //      simbolo antigo. O flag `alive` e capturado por-efeito e fica false para sempre no cleanup,
+  //      entao callbacks obsoletos abortam de vez.
   useEffect(() => {
     mountedRef.current = true
+    let alive = true
     let raf = 0
     let lastFrame = 0
     realRevRef.current = -1
 
-    const step = () => {
-      if (!mountedRef.current) return
+    // Faz o trabalho de UM frame. NAO agenda o proximo rAF — quem agenda e o loop/onVisible.
+    // Assim o watchdog pode chama-lo para avancar a interpolacao sem criar novos loops.
+    const compute = () => {
       const nowMs = Date.now()
       const now = nowMs / 1000
       const cs = Math.floor(now / timeframe) * timeframe
@@ -118,31 +138,52 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
             }
       }
 
-      // Re-render controlado a ~5x/s (200ms). O grafico NAO depende deste tick — ele anima-se
-      // sozinho num rAF de 60fps lendo o preco direto do motor. Este tick so atualiza o texto
-      // de preco do header e o robo flutuante, para os quais 5x/s e imperceptivel. Antes eram
-      // 10x/s, o que forcava a pagina inteira a reconciliar o dobro de vezes sem necessidade.
+      // Tick de PREÇO a ~5x/s (200ms) — vai para o live-price-store, NÃO re-renderiza esta página.
+      // O gráfico anima-se sozinho num rAF lendo o preço direto do motor; o texto de preço do
+      // header e o robô consomem do store. Assim a árvore gigante da tela de trade não reconcilia
+      // no tick e os cliques ficam responsivos.
       const p = performance.now()
       if (p - lastUiRef.current > 200) {
         lastUiRef.current = p
-        setTick((t) => t + 1)
+        publishLivePrice(price)
+      }
+
+      // Re-render RARO da página: só quando o estado de "dados reais prontos" muda (preço real
+      // chegou / histórico real chegou), para o gráfico recarregar via reloadKey. Isso acontece
+      // ~2x no ciclo de vida — nada a ver com o tick de preço.
+      const readyNow =
+        (isRealSymbol(validSymbol) && hasRealPrice(validSymbol) ? 1 : 0) +
+        (isRealSymbol(validSymbol) && (getRealCandles(validSymbol, timeframe)?.length ?? 0) >= 2 ? 2 : 0)
+      if (readyNow !== readyFlagsRef.current) {
+        readyFlagsRef.current = readyNow
+        setReadyFlags(readyNow)
       }
       lastFrame = nowMs
-      raf = requestAnimationFrame(step)
     }
 
-    raf = requestAnimationFrame(step)
+    // Loop rAF: no maximo UM agendado por vez. Ao entrar, zera `raf` (ja disparou); so reagenda
+    // se ainda estiver vivo. Um callback obsoleto de um efeito anterior aborta aqui via `alive`.
+    const loop = () => {
+      raf = 0
+      if (!alive) return
+      compute()
+      raf = requestAnimationFrame(loop)
+    }
+
+    raf = requestAnimationFrame(loop)
 
     // Watchdog: garante que a interpolacao SEMPRE avance mesmo se o rAF for estrangulado
-    // (preview em iframe, aba em segundo plano, alguns navegadores mobile).
+    // (preview em iframe, aba em segundo plano, alguns navegadores mobile). Chama apenas
+    // compute() — nunca agenda rAF — para nao multiplicar loops em segundo plano.
     const watchdog = setInterval(() => {
-      if (mountedRef.current && Date.now() - lastFrame > 250) step()
+      if (alive && Date.now() - lastFrame > 250) compute()
     }, 250)
 
     const onVisible = () => {
-      if (typeof document !== "undefined" && !document.hidden && mountedRef.current) {
+      if (typeof document !== "undefined" && !document.hidden && alive) {
+        // Cancela o rAF pendente (se houver) e reinicia UM unico loop — nunca acumula.
         if (raf) cancelAnimationFrame(raf)
-        raf = requestAnimationFrame(step)
+        raf = requestAnimationFrame(loop)
       }
     }
     document.addEventListener("visibilitychange", onVisible)
@@ -152,6 +193,7 @@ export function useGlobalOTC(symbol: string, timeframe: 60 | 300 | 600 | 900) {
     window.addEventListener("pageshow", onVisible)
 
     return () => {
+      alive = false
       mountedRef.current = false
       if (raf) cancelAnimationFrame(raf)
       clearInterval(watchdog)

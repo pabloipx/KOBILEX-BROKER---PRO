@@ -134,7 +134,15 @@ export async function POST(request: NextRequest) {
     // creditado vem do nosso proprio registro de deposito, nunca do payload.
     let isPaid = false
     if (!isFailed && !isRefunded) {
-      const providerRef = transactionId || deposit.payment_reference
+      // Reconfirmacao ativa na AmploPay. O ID a consultar TEM que ser o ID INTERNO da AmploPay
+      // (ex.: "cmqnxz0cq..."), que guardamos em `deposit.payment_reference` quando o PIX foi
+      // criado. O `transactionId` que chega no corpo do webhook e o NOSSO identificador
+      // (DEP-xxx) - e por isso que a busca do deposito acima procura por `external_id` com ele.
+      // Consultar /gateway/transactions?id=DEP-xxx nao acha nada (retorna null), entao o webhook
+      // nunca conseguia confirmar o pagamento e o deposito NUNCA era creditado sozinho - so pelo
+      // polling (tela aberta) ou pelo cron diario. Por isso preferimos `payment_reference`, o
+      // mesmo ID que o polling e o cron ja usam com sucesso; `transactionId` fica so de fallback.
+      const providerRef = deposit.payment_reference || transactionId
       if (providerRef) {
         try {
           const tx = await amplopay.getTransactionStatus(providerRef)

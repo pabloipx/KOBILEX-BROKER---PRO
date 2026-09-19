@@ -1242,7 +1242,17 @@ function ChartCore({
         // Aqui apenas atualizamos a vela existente, sem redesenhar a serie.
         if (isRealSymbol(sym)) {
           const live = multiAssetEngine.getCurrentCandle(sym as any, tf)
-          if (!live) return
+          if (!live) {
+            // O historico ja esta desenhado, mas o feed ao vivo (SSE/poll) ainda nao entregou o
+            // primeiro tick da vela do periodo corrente. Isso NAO e um congelamento: o loop de
+            // render esta vivo, so falta o dado. Marcamos o frame como executado para o watchdog
+            // de 2s (deteccao de congelamento) NAO interpretar essa espera como travamento e
+            // disparar um loadData() completo em cadeia a cada ~2s — esse ciclo de recarga era o
+            // "candle bugado" intermitente ao entrar, que so o F5 resolvia. O proximo frame desenha
+            // a vela assim que o primeiro tick chegar do feed.
+            lastFrameAt = Date.now()
+            return
+          }
 
           const f = formingRef.current
           if (!f || live.time > f.time) {

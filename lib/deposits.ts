@@ -215,3 +215,67 @@ export function isPaidStatus(status?: string): boolean {
   const s = status.toUpperCase()
   return s === "PAID" || s === "OK" || s === "COMPLETED" || s === "APPROVED"
 }
+
+/**
+ * Reconcilia depositos PIX pendentes consultando o status direto na AmploPay e creditando os
+ * que ja foram pagos. E o mesmo trabalho do cron, mas extraido para ser reutilizado tambem por
+ * um gatilho leve por-usuario (quando o cliente esta ativo no app), ja que o plano Hobby so
+ * permite 1 execucao de cron por dia.
+ *
+ * Passar `userId` limita a reconciliacao aos depositos daquele usuario (uso no endpoint chamado
+ * pelo proprio cliente). Sem `userId`, varre todos os pendentes recentes (uso no cron).
+ *
+ * So considera PIX pendente das ultimas 24h com `payment_reference` (o ID interno da AmploPay
+ * necessario para consultar a cobranca).
+ */
+export async function reconcilePendingDeposits(
+  supabaseAdmin: SupabaseClient,
+  amplopay: { getTransactionStatus: (id: string) => Promise<{ id: string; status: string } | null> },
+  opts: { userId?: string; limit?: number } = {},
+): Promise<{ checked: number; approved: number }> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+  let query = supabaseAdmin
+    .from("deposits")
+    .select("id, user_id, amount, status, payment_reference")
+    .eq("status", "pending")
+    .eq("method", "pix")
+    .not("payment_reference", "is", null)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(opts.limit ?? 50)
+
+  if (opts.userId) {
+    query = query.eq("user_id", opts.userId)
+  }
+
+  const { data: pending, error } = await query
+
+  if (error) {
+    console.error("[RECONCILE] Erro ao buscar depositos pendentes:", error.message)
+    throw new Error(error.message)
+  }
+
+  let checked = 0
+  let approved = 0
+
+  for (const deposit of pending || []) {
+    if (!deposit.payment_reference) continue
+    checked++
+    try {
+      const tx = await amplopay.getTransactionStatus(deposit.payment_reference)
+      if (tx && isPaidStatus(tx.status)) {
+        const result = await approveDeposit(supabaseAdmin, deposit, tx.id)
+        if (result.approved) {
+          approved++
+          console.log("[RECONCILE] Deposito aprovado automaticamente:", deposit.id)
+        }
+      }
+    } catch (err) {
+      console.error("[RECONCILE] Erro ao verificar deposito", deposit.id, err)
+      // Continua verificando os demais
+    }
+  }
+
+  return { checked, approved }
+}

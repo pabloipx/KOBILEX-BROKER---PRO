@@ -152,7 +152,24 @@ export default function DepositPage() {
     }
 
     const interval = setInterval(checkStatus, 5000)
-    return () => clearInterval(interval)
+
+    // Quando o cliente volta para a aba (ex.: acabou de pagar no app do banco), reconcilia os
+    // depositos pendentes na hora e checa o status — sem esperar o proximo ciclo de 5s nem
+    // depender do webhook chegar imediatamente.
+    const onReturn = () => {
+      if (document.visibilityState !== "visible") return
+      fetch("/api/deposits/reconcile", { method: "POST" })
+        .catch(() => {})
+        .finally(checkStatus)
+    }
+    document.addEventListener("visibilitychange", onReturn)
+    window.addEventListener("focus", onReturn)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", onReturn)
+      window.removeEventListener("focus", onReturn)
+    }
   }, [pixData?.deposit_id, router])
 
   const formatCurrency = useCallback((value: string) => {

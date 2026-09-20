@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { amplopay } from "@/lib/amplopay"
-import { approveDeposit, isPaidStatus } from "@/lib/deposits"
+import { reconcilePendingDeposits } from "@/lib/deposits"
 
 // Sempre dinamico - nunca cacheado
 export const dynamic = "force-dynamic"
@@ -45,46 +45,13 @@ async function handler(request: NextRequest) {
 
   const supabaseAdmin = getSupabaseAdmin()
 
-  // Busca depositos PIX pendentes das ultimas 24h que tem referencia da AmploPay para consultar.
-  // (PIX normalmente expira; manter a janela curta evita consultar transacoes antigas/expiradas.)
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const { data: pending, error } = await supabaseAdmin
-    .from("deposits")
-    .select("id, user_id, amount, status, payment_reference")
-    .eq("status", "pending")
-    .eq("method", "pix")
-    .not("payment_reference", "is", null)
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(50)
-
-  if (error) {
-    console.error("[CRON] Erro ao buscar depositos pendentes:", error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    const { checked, approved } = await reconcilePendingDeposits(supabaseAdmin, amplopay, { limit: 50 })
+    return NextResponse.json({ success: true, checked, approved })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao reconciliar depositos"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
-
-  let checked = 0
-  let approved = 0
-
-  for (const deposit of pending || []) {
-    if (!deposit.payment_reference) continue
-    checked++
-    try {
-      const tx = await amplopay.getTransactionStatus(deposit.payment_reference)
-      if (tx && isPaidStatus(tx.status)) {
-        const result = await approveDeposit(supabaseAdmin, deposit, tx.id)
-        if (result.approved) {
-          approved++
-          console.log("[CRON] Deposito aprovado automaticamente:", deposit.id)
-        }
-      }
-    } catch (err) {
-      console.error("[CRON] Erro ao verificar deposito", deposit.id, err)
-      // Continua verificando os demais
-    }
-  }
-
-  return NextResponse.json({ success: true, checked, approved })
 }
 
 export async function GET(request: NextRequest) {

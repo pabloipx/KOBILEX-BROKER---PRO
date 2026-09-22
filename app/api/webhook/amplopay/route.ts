@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { approveDeposit, isPaidStatus } from "@/lib/deposits"
-import { amplopay } from "@/lib/amplopay"
+import { amplopay, WEBHOOK_TOKEN } from "@/lib/amplopay"
 
 // Função para obter cliente admin do Supabase
 function getSupabaseAdmin() {
@@ -41,7 +41,12 @@ export async function POST(request: NextRequest) {
   }
 
   const supabaseAdmin = getSupabaseAdmin()
-  
+
+  // Token secreto na query string do callbackUrl. Se conferir, o POST comprovadamente veio da
+  // AmploPay (ninguem de fora conhece a chave privada que gera o token), o que autoriza credito
+  // imediato pelo payload sem reabrir o risco de forgery.
+  const authentic = !!WEBHOOK_TOKEN && (request.nextUrl.searchParams.get("token") || "") === WEBHOOK_TOKEN
+
   try {
     const body: AmploPayWebhook = await request.json()
     
@@ -153,13 +158,25 @@ export async function POST(request: NextRequest) {
       }
 
       if (!isPaid && payloadSaysPaid) {
-        // O webhook afirmou "pago" mas nao conseguimos confirmar na AmploPay agora (sem ID de
-        // transacao ou API momentaneamente fora). NAO creditamos por conta do payload: o cron
-        // /api/cron/verify-deposits e o polling de /api/pix reconfirmam depois pela fonte oficial
-        // e creditam entao. Um credito atrasado e sempre preferivel a um credito forjado.
-        console.warn("[WEBHOOK] Pagamento nao confirmado ativamente na AmploPay; credito adiado.", {
-          depositId: deposit.id,
-        })
+        if (authentic) {
+          // Webhook AUTENTICADO (o token secreto confere) afirmando pago. O token so pode ter sido
+          // gerado por nos e enviado de volta pela AmploPay na URL do callback, entao este payload
+          // e confiavel - nao ha risco de forgery. Creditamos na hora mesmo que a reconfirmacao
+          // ativa nao tenha confirmado agora (lag de consistencia da AmploPay ou API momentaneamente
+          // fora). Isso restaura a aprovacao instantanea que existia antes do hardening.
+          console.log("[WEBHOOK] Pagamento confirmado por webhook autenticado (token valido).", {
+            depositId: deposit.id,
+          })
+          isPaid = true
+        } else {
+          // Payload diz "pago" mas SEM token valido e sem confirmacao ativa: pode ser forjado ou
+          // um webhook antigo (criado antes do token). NAO creditamos agora - o polling de
+          // /api/pix, a reconciliacao no foco da aba e o cron reconfirmam depois pela fonte oficial
+          // e creditam entao. Um credito atrasado e sempre preferivel a um credito forjado.
+          console.warn("[WEBHOOK] Pagamento nao confirmado ativamente e webhook sem token valido; credito adiado.", {
+            depositId: deposit.id,
+          })
+        }
       }
     }
 

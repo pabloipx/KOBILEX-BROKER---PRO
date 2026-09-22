@@ -6,6 +6,8 @@
  * Response: { pix: { code, base64 }, fee }
  */
 
+import { createHash } from "crypto"
+
 const BASE_URL = process.env.AMPLOPAY_BASE_URL || "https://app.amplopay.com/api/v1"
 
 // Credenciais AmploPay. As DUAS vem do ambiente e devem ser do MESMO par/conta, senao a API
@@ -47,7 +49,19 @@ function resolveAppUrl(): string {
 }
 
 const APP_URL = resolveAppUrl()
-const CALLBACK_URL = APP_URL + "/api/webhook/amplopay"
+
+// Token secreto derivado da chave privada da AmploPay. Ele vai na query string do callbackUrl e e
+// revalidado no webhook. Como so nos e a AmploPay conhecemos esta URL completa (e ninguem de fora
+// conhece a chave secreta que gera o token), um POST que chegue com o token correto comprovadamente
+// veio da AmploPay. Isso permite creditar na hora um pagamento AUTENTICO, restaurando a aprovacao
+// instantanea que existia antes do hardening - sem reabrir o buraco de forgery (um payload forjado
+// nao tem o token e cai no caminho de reconfirmacao ativa). Nao exige variavel de ambiente nova.
+export const WEBHOOK_TOKEN = SECRET_KEY
+  ? createHash("sha256").update(`amplopay-webhook:${SECRET_KEY}`).digest("hex").slice(0, 32)
+  : ""
+
+const CALLBACK_URL =
+  APP_URL + "/api/webhook/amplopay" + (WEBHOOK_TOKEN ? `?token=${WEBHOOK_TOKEN}` : "")
 
 // Split automático: uma porcentagem de todos os depósitos é repassada para outra conta AmploPay.
 // producerId = ID da conta que recebe o split (copiado da página da AmploPay).

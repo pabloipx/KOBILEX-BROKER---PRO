@@ -748,6 +748,40 @@ export default function TradePage() {
     }
   }, [user?.id, hydrateActiveTrades])
 
+  // Reconcilia depositos PIX pendentes do proprio usuario ao abrir a pagina e sempre que a aba
+  // volta a ficar visivel (ex.: cliente acabou de pagar no app do banco e voltou para o app).
+  // Credita o saldo em segundos sem depender do webhook chegar na hora nem do cron diario.
+  useEffect(() => {
+    if (!user?.id) return
+
+    const reconcile = async () => {
+      if (typeof document !== "undefined" && document.hidden) return
+      try {
+        const res = await fetch("/api/deposits/reconcile", { method: "POST" })
+        const data = await res.json().catch(() => null)
+        // Se algum deposito foi creditado agora, recarrega o saldo real da conta.
+        if (data?.approved > 0 && mountedRef.current) {
+          const { data: balanceData } = await supabaseRef.current
+            .from("user_balances")
+            .select("balance_real")
+            .eq("user_id", user.id)
+            .maybeSingle()
+          if (balanceData && mountedRef.current) {
+            setBalanceReal(balanceData.balance_real || 0)
+          }
+        }
+      } catch {}
+    }
+
+    void reconcile()
+    document.addEventListener("visibilitychange", reconcile)
+    window.addEventListener("focus", reconcile)
+    return () => {
+      document.removeEventListener("visibilitychange", reconcile)
+      window.removeEventListener("focus", reconcile)
+    }
+  }, [user?.id])
+
   // Check active trades results - ROBUST
   useEffect(() => {
     if (activeTrades.length === 0 || !user || !mountedRef.current) return

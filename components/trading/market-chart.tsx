@@ -1422,6 +1422,11 @@ function ChartCore({
       if (onVisible) {
         document.removeEventListener("visibilitychange", onVisible)
         window.removeEventListener("focus", onVisible)
+        // pageshow tambem precisa ser removido: sem isto, cada re-execucao do efeito (troca de
+        // par/timeframe) deixava um onVisible orfao preso no pageshow. Ao voltar para a aba (no
+        // mobile o retorno vem por pageshow/bfcache), TODOS os orfaos acumulados disparavam de uma
+        // vez, cada um chamando loadData() — dezenas de recargas simultaneas travavam o grafico.
+        window.removeEventListener("pageshow", onVisible)
       }
       if (ro) ro.disconnect()
       if (winResizeCleanup) winResizeCleanup()

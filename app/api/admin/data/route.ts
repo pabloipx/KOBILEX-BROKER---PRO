@@ -3,6 +3,10 @@ import { createClient } from "@supabase/supabase-js"
 import { approveDeposit } from "@/lib/deposits"
 import { isAdminRequest } from "@/lib/admin/session"
 import { round2 } from "@/lib/promo-codes"
+import { buildAiTradeRow, iaEntryForResult, IA_MIN_ENTRY } from "@/lib/ia-trades"
+
+// Dia atual no fuso America/Sao_Paulo (UTC-3), igual ao usado no acerto da IA.
+const iaTodayKey = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
 
 
 function getAdminClient() {
@@ -245,6 +249,13 @@ export async function GET(req: NextRequest) {
           const hasOverride =
             s.metaOverride != null && Number.isFinite(Number(s.metaOverride)) && Number(s.metaOverride) >= 0
           const effectiveMeta = hasOverride ? round2(Number(s.metaOverride)) : dailyMeta
+          // Resultado líquido de hoje (com sinal). Se o dia salvo não é hoje, o dia atual começa zerado.
+          const isToday = s.dayKey === iaTodayKey()
+          const todayResult = isToday
+            ? s.lossMode
+              ? round2(-Number(s.lostToday || 0))
+              : round2(Number(s.creditedToday || 0))
+            : 0
           return {
             userId: p.userId,
             user_name: profile?.full_name || "Usuario",
@@ -263,6 +274,10 @@ export async function GET(req: NextRequest) {
             lostToday: round2(Number(s.lostToday || 0)),
             totalCredited: round2(Number(s.totalCredited || 0)),
             creditedToday: round2(Number(s.creditedToday || 0)),
+            todayResult,
+            tradesToday: isToday ? Number(s.tradesToday || 0) : 0,
+            tradesTotal: Number(s.tradesTotal || 0),
+            dayLocked: !!s.dayLockedKey && s.dayLockedKey === iaTodayKey(),
             assertiveness: Number(s.assertiveness ?? 87),
             paused: !!s.paused,
             activatedAt: s.activatedAt || null,
@@ -444,6 +459,8 @@ export async function POST(req: NextRequest) {
         }
         state.metaOverride = round2(meta)
       }
+      // Nova meta: a IA volta a operar hoje rumo a ela.
+      state.dayLockedKey = null
 
       await supabase
         .from("platform_settings")
@@ -542,7 +559,9 @@ export async function POST(req: NextRequest) {
       state.tradesToday = 0
       state.tradesProfitToday = 0
       state.tradesTargetToday = 8 + Math.floor(Math.random() * 5)
-      state.dayKey = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+      state.accruedToday = 0
+      state.dayLockedKey = null
+      state.dayKey = iaTodayKey()
 
       await supabase
         .from("platform_settings")
@@ -594,15 +613,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "set_ia_credited_today") {
-      // Define exatamente quanto o usuário "ganhou hoje" na IA. O admin controla o ganho diário:
-      // a diferença em relação ao já creditado hoje é lançada (ou estornada) no saldo real, com
-      // transação registrada, e os acumulados (hoje/total) são ajustados.
+      // Define o resultado líquido de hoje na IA (positivo = ganho, negativo = perda). A diferença para
+      // o resultado atual vira UMA entrada real (mín. R$1) no histórico da tela de TRADE, movimenta o
+      // saldo real e trava o dia: a IA não abre novas entradas até virar o dia (ou o admin mudar a meta).
       const userId = payload.userId
       const rawTarget = Number(payload.amount)
-      if (!userId || !Number.isFinite(rawTarget) || rawTarget < 0) {
+      if (!userId || !Number.isFinite(rawTarget)) {
         return NextResponse.json({ error: "Valor invalido" }, { status: 400 })
       }
-      const target = round2(rawTarget)
+      let target = round2(rawTarget)
 
       const settingKey = `ia_broker_state:${userId}`
       const { data: existing } = await supabase
@@ -622,40 +641,65 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Estado da IA invalido" }, { status: 500 })
       }
 
-      // Dia atual no fuso America/Sao_Paulo (UTC-3), igual ao usado no settle da IA.
       const nowIso = new Date().toISOString()
-      const todayKey = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
-      const currentToday = state.dayKey === todayKey ? round2(Number(state.creditedToday || 0)) : 0
-      const delta = round2(target - currentToday)
+      const todayKey = iaTodayKey()
+      const lossMode = state.lossMode === true
+      const isToday = state.dayKey === todayKey
+      const currentToday = isToday
+        ? lossMode
+          ? round2(-Number(state.lostToday || 0))
+          : round2(Number(state.creditedToday || 0))
+        : 0
 
-      // Ajusta o saldo real pela diferença e registra a transação correspondente.
       const { data: bal } = await supabase
         .from("user_balances")
         .select("balance_real")
         .eq("user_id", userId)
         .maybeSingle()
       const currentBalance = Number(bal?.balance_real || 0)
+
+      let delta = round2(target - currentToday)
+      // O saldo nunca fica negativo: a perda fica limitada ao que há disponível.
+      if (delta < 0 && currentBalance + delta < 0) {
+        delta = -round2(currentBalance)
+        target = round2(currentToday + delta)
+      }
       const newBalance = round2(currentBalance + delta)
 
-      await supabase.from("user_balances").upsert(
-        { user_id: userId, balance_real: newBalance, updated_at: nowIso },
-        { onConflict: "user_id" },
-      )
-
       if (delta !== 0) {
+        const entry = iaEntryForResult(delta)
+        const row = buildAiTradeRow(userId, entry.amount, entry.profit, 0)
+        await supabase.from("trades").insert(row)
+        await supabase.from("user_balances").upsert(
+          { user_id: userId, balance_real: newBalance, updated_at: nowIso },
+          { onConflict: "user_id" },
+        )
         await supabase.from("transactions").insert({
           user_id: userId,
           type: "ia_yield",
           amount: delta,
           balance_after: newBalance,
           account_type: "real",
-          description: delta >= 0 ? "Ajuste de ganho do dia (admin)" : "Estorno de ganho do dia (admin)",
+          description: `Operação do Robô de IA · ${row.symbol} ${row.direction === "CALL" ? "COMPRA" : "VENDA"} R$ ${Math.max(IA_MIN_ENTRY, entry.amount).toFixed(2)}`,
         })
+        state.tradesToday = (isToday ? Number(state.tradesToday || 0) : 0) + 1
+        state.tradesProfitToday = round2((isToday ? Number(state.tradesProfitToday || 0) : 0) + delta)
+        state.tradesTotal = Number(state.tradesTotal || 0) + 1
+      } else if (!isToday) {
+        state.tradesToday = 0
+        state.tradesProfitToday = 0
       }
 
-      state.creditedToday = target
+      if (lossMode) {
+        state.lostToday = round2(Math.max(0, -target))
+        state.creditedToday = 0
+      } else {
+        state.creditedToday = target
+      }
+      state.accruedToday = Math.abs(target)
       state.dayKey = todayKey
-      state.totalCredited = round2(Math.max(0, Number(state.totalCredited || 0) + delta))
+      state.dayLockedKey = todayKey
+      state.totalCredited = round2(Number(state.totalCredited || 0) + delta)
       state.lastSettleAt = nowIso
 
       await supabase
@@ -665,7 +709,12 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        creditedToday: target,
+        creditedToday: state.creditedToday,
+        lostToday: state.lostToday ?? 0,
+        todayResult: target,
+        tradesToday: state.tradesToday ?? 0,
+        tradesTotal: state.tradesTotal ?? 0,
+        dayLocked: true,
         totalCredited: state.totalCredited,
         balance_real: newBalance,
       })

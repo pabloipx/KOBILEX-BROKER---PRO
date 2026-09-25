@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { buildAiTradeRow } from "@/lib/ia-trades"
 
 export const dynamic = "force-dynamic"
 
@@ -40,6 +41,7 @@ type IaState = {
   tradesToday?: number // quantas entradas já foram registradas hoje
   tradesProfitToday?: number // soma do profit das entradas de hoje (deve fechar igual ao rendimento do dia)
   tradesTotal?: number // total acumulado de entradas desde a ativação (exibido no card "Entradas")
+  dayLockedKey?: string | null // dia em que o admin fixou o resultado manualmente; a IA não abre entradas nesse dia
 }
 
 const DEFAULT_ASSERTIVENESS = 87 // taxa de acerto padrão exibida ao usuário
@@ -56,15 +58,6 @@ const dayKeyOf = (ms: number) => new Date(ms - 3 * 3_600_000).toISOString().slic
 // própria (o rendimento já é creditado como `ia_yield`) e NÃO colidem com a operação manual do
 // usuário (que só bloqueia quando existe uma operação PENDING). A soma do profit das entradas do
 // dia fecha exatamente igual ao rendimento creditado no dia (a última entrada reconcilia).
-const AI_TRADE_SYMBOLS: { symbol: string; price: number }[] = [
-  { symbol: "EURUSD_OTC", price: 1.0857 },
-  { symbol: "GBPUSD_OTC", price: 1.2712 },
-  { symbol: "USDJPY_OTC", price: 156.82 },
-  { symbol: "AUDUSD_OTC", price: 0.6634 },
-  { symbol: "BTCUSD_OTC", price: 64231 },
-]
-const AI_TIMEFRAMES = [60, 300, 600]
-const roundPrice = (p: number) => (p >= 1000 ? Math.round(p * 100) / 100 : Math.round(p * 100000) / 100000)
 // Quantidade de entradas por dia: 8 a 12, sorteada ao virar o dia.
 const planDailyTrades = () => 8 + Math.floor(Math.random() * 5)
 
@@ -88,39 +81,6 @@ const finalEntry = (remaining: number): AiEntry =>
     ? { amount: Math.max(MIN_ENTRY, round2(remaining / PAYOUT)), profit: round2(remaining) }
     : { amount: Math.max(MIN_ENTRY, round2(-remaining)), profit: round2(remaining) }
 
-function buildAiTradeRow(userId: string, amount: number, profit: number, offsetIndex: number) {
-  const s = AI_TRADE_SYMBOLS[Math.floor(Math.random() * AI_TRADE_SYMBOLS.length)]
-  const direction: "CALL" | "PUT" = Math.random() < 0.5 ? "CALL" : "PUT"
-  // O app inteiro (tela de TRADE, histórico) usa result em minúsculo: "win"/"loss".
-  // Gravar em maiúsculo fazia as entradas da IA aparecerem como pendentes eternas.
-  const result: "win" | "loss" = profit >= 0 ? "win" : "loss"
-  const win = result === "win"
-  const up = direction === "CALL"
-  const delta = s.price * (0.0004 + Math.random() * 0.0006)
-  const entryPrice = s.price
-  // Preço de saída coerente com o resultado e a direção exibidos.
-  const exitPrice = win === up ? entryPrice + delta : entryPrice - delta
-  const timeframe = AI_TIMEFRAMES[Math.floor(Math.random() * AI_TIMEFRAMES.length)]
-  // Espaça as entradas emitidas no mesmo ciclo para não terem o mesmo horário.
-  const now = Date.now() - offsetIndex * 90_000
-  return {
-    user_id: userId,
-    symbol: s.symbol,
-    direction,
-    amount: round2(amount),
-    entry_price: roundPrice(entryPrice),
-    exit_price: roundPrice(exitPrice),
-    timeframe,
-    payout_percentage: 0.96,
-    result,
-    profit: round2(profit),
-    status: "closed",
-    is_demo: false,
-    entry_time: new Date(now - timeframe * 1000).toISOString(),
-    expiry_time: new Date(now).toISOString(),
-    closed_at: new Date(now).toISOString(),
-  }
-}
 
 async function getUserId(): Promise<string | null> {
   const supabase = await createClient()
@@ -248,6 +208,13 @@ async function settle(
     tradesToday = 0
     tradesProfitToday = 0
     tradesTargetToday = planDailyTrades()
+  }
+
+  // O admin fixou o resultado de hoje: a IA não abre novas entradas até virar o dia.
+  if (state.dayLockedKey && state.dayLockedKey === todayKey) {
+    const locked: IaState = { ...state, lastSettleAt: new Date(now).toISOString() }
+    await saveState(admin, settingKey, locked)
+    return { state: locked, balance, credited: 0 }
   }
 
   const last = new Date(state.lastSettleAt).getTime()

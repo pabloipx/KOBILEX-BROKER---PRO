@@ -34,6 +34,7 @@ type IaState = {
   lossMode?: boolean // admin coloca o usuário no PREJUÍZO do dia: em vez de render, o saldo cai até o alvo diário
   lossPerDay?: number | null // prejuízo alvo do dia (R$) definido pelo admin; se null, usa a meta do plano como magnitude
   lostToday?: number // quanto já foi debitado no dia atual em modo prejuízo (teto = prejuízo do dia)
+  accruedToday?: number // progresso do dia no tempo (R$); decide quando cada entrada real fecha
   // Registro das "entradas" da IA como operações reais na tabela `trades`.
   tradesTargetToday?: number // quantas entradas a IA fará no dia atual (8–12, sorteado ao virar o dia)
   tradesToday?: number // quantas entradas já foram registradas hoje
@@ -67,7 +68,27 @@ const roundPrice = (p: number) => (p >= 1000 ? Math.round(p * 100) / 100 : Math.
 // Quantidade de entradas por dia: 8 a 12, sorteada ao virar o dia.
 const planDailyTrades = () => 8 + Math.floor(Math.random() * 5)
 
-function buildAiTradeRow(userId: string, profit: number, offsetIndex: number) {
+const MIN_ENTRY = 1 // entrada mínima do gráfico (R$)
+const PAYOUT = 0.96
+
+type AiEntry = { amount: number; profit: number }
+
+// Entradas com valor inteiro em reais (mínimo R$1), como um operador faria no gráfico.
+const winEntry = (avg: number, lo: number, hi: number): AiEntry => {
+  const amount = Math.max(MIN_ENTRY, Math.round((avg * (lo + Math.random() * (hi - lo))) / PAYOUT))
+  return { amount, profit: round2(amount * PAYOUT) }
+}
+const lossEntry = (avg: number, lo: number, hi: number): AiEntry => {
+  const amount = Math.max(MIN_ENTRY, Math.round(avg * (lo + Math.random() * (hi - lo))))
+  return { amount, profit: -amount }
+}
+// Última entrada do dia: fecha o resultado exatamente no alvo.
+const finalEntry = (remaining: number): AiEntry =>
+  remaining >= 0
+    ? { amount: Math.max(MIN_ENTRY, round2(remaining / PAYOUT)), profit: round2(remaining) }
+    : { amount: Math.max(MIN_ENTRY, round2(-remaining)), profit: round2(remaining) }
+
+function buildAiTradeRow(userId: string, amount: number, profit: number, offsetIndex: number) {
   const s = AI_TRADE_SYMBOLS[Math.floor(Math.random() * AI_TRADE_SYMBOLS.length)]
   const direction: "CALL" | "PUT" = Math.random() < 0.5 ? "CALL" : "PUT"
   // O app inteiro (tela de TRADE, histórico) usa result em minúsculo: "win"/"loss".
@@ -80,15 +101,13 @@ function buildAiTradeRow(userId: string, profit: number, offsetIndex: number) {
   // Preço de saída coerente com o resultado e a direção exibidos.
   const exitPrice = win === up ? entryPrice + delta : entryPrice - delta
   const timeframe = AI_TIMEFRAMES[Math.floor(Math.random() * AI_TIMEFRAMES.length)]
-  // Valor "aplicado" compatível com o payout de 96%, para o registro parecer real.
-  const amount = Math.max(0.01, win ? round2(profit / 0.96) : round2(Math.abs(profit)))
   // Espaça as entradas emitidas no mesmo ciclo para não terem o mesmo horário.
-  const now = Date.now() - offsetIndex * 1500
+  const now = Date.now() - offsetIndex * 90_000
   return {
     user_id: userId,
     symbol: s.symbol,
     direction,
-    amount,
+    amount: round2(amount),
     entry_price: roundPrice(entryPrice),
     exit_price: roundPrice(exitPrice),
     timeframe,
@@ -179,11 +198,12 @@ async function saveState(admin: SupabaseClient, settingKey: string, state: unkno
 }
 
 /**
- * Credita no saldo real o rendimento acumulado desde o último acerto.
- * O rendimento corre continuamente (mesmo com o site fechado): a IA "opera" enquanto ativa.
- * Fórmula: investido * (daily/100) por dia, proporcional aos segundos decorridos.
- * Enquanto pausada, o rendimento não corre.
- * Retorna o estado atualizado e o novo saldo.
+ * Acerto da IA por ENTRADAS REAIS.
+ * O progresso do dia corre no tempo (mesmo com o site fechado), mas o saldo só se move quando uma
+ * entrada fecha: cada entrada tem valor mínimo de R$1,00, payout de 96%, é gravada em `trades`
+ * (aparece no histórico da tela de TRADE) e credita/debita o saldo pelo seu próprio resultado.
+ * A última entrada do dia reconcilia o resultado para fechar exatamente na meta (ou no prejuízo alvo).
+ * Enquanto pausada, nada corre.
  */
 async function settle(
   admin: SupabaseClient,
@@ -194,256 +214,120 @@ async function settle(
   const now = Date.now()
   const balance = await readBalance(admin, userId)
 
-  // Pausa congela tudo (nem rende nem perde), preservando o estado.
-  if (state.paused) {
-    return { state, balance, credited: 0 }
-  }
+  if (state.paused) return { state, balance, credited: 0 }
 
-  // Modo prejuízo: o admin decidiu que hoje o usuário PERDE dinheiro. O saldo cai aos poucos
-  // até o alvo diário e as entradas do dia fecham negativas. Roda independentemente do earningEnabled.
-  if (state.lossMode === true) {
-    return settleLoss(admin, userId, settingKey, state)
-  }
+  const lossMode = state.lossMode === true
+  // Admin pode desligar o rendimento por completo (não vale para o modo prejuízo).
+  if (!lossMode && state.earningEnabled === false) return { state, balance, credited: 0 }
 
-  // Admin pode desligar o rendimento por completo (earningEnabled=false): não rende nem perde.
-  if (state.earningEnabled === false) {
-    return { state, balance, credited: 0 }
-  }
-
-  // Teto diário = meta do dia (a % sobre o investido). O rendimento sobe aos poucos
-  // ao longo do dia até bater essa meta e então para, voltando a render no dia seguinte.
-  // Meta do dia: usa a meta personalizada do admin quando definida; senão, a meta do plano (a % sobre o investido).
-  const dailyMeta =
-    state.metaOverride != null && Number.isFinite(state.metaOverride) && state.metaOverride >= 0
-      ? round2(state.metaOverride)
-      : round2(state.amount * (state.daily / 100))
-  const todayKey = dayKeyOf(now)
-
-  let creditedToday = state.creditedToday || 0
-  let dayKey = state.dayKey || dayKeyOf(new Date(state.activatedAt).getTime())
-
-  // Contadores das entradas da IA. Os "de hoje" zeram ao virar o dia; o total é acumulado.
-  let tradesToday = state.tradesToday || 0
-  let tradesProfitToday = state.tradesProfitToday || 0
-  let tradesTargetToday = state.tradesTargetToday || planDailyTrades()
-  let tradesTotal = state.tradesTotal || 0
-
-  const dayChanged = dayKey !== todayKey
-  if (dayChanged) {
-    // Virou o dia: zera o acumulado diário e recomeça a render até a meta.
-    creditedToday = 0
-    dayKey = todayKey
-    // Novo dia => novo plano de entradas (8–12) e contadores diários zerados.
-    tradesToday = 0
-    tradesProfitToday = 0
-    tradesTargetToday = planDailyTrades()
-  }
-
-  // Emite as entradas reais que faltam para acompanhar o progresso do rendimento do dia.
-  // As entradas surgem aos poucos: a k-ésima entrada entra quando o rendimento passa de k/target
-  // da meta. A última entrada do dia reconcilia o profit para fechar igual ao rendimento creditado.
-  const runEmission = async () => {
-    const target = tradesTargetToday
-    if (target <= 0 || dailyMeta <= 0) return
-    const progress = Math.min(1, creditedToday / dailyMeta)
-    // Assim que há rendimento creditado, a 1ª entrada já aparece (ceil). A entrada final
-    // (que reconcilia o dia) fica reservada para quando a meta fecha (progress >= 1).
-    const shouldHave = progress >= 1 ? target : Math.min(target - 1, Math.ceil(progress * target))
-    const rows: ReturnType<typeof buildAiTradeRow>[] = []
-    while (tradesToday < shouldHave) {
-      const isFinal = tradesToday + 1 === target
-      const avg = dailyMeta / target
-      let profit: number
-      if (isFinal) {
-        // Fecha o dia exatamente no rendimento creditado (mix de WIN/LOSS, dia positivo).
-        profit = round2(creditedToday - tradesProfitToday)
-      } else {
-        const loss = Math.random() < 0.35
-        profit = loss
-          ? -round2(avg * (0.3 + Math.random() * 0.5))
-          : round2(avg * (1.05 + Math.random() * 0.6))
-      }
-      rows.push(buildAiTradeRow(userId, profit, rows.length))
-      tradesProfitToday = round2(tradesProfitToday + profit)
-      tradesToday += 1
-      tradesTotal += 1
-    }
-    if (rows.length) await admin.from("trades").insert(rows)
-  }
-
-  const last = new Date(state.lastSettleAt).getTime()
-  const elapsedSec = Math.max(0, (now - last) / 1000)
-  const perSecond = (state.amount * (state.daily / 100)) / SECONDS_PER_DAY
-  const owed = perSecond * elapsedSec
-
-  const remainingToday = round2(Math.max(0, dailyMeta - creditedToday))
-  const creditNow = round2(Math.min(owed, remainingToday))
-
-  if (creditNow < MIN_CREDIT) {
-    // Nada relevante a creditar agora. Se a meta do dia já foi batida (ou o dia virou
-    // sem rendimento devido), avança o marco e persiste o dia para não acumular tempo.
-    if (remainingToday < MIN_CREDIT || dayChanged) {
-      // Meta já batida: garante que as entradas restantes do dia sejam registradas.
-      await runEmission()
-      const updated: IaState = {
-        ...state,
-        lastSettleAt: new Date(now).toISOString(),
-        creditedToday,
-        dayKey,
-        tradesToday,
-        tradesProfitToday,
-        tradesTargetToday,
-        tradesTotal,
-      }
-      await saveState(admin, settingKey, updated)
-      return { state: updated, balance, credited: 0 }
-    }
-    // Rendimento ainda insignificante: não credita nem avança o marco, para acumular.
-    return { state, balance, credited: 0 }
-  }
-
-  const newBalance = round2(balance + creditNow)
-  await writeBalance(admin, userId, newBalance)
-  await recordTransaction(admin, userId, "ia_yield", creditNow, newBalance, "Rendimento do Robô de IA")
-
-  creditedToday = round2(creditedToday + creditNow)
-  // Registra as entradas correspondentes ao novo patamar de rendimento do dia.
-  await runEmission()
-
-  const updated: IaState = {
-    ...state,
-    lastSettleAt: new Date(now).toISOString(),
-    totalCredited: round2((state.totalCredited || 0) + creditNow),
-    creditedToday,
-    dayKey,
-    tradesToday,
-    tradesProfitToday,
-    tradesTargetToday,
-    tradesTotal,
-  }
-  await saveState(admin, settingKey, updated)
-  return { state: updated, balance: newBalance, credited: creditNow }
-}
-
-/**
- * Modo prejuízo: o admin definiu que hoje o usuário PERDE dinheiro.
- * Espelha o `settle`, mas com sinal invertido: o saldo cai aos poucos até o prejuízo alvo do dia
- * (lossPerDay, ou a meta do plano como magnitude), nunca deixando o saldo ficar negativo.
- * As entradas do dia fecham negativas (soma = -lostToday) e aparecem no histórico da tela de TRADE.
- */
-async function settleLoss(
-  admin: SupabaseClient,
-  userId: string,
-  settingKey: string,
-  state: IaState,
-): Promise<{ state: IaState; balance: number; credited: number }> {
-  const now = Date.now()
-  const balance = await readBalance(admin, userId)
-
-  // Prejuízo alvo do dia: valor definido pelo admin ou, na falta dele, a magnitude da meta do plano.
-  const dailyLoss =
-    state.lossPerDay != null && Number.isFinite(state.lossPerDay) && state.lossPerDay > 0
+  const planMeta = round2(state.amount * (state.daily / 100))
+  const goalAbs = lossMode
+    ? state.lossPerDay != null && Number.isFinite(state.lossPerDay) && state.lossPerDay > 0
       ? round2(state.lossPerDay)
-      : round2(state.amount * (state.daily / 100))
+      : planMeta
+    : state.metaOverride != null && Number.isFinite(state.metaOverride) && state.metaOverride >= 0
+      ? round2(state.metaOverride)
+      : planMeta
+  const goal = lossMode ? -goalAbs : goalAbs
+  const perSecond = (lossMode ? goalAbs : planMeta) / SECONDS_PER_DAY
+
   const todayKey = dayKeyOf(now)
-
-  let lostToday = state.lostToday || 0
   let dayKey = state.dayKey || dayKeyOf(new Date(state.activatedAt).getTime())
-
+  // Resultado realizado hoje (com sinal): positivo no modo normal, negativo no modo prejuízo.
+  let realized = lossMode ? -(state.lostToday || 0) : state.creditedToday || 0
+  let accrued = state.accruedToday ?? Math.abs(realized)
   let tradesToday = state.tradesToday || 0
   let tradesProfitToday = state.tradesProfitToday || 0
   let tradesTargetToday = state.tradesTargetToday || planDailyTrades()
   let tradesTotal = state.tradesTotal || 0
 
-  const dayChanged = dayKey !== todayKey
-  if (dayChanged) {
-    lostToday = 0
+  if (dayKey !== todayKey) {
     dayKey = todayKey
+    realized = 0
+    accrued = 0
     tradesToday = 0
     tradesProfitToday = 0
     tradesTargetToday = planDailyTrades()
   }
 
-  // Emissão das entradas: em modo prejuízo a maioria perde e o dia fecha negativo (soma = -lostToday).
-  const runEmission = async () => {
-    const target = tradesTargetToday
-    if (target <= 0 || dailyLoss <= 0) return
-    const progress = Math.min(1, lostToday / dailyLoss)
-    // Assim que há prejuízo debitado, a 1ª entrada já aparece (ceil). A entrada final
-    // (que reconcilia o dia no vermelho) fica reservada para quando o alvo fecha (progress >= 1).
-    const shouldHave = progress >= 1 ? target : Math.min(target - 1, Math.ceil(progress * target))
-    const rows: ReturnType<typeof buildAiTradeRow>[] = []
-    while (tradesToday < shouldHave) {
-      const isFinal = tradesToday + 1 === target
-      const avg = dailyLoss / target
-      let profit: number
-      if (isFinal) {
-        // Fecha o dia exatamente no prejuízo acumulado (soma negativa).
-        profit = round2(-lostToday - tradesProfitToday)
-      } else {
-        // Maioria perde; alguns acertos pequenos deixam o histórico crível, mas o dia fecha no vermelho.
-        const win = Math.random() < 0.3
-        profit = win
-          ? round2(avg * (0.2 + Math.random() * 0.35))
-          : -round2(avg * (1.1 + Math.random() * 0.6))
-      }
-      rows.push(buildAiTradeRow(userId, profit, rows.length))
-      tradesProfitToday = round2(tradesProfitToday + profit)
-      tradesToday += 1
-      tradesTotal += 1
-    }
-    if (rows.length) await admin.from("trades").insert(rows)
-  }
-
   const last = new Date(state.lastSettleAt).getTime()
   const elapsedSec = Math.max(0, (now - last) / 1000)
-  const perSecond = dailyLoss / SECONDS_PER_DAY
-  const owed = perSecond * elapsedSec
+  accrued = Math.min(goalAbs, accrued + perSecond * elapsedSec)
 
-  const remainingToday = round2(Math.max(0, dailyLoss - lostToday))
-  // Nunca debita mais do que o saldo disponível (o saldo não fica negativo).
-  const debitNow = round2(Math.min(owed, remainingToday, Math.max(0, balance)))
+  // Metas pequenas geram menos entradas, para cada uma respeitar a entrada mínima.
+  const target = goalAbs > 0 ? Math.max(1, Math.min(tradesTargetToday, Math.floor(goalAbs / 1.5))) : 0
+  const progress = goalAbs > 0 ? accrued / goalAbs : 0
+  // A entrada final (que reconcilia o dia) só sai quando o progresso do dia fecha.
+  const shouldHave =
+    target === 0 ? 0 : progress >= 1 ? target : Math.min(target - 1, Math.ceil(progress * target))
 
-  if (debitNow < MIN_CREDIT) {
-    // Nada relevante a debitar agora. Se o alvo já foi atingido (ou o dia virou), avança o marco.
-    if (remainingToday < MIN_CREDIT || balance < MIN_CREDIT || dayChanged) {
-      await runEmission()
-      const updated: IaState = {
-        ...state,
-        lastSettleAt: new Date(now).toISOString(),
-        lostToday,
-        dayKey,
-        tradesToday,
-        tradesProfitToday,
-        tradesTargetToday,
-        tradesTotal,
+  let runningBalance = balance
+  let delta = 0
+  const rows: ReturnType<typeof buildAiTradeRow>[] = []
+  const txs: Record<string, unknown>[] = []
+  const avg = target > 0 ? goalAbs / target : 0
+
+  while (tradesToday < shouldHave) {
+    const isFinal = tradesToday + 1 === target
+    let entry: AiEntry
+    if (isFinal) {
+      const remaining = round2(goal - realized)
+      if (Math.abs(remaining) < 0.01) {
+        tradesToday += 1
+        continue
       }
-      await saveState(admin, settingKey, updated)
-      return { state: updated, balance, credited: 0 }
+      entry = finalEntry(remaining)
+    } else if (lossMode) {
+      entry = Math.random() < 0.3 ? winEntry(avg, 0.2, 0.55) : lossEntry(avg, 1.1, 1.7)
+    } else {
+      entry = Math.random() < 0.65 ? winEntry(avg, 1.05, 1.65) : lossEntry(avg, 0.3, 0.8)
     }
-    return { state, balance, credited: 0 }
+
+    // O saldo nunca fica negativo: a perda fica limitada ao que há disponível.
+    if (entry.profit < 0 && runningBalance + entry.profit < 0) {
+      const cap = Math.floor(runningBalance)
+      if (cap < MIN_ENTRY) break
+      entry = { amount: cap, profit: -cap }
+    }
+
+    const row = buildAiTradeRow(userId, entry.amount, entry.profit, rows.length)
+    runningBalance = round2(runningBalance + entry.profit)
+    delta = round2(delta + entry.profit)
+    realized = round2(realized + entry.profit)
+    tradesProfitToday = round2(tradesProfitToday + entry.profit)
+    tradesToday += 1
+    tradesTotal += 1
+    rows.push(row)
+    txs.push({
+      user_id: userId,
+      type: "ia_yield",
+      amount: entry.profit,
+      balance_after: runningBalance,
+      account_type: "real",
+      description: `Operação do Robô de IA · ${row.symbol} ${row.direction === "CALL" ? "COMPRA" : "VENDA"} R$ ${entry.amount.toFixed(2)}`,
+    })
   }
 
-  const newBalance = round2(balance - debitNow)
-  await writeBalance(admin, userId, newBalance)
-  await recordTransaction(admin, userId, "ia_yield", -debitNow, newBalance, "Ajuste de operação do Robô de IA")
-
-  lostToday = round2(lostToday + debitNow)
-  await runEmission()
+  if (rows.length) {
+    await admin.from("trades").insert(rows)
+    await writeBalance(admin, userId, runningBalance)
+    await admin.from("transactions").insert(txs)
+  }
 
   const updated: IaState = {
     ...state,
     lastSettleAt: new Date(now).toISOString(),
-    totalCredited: round2((state.totalCredited || 0) - debitNow),
-    lostToday,
+    totalCredited: round2((state.totalCredited || 0) + delta),
     dayKey,
+    accruedToday: accrued,
+    ...(lossMode ? { lostToday: round2(-realized) } : { creditedToday: realized }),
     tradesToday,
     tradesProfitToday,
     tradesTargetToday,
     tradesTotal,
   }
   await saveState(admin, settingKey, updated)
-  return { state: updated, balance: newBalance, credited: -debitNow }
+  return { state: updated, balance: runningBalance, credited: delta }
 }
 
 export async function GET() {
@@ -561,6 +445,7 @@ export async function POST(req: Request) {
       lastSettleAt: nowIso,
       totalCredited: 0,
       creditedToday: 0,
+      accruedToday: 0,
       dayKey: dayKeyOf(now),
       assertiveness: DEFAULT_ASSERTIVENESS,
       metaOverride: null,

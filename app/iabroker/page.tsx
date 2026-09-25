@@ -872,141 +872,138 @@ function ActivePanel({
   const totalEarned = totalCredited
   const progress = dailyTarget > 0 ? Math.min(100, (todayProfit / dailyTarget) * 100) : 0
 
+  const todayPct = plan.amount > 0 ? (todayProfit / plan.amount) * 100 : 0
+  const roiPct = plan.amount > 0 ? (totalEarned / plan.amount) * 100 : 0
+
   return (
-    <div className="w-full max-w-4xl animate-fade-up">
-      {/* Barra de status */}
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 mb-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="relative shrink-0">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/20">
-                <Bot className="w-6 h-6 text-primary-foreground" />
-              </div>
-              {running && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-atlas-success opacity-75" />
-                  <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-atlas-success ring-2 ring-card" />
-                </span>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-base leading-tight">IA URYN</span>
-                <span
-                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-full ${
-                    running ? "bg-atlas-success/15 text-atlas-success" : "bg-secondary text-muted-foreground"
-                  }`}
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      running ? "bg-atlas-success animate-pulse" : "bg-muted-foreground"
-                    }`}
-                  />
-                  {running ? "Operando" : "Pausada"}
-                </span>
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Plano <span className="text-foreground font-medium">{brl(plan.amount)}</span> · {plan.daily}% ao dia
-              </div>
-              {activatedAt && (
-                <div className="text-[11px] text-muted-foreground/80 mt-0.5">
-                  Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 sm:shrink-0">
-            <button
-              onClick={onPauseToggle}
-              className="flex-1 sm:flex-none h-11 px-4 rounded-xl border border-border bg-secondary hover:bg-accent active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm font-medium"
-            >
-              {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              {running ? "Pausar" : "Retomar"}
-            </button>
-            <button
-              onClick={onStop}
-              className="flex-1 sm:flex-none h-11 px-4 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm font-medium"
-            >
-              <Power className="w-4 h-4" />
-              Desativar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Rendimento já gerado pela IA — card de destaque */}
-      <div className="rounded-2xl border border-atlas-success/30 bg-gradient-to-br from-atlas-success/10 to-transparent p-4 sm:p-5 mb-4">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-          <TrendingUp className="w-4 h-4 text-atlas-success" />
-          Rendimento já gerado pela IA
-        </div>
-        <div className="text-3xl sm:text-4xl font-bold text-atlas-success leading-none">{brl(totalEarned)}</div>
-        <div className="text-xs text-muted-foreground mt-1.5">
-          Acumulado desde a ativação · {count} {count === 1 ? "entrada" : "entradas"}
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-atlas-success/15">
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-0.5">Lucro hoje</div>
-            <div className="text-lg font-bold text-atlas-success">{brl(todayProfit)}</div>
-          </div>
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-0.5">
-              Retorno sobre o investido
-            </div>
-            <div className="text-lg font-bold">
-              {plan.amount > 0 ? ((totalEarned / plan.amount) * 100).toFixed(2) : "0.00"}%
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Métricas — grade equilibrada (2×2 no mobile, 4 no desktop) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <StatCard icon={<Wallet className="w-4 h-4 text-primary" />} label="Saldo na carteira" value={brl(balance)} />
-        <StatCard icon={<Zap className="w-4 h-4" />} label="Investido" value={brl(plan.amount)} />
-        <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
-        <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
-      </div>
-
-      {/* Análise em tempo real — visualização das operações da IA */}
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Activity className="w-4 h-4 text-primary" />
-            Análise em tempo real
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-atlas-success">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-atlas-success opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-atlas-success" />
-            </span>
-            IA analisando padrões
-          </div>
-        </div>
-        <LiveCandles active />
-      </div>
-
-      {/* Progresso da meta diária — dado real (valor creditado hoje / meta) */}
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-          <span className="font-medium text-foreground">Progresso da meta diária</span>
-          <span>
-            {brl(todayProfit)} / {brl(dailyTarget)} · {progress.toFixed(0)}%
+    <div className="w-full max-w-md animate-fade-up">
+      <div className="rounded-3xl border border-border bg-card p-5 shadow-xl">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-bold text-foreground">Robô em execução</h2>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold tracking-wide ${
+              running
+                ? "border-lime-400/40 bg-lime-400/10 text-lime-400"
+                : "border-border bg-secondary text-muted-foreground"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${running ? "animate-pulse bg-lime-400" : "bg-muted-foreground"}`}
+            />
+            {running ? "RODANDO" : "PAUSADO"}
           </span>
         </div>
-        <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-success transition-all duration-700"
-            style={{ width: `${progress}%` }}
-          />
+
+        <div className="mt-5 flex flex-col items-center text-center">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Lucro de hoje</span>
+          <span className="mt-1 text-5xl font-extrabold leading-none tracking-tight text-lime-400 tabular-nums">
+            +{brl(todayProfit)}
+          </span>
+          <span className="mt-2 text-sm font-semibold text-lime-400 tabular-nums">+{todayPct.toFixed(2)}%</span>
         </div>
-        {metaReached && (
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-atlas-success">
-            <Check className="w-3.5 h-3.5" />
-            Meta de hoje concluída
+
+        <div className="mt-6">
+          <div
+            className="h-3 overflow-hidden rounded-full bg-secondary"
+            role="progressbar"
+            aria-valuenow={Math.round(progress)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Progresso da meta diária"
+          >
+            <div
+              className="h-full rounded-full bg-lime-400 transition-all duration-700"
+              style={{ width: `${Math.max(progress, 2)}%` }}
+            />
           </div>
-        )}
+          <div className="mt-2 flex items-center justify-between text-xs tabular-nums">
+            <span className="text-muted-foreground">{brl(0)} (0%)</span>
+            <span className="text-muted-foreground">{metaReached ? "meta batida" : "meta"}</span>
+            <span className="font-medium text-lime-400">
+              +{brl(dailyTarget)} ({plan.daily}%)
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-4 gap-2">
+          <PanelStat value={String(count)} label="Entradas" tone="lime" />
+          <PanelStat value={`${assertiveness}%`} label="Acerto" />
+          <PanelStat value={`${progress.toFixed(0)}%`} label="Meta" tone="lime" />
+          <PanelStat value={`${roiPct.toFixed(1)}%`} label="Retorno" />
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              Banca: <span className="font-bold text-foreground tabular-nums">{brl(balance)}</span>
+            </span>
+            <span>
+              Plano: <span className="font-bold text-foreground tabular-nums">{brl(plan.amount)}</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              Total gerado: <span className="font-bold text-lime-400 tabular-nums">{brl(totalEarned)}</span>
+            </span>
+            <span>
+              Taxa: <span className="font-bold text-lime-400">{plan.daily}% ao dia</span>
+            </span>
+          </div>
+          {activatedAt && (
+            <div>Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}</div>
+          )}
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-2xl border-l-4 border-lime-400 bg-secondary/60 p-4">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              {running && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lime-400 opacity-60" />
+              )}
+              <span className={`relative inline-flex h-3 w-3 rounded-full ${running ? "bg-lime-400" : "bg-muted-foreground"}`} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-lime-400">
+                {metaReached ? "Meta de hoje concluída" : running ? "Analisando o mercado em tempo real" : "Robô pausado"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {brl(todayProfit)} de {brl(dailyTarget)} hoje
+              </div>
+            </div>
+          </div>
+          <div className="mt-3">
+            <LiveCandles active={running} />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <button
+            onClick={onPauseToggle}
+            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-border bg-background/40 text-sm font-medium text-foreground transition-all hover:bg-secondary active:scale-[0.98]"
+          >
+            {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {running ? "Pausar robô" : "Retomar robô"}
+          </button>
+          <button
+            onClick={onStop}
+            className="flex h-12 items-center justify-center gap-2 rounded-xl bg-destructive text-sm font-bold text-destructive-foreground transition-all hover:bg-destructive/90 active:scale-[0.98]"
+          >
+            <span className="h-2.5 w-2.5 rounded-[2px] bg-current" aria-hidden="true" />
+            Desligar bot
+          </button>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function PanelStat({ value, label, tone }: { value: string; label: string; tone?: "lime" }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-background/40 px-1 py-3">
+      <span className={`text-lg font-bold leading-tight tabular-nums ${tone === "lime" ? "text-lime-400" : "text-foreground"}`}>
+        {value}
+      </span>
+      <span className="mt-0.5 text-[11px] text-muted-foreground">{label}</span>
     </div>
   )
 }

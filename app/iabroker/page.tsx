@@ -863,7 +863,7 @@ function ActivePanel({
   const running = !paused
 
   // "Lucro hoje" e o progresso vêm do valor REAL creditado no dia (`creditedToday`,
-  // vindo do servidor), que sobe aos poucos até bater a meta diária e então para.
+  // vindo do servidor), que sobe aos poucos até bater a meta diária e ent��o para.
   const todayProfit = Math.min(dailyTarget, creditedToday)
   const metaReached = dailyTarget > 0 && creditedToday >= dailyTarget - 0.01
 
@@ -885,11 +885,35 @@ function ActivePanel({
 
   return (
     <div className="w-full max-w-md animate-fade-up">
-      <div className="rounded-3xl border border-border bg-card p-5 shadow-xl">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-bold text-foreground">Robô em execução</h2>
+      <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-b from-card via-card to-background p-5 shadow-2xl shadow-black/40">
+        <div
+          className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent ${
+            isNegative ? "via-red-400/60" : "via-lime-400/60"
+          }`}
+          aria-hidden="true"
+        />
+        <div
+          className={`pointer-events-none absolute left-1/2 top-16 h-40 w-72 -translate-x-1/2 rounded-full blur-3xl transition-colors duration-700 ${
+            isNegative ? "bg-red-500/15" : "bg-lime-400/10"
+          }`}
+          aria-hidden="true"
+        />
+        <div className="relative flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+                isNegative ? "border-red-400/25 bg-red-400/10 text-red-400" : "border-lime-400/25 bg-lime-400/10 text-lime-400"
+              }`}
+            >
+              <Bot className="h-[18px] w-[18px]" aria-hidden="true" />
+            </span>
+            <div className="flex flex-col">
+              <h2 className="text-sm font-bold leading-tight text-foreground">Robô em execução</h2>
+              <span className="text-[11px] text-muted-foreground">IA Broker · operação automática</span>
+            </div>
+          </div>
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold tracking-wide ${
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold tracking-wider ${
               running
                 ? "border-lime-400/40 bg-lime-400/10 text-lime-400"
                 : "border-border bg-secondary text-muted-foreground"
@@ -902,12 +926,14 @@ function ActivePanel({
           </span>
         </div>
 
-        <div className="mt-5 flex flex-col items-center text-center">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Lucro de hoje</span>
+        <div className="relative mt-6 flex flex-col items-center text-center">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Lucro de hoje</span>
           <span
             key={isNegative ? `loss-${todayProfit.toFixed(2)}` : "gain"}
-            className={`mt-1 text-5xl font-extrabold leading-none tracking-tight tabular-nums transition-colors duration-500 ${
-              isNegative ? "text-red-400 animate-ia-loss-value" : "text-lime-400"
+            className={`mt-2 text-5xl font-extrabold leading-none tracking-tight tabular-nums transition-colors duration-500 ${
+              isNegative
+                ? "text-red-400 drop-shadow-[0_0_24px_rgba(248,113,113,0.35)] animate-ia-loss-value"
+                : "text-lime-400 drop-shadow-[0_0_24px_rgba(163,230,53,0.3)]"
             }`}
           >
             {signed(todayProfit)}
@@ -924,9 +950,9 @@ function ActivePanel({
           )}
         </div>
 
-        <div className="mt-6">
+        <div className="relative mt-6 rounded-2xl border border-white/[0.05] bg-background/40 p-3.5">
           <div
-            className="h-3 overflow-hidden rounded-full bg-secondary"
+            className="h-2.5 overflow-hidden rounded-full bg-secondary/80"
             role="progressbar"
             aria-valuenow={Math.round(progress)}
             aria-valuemin={0}
@@ -935,12 +961,12 @@ function ActivePanel({
           >
             {isNegative ? (
               <div
-                className="h-full rounded-full bg-red-400/80 animate-ia-loss-bar transition-all duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-red-500 to-red-400 animate-ia-loss-bar transition-all duration-700"
                 style={{ width: `${Math.max(lossWidth, 4)}%` }}
               />
             ) : (
               <div
-                className="h-full rounded-full bg-lime-400 transition-all duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-lime-500 to-lime-300 shadow-[0_0_12px_rgba(163,230,53,0.45)] transition-all duration-700"
                 style={{ width: `${Math.max(progress, 2)}%` }}
               />
             )}
@@ -956,7 +982,7 @@ function ActivePanel({
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-4 gap-2">
+        <div className="relative mt-4 grid grid-cols-4 gap-2">
           <PanelStat value={String(count)} label="Entradas" tone="lime" />
           <PanelStat value={`${assertiveness}%`} label="Acerto" />
           <PanelStat
@@ -967,34 +993,29 @@ function ActivePanel({
           <PanelStat value={signedPct(roiPct, 1)} label="Retorno" tone={totalNegative ? "red" : undefined} />
         </div>
 
-        <div className="mt-4 flex flex-col gap-2 text-xs text-muted-foreground">
-          <div className="flex items-center justify-between gap-2">
-            <span>
-              Banca: <span className="font-bold text-foreground tabular-nums">{brl(balance)}</span>
-            </span>
-            <span>
-              Plano: <span className="font-bold text-foreground tabular-nums">{brl(plan.amount)}</span>
-            </span>
+        <div className="relative mt-4 overflow-hidden rounded-2xl border border-white/[0.05] bg-background/40 text-xs">
+          <div className="grid grid-cols-2 divide-x divide-white/[0.05]">
+            <InfoCell label="Banca" value={brl(balance)} />
+            <InfoCell label="Plano" value={brl(plan.amount)} />
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <span>
-              Total gerado:{" "}
-              <span className={`font-bold tabular-nums ${totalNegative ? "text-red-400" : "text-lime-400"}`}>
-                {signed(totalEarned)}
-              </span>
-            </span>
-            <span>
-              Taxa: <span className="font-bold text-lime-400">{plan.daily}% ao dia</span>
-            </span>
+          <div className="grid grid-cols-2 divide-x divide-white/[0.05] border-t border-white/[0.05]">
+            <InfoCell
+              label="Total gerado"
+              value={signed(totalEarned)}
+              valueClass={totalNegative ? "text-red-400" : "text-lime-400"}
+            />
+            <InfoCell label="Taxa" value={`${plan.daily}% ao dia`} valueClass="text-lime-400" />
           </div>
           {activatedAt && (
-            <div>Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}</div>
+            <div className="border-t border-white/[0.05] px-3.5 py-2 text-[11px] text-muted-foreground">
+              Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}
+            </div>
           )}
         </div>
 
         <div
-          className={`ia-status-card mt-5 overflow-hidden rounded-2xl border border-l-4 p-4 transition-colors duration-500 ${
-            isNegative ? "border-red-400/30 border-l-red-400" : "border-lime-400/20 border-l-lime-400"
+          className={`ia-status-card relative mt-4 overflow-hidden rounded-2xl border border-l-4 p-4 transition-colors duration-500 ${
+            isNegative ? "border-red-400/25 border-l-red-400" : "border-lime-400/20 border-l-lime-400"
           }`}
           style={
             {
@@ -1038,17 +1059,17 @@ function ActivePanel({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="relative mt-4 grid grid-cols-2 gap-3">
           <button
             onClick={onPauseToggle}
-            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-border bg-background/40 text-sm font-medium text-foreground transition-all hover:bg-secondary active:scale-[0.98]"
+            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-background/50 text-sm font-medium text-foreground transition-all hover:border-white/15 hover:bg-secondary active:scale-[0.98]"
           >
             {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {running ? "Pausar robô" : "Retomar robô"}
           </button>
           <button
             onClick={onStop}
-            className="flex h-12 items-center justify-center gap-2 rounded-xl bg-destructive text-sm font-bold text-destructive-foreground transition-all hover:bg-destructive/90 active:scale-[0.98]"
+            className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-red-500 to-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/30 transition-all hover:from-red-500 hover:to-red-500 active:scale-[0.98]"
           >
             <span className="h-2.5 w-2.5 rounded-[2px] bg-current" aria-hidden="true" />
             Desligar bot
@@ -1059,10 +1080,19 @@ function ActivePanel({
   )
 }
 
+function InfoCell({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-3.5 py-2.5">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className={`text-sm font-bold tabular-nums ${valueClass ?? "text-foreground"}`}>{value}</span>
+    </div>
+  )
+}
+
 function PanelStat({ value, label, tone }: { value: string; label: string; tone?: "lime" | "red" }) {
   const toneClass = tone === "lime" ? "text-lime-400" : tone === "red" ? "text-red-400" : "text-foreground"
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-background/40 px-1 py-3">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-white/[0.05] bg-gradient-to-b from-white/[0.03] to-transparent px-1 py-3">
       <span className={`text-lg font-bold leading-tight tabular-nums transition-colors duration-500 ${toneClass}`}>
         {value}
       </span>

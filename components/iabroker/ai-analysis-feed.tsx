@@ -52,12 +52,15 @@ export function AiAnalysisFeed({ active, recovering }: { active: boolean; recove
   }).filter((s) => s.key >= 0)
 
   return (
-    <div className={`mt-3 rounded-xl border ${tone.border} bg-background/50 p-3`}>
+    <div className={`mt-3 rounded-xl border ${tone.border} bg-background/60 p-3 backdrop-blur-sm`}>
       <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <span className={`h-1.5 w-1.5 rounded-full ${tone.bg} ${active ? "animate-pulse" : "opacity-40"}`} />
           IA analisando
         </span>
-        <span className={`text-[11px] font-semibold tabular-nums ${tone.text}`}>
+        <span
+          className={`rounded-full border ${tone.border} ${tone.soft} px-2 py-0.5 text-[10px] font-semibold tabular-nums ${tone.text}`}
+        >
           {active ? `Confiança ${confidence}%` : "Em espera"}
         </span>
       </div>

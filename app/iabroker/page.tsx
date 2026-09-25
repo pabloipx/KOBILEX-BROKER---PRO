@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Zap,
   TrendingUp,
+  TrendingDown,
   Activity,
   Wallet,
   Pause,
@@ -875,6 +876,12 @@ function ActivePanel({
   const todayPct = plan.amount > 0 ? (todayProfit / plan.amount) * 100 : 0
   const roiPct = plan.amount > 0 ? (totalEarned / plan.amount) * 100 : 0
 
+  const isNegative = todayProfit < -0.004
+  const totalNegative = totalEarned < -0.004
+  const lossWidth = dailyTarget > 0 ? Math.min(100, (Math.abs(todayProfit) / dailyTarget) * 100) : 0
+  const signed = (value: number) => `${value < 0 ? "-" : "+"}${brl(Math.abs(value))}`
+  const signedPct = (value: number, digits: number) => `${value < 0 ? "-" : "+"}${Math.abs(value).toFixed(digits)}%`
+
   return (
     <div className="w-full max-w-md animate-fade-up">
       <div className="rounded-3xl border border-border bg-card p-5 shadow-xl">
@@ -896,10 +903,24 @@ function ActivePanel({
 
         <div className="mt-5 flex flex-col items-center text-center">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Lucro de hoje</span>
-          <span className="mt-1 text-5xl font-extrabold leading-none tracking-tight text-lime-400 tabular-nums">
-            +{brl(todayProfit)}
+          <span
+            key={isNegative ? `loss-${todayProfit.toFixed(2)}` : "gain"}
+            className={`mt-1 text-5xl font-extrabold leading-none tracking-tight tabular-nums transition-colors duration-500 ${
+              isNegative ? "text-red-400 animate-ia-loss-value" : "text-lime-400"
+            }`}
+          >
+            {signed(todayProfit)}
           </span>
-          <span className="mt-2 text-sm font-semibold text-lime-400 tabular-nums">+{todayPct.toFixed(2)}%</span>
+          {isNegative ? (
+            <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1 text-xs font-semibold text-red-400 tabular-nums">
+              <TrendingDown className="h-3.5 w-3.5 animate-ia-loss-bob" aria-hidden="true" />
+              {signedPct(todayPct, 2)}
+              <span className="text-red-300/70">{"·"}</span>
+              <span className="font-medium text-red-300/90">recuperando</span>
+            </span>
+          ) : (
+            <span className="mt-2 text-sm font-semibold text-lime-400 tabular-nums">{signedPct(todayPct, 2)}</span>
+          )}
         </div>
 
         <div className="mt-6">
@@ -911,13 +932,22 @@ function ActivePanel({
             aria-valuemax={100}
             aria-label="Progresso da meta diária"
           >
-            <div
-              className="h-full rounded-full bg-lime-400 transition-all duration-700"
-              style={{ width: `${Math.max(progress, 2)}%` }}
-            />
+            {isNegative ? (
+              <div
+                className="h-full rounded-full bg-red-400/80 animate-ia-loss-bar transition-all duration-700"
+                style={{ width: `${Math.max(lossWidth, 4)}%` }}
+              />
+            ) : (
+              <div
+                className="h-full rounded-full bg-lime-400 transition-all duration-700"
+                style={{ width: `${Math.max(progress, 2)}%` }}
+              />
+            )}
           </div>
           <div className="mt-2 flex items-center justify-between text-xs tabular-nums">
-            <span className="text-muted-foreground">{brl(0)} (0%)</span>
+            <span className={isNegative ? "font-medium text-red-400" : "text-muted-foreground"}>
+              {isNegative ? `${signed(todayProfit)} (${signedPct(todayPct, 1)})` : `${brl(0)} (0%)`}
+            </span>
             <span className="text-muted-foreground">{metaReached ? "meta batida" : "meta"}</span>
             <span className="font-medium text-lime-400">
               +{brl(dailyTarget)} ({plan.daily}%)
@@ -928,8 +958,12 @@ function ActivePanel({
         <div className="mt-5 grid grid-cols-4 gap-2">
           <PanelStat value={String(count)} label="Entradas" tone="lime" />
           <PanelStat value={`${assertiveness}%`} label="Acerto" />
-          <PanelStat value={`${progress.toFixed(0)}%`} label="Meta" tone="lime" />
-          <PanelStat value={`${roiPct.toFixed(1)}%`} label="Retorno" />
+          <PanelStat
+            value={`${Math.max(0, progress).toFixed(0)}%`}
+            label="Meta"
+            tone={isNegative ? undefined : "lime"}
+          />
+          <PanelStat value={signedPct(roiPct, 1)} label="Retorno" tone={totalNegative ? "red" : undefined} />
         </div>
 
         <div className="mt-4 flex flex-col gap-2 text-xs text-muted-foreground">
@@ -943,7 +977,10 @@ function ActivePanel({
           </div>
           <div className="flex items-center justify-between gap-2">
             <span>
-              Total gerado: <span className="font-bold text-lime-400 tabular-nums">{brl(totalEarned)}</span>
+              Total gerado:{" "}
+              <span className={`font-bold tabular-nums ${totalNegative ? "text-red-400" : "text-lime-400"}`}>
+                {signed(totalEarned)}
+              </span>
             </span>
             <span>
               Taxa: <span className="font-bold text-lime-400">{plan.daily}% ao dia</span>
@@ -954,20 +991,38 @@ function ActivePanel({
           )}
         </div>
 
-        <div className="mt-5 overflow-hidden rounded-2xl border-l-4 border-lime-400 bg-secondary/60 p-4">
+        <div
+          className={`mt-5 overflow-hidden rounded-2xl border-l-4 p-4 transition-colors duration-500 ${
+            isNegative ? "border-red-400 bg-red-400/5" : "border-lime-400 bg-secondary/60"
+          }`}
+        >
           <div className="flex items-center gap-3">
             <span className="relative flex h-3 w-3 shrink-0">
               {running && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lime-400 opacity-60" />
+                <span
+                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
+                    isNegative ? "bg-red-400" : "bg-lime-400"
+                  }`}
+                />
               )}
-              <span className={`relative inline-flex h-3 w-3 rounded-full ${running ? "bg-lime-400" : "bg-muted-foreground"}`} />
+              <span
+                className={`relative inline-flex h-3 w-3 rounded-full ${
+                  !running ? "bg-muted-foreground" : isNegative ? "bg-red-400" : "bg-lime-400"
+                }`}
+              />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-lime-400">
-                {metaReached ? "Meta de hoje concluída" : running ? "Analisando o mercado em tempo real" : "Robô pausado"}
+              <div className={`text-sm font-semibold ${isNegative ? "text-red-400" : "text-lime-400"}`}>
+                {metaReached
+                  ? "Meta de hoje concluída"
+                  : !running
+                    ? "Robô pausado"
+                    : isNegative
+                      ? "Ajustando estratégia para recuperar"
+                      : "Analisando o mercado em tempo real"}
               </div>
-              <div className="text-xs text-muted-foreground">
-                {brl(todayProfit)} de {brl(dailyTarget)} hoje
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {signed(todayProfit)} de {brl(dailyTarget)} hoje
               </div>
             </div>
           </div>
@@ -997,10 +1052,11 @@ function ActivePanel({
   )
 }
 
-function PanelStat({ value, label, tone }: { value: string; label: string; tone?: "lime" }) {
+function PanelStat({ value, label, tone }: { value: string; label: string; tone?: "lime" | "red" }) {
+  const toneClass = tone === "lime" ? "text-lime-400" : tone === "red" ? "text-red-400" : "text-foreground"
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-background/40 px-1 py-3">
-      <span className={`text-lg font-bold leading-tight tabular-nums ${tone === "lime" ? "text-lime-400" : "text-foreground"}`}>
+      <span className={`text-lg font-bold leading-tight tabular-nums transition-colors duration-500 ${toneClass}`}>
         {value}
       </span>
       <span className="mt-0.5 text-[11px] text-muted-foreground">{label}</span>

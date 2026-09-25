@@ -165,6 +165,78 @@
   animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* ===== Painel da IA Broker: estado negativo ===== */
+@keyframes ia-loss-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(248, 113, 113, 0);
+  }
+  50% {
+    text-shadow: 0 0 22px rgba(248, 113, 113, 0.45);
+  }
+}
+
+@keyframes ia-loss-nudge {
+  0% {
+    transform: translateY(-6px);
+    opacity: 0.4;
+  }
+  60% {
+    transform: translateY(2px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes ia-loss-stripes {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 24px 0;
+  }
+}
+
+@keyframes ia-loss-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+.animate-ia-loss-value {
+  animation:
+    ia-loss-nudge 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+    ia-loss-glow 2.4s ease-in-out 0.5s infinite;
+}
+
+.animate-ia-loss-bar {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.14) 0 6px,
+    transparent 6px 12px
+  );
+  background-size: 24px 100%;
+  animation: ia-loss-stripes 1.2s linear infinite;
+}
+
+.animate-ia-loss-bob {
+  animation: ia-loss-bob 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ia-loss-value,
+  .animate-ia-loss-bar,
+  .animate-ia-loss-bob {
+    animation: none;
+  }
+}
+
 /* ===== Fundo animado do hero (brilhos + particulas) ===== */
 
 /* Orbes de brilho flutuando lentamente */

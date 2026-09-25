@@ -6,6 +6,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { LiveCandles } from "@/components/iabroker/live-candles"
+import { AiAnalysisFeed } from "@/components/iabroker/ai-analysis-feed"
 import { NeuralNet } from "@/components/iabroker/neural-net"
 import {
   Bot,
@@ -992,9 +993,14 @@ function ActivePanel({
         </div>
 
         <div
-          className={`mt-5 overflow-hidden rounded-2xl border-l-4 p-4 transition-colors duration-500 ${
-            isNegative ? "border-red-400 bg-red-400/5" : "border-lime-400 bg-secondary/60"
+          className={`ia-status-card mt-5 overflow-hidden rounded-2xl border border-l-4 p-4 transition-colors duration-500 ${
+            isNegative ? "border-red-400/30 border-l-red-400" : "border-lime-400/20 border-l-lime-400"
           }`}
+          style={
+            {
+              "--ia-glow": isNegative ? "rgb(248 113 113 / 0.12)" : "rgb(163 230 53 / 0.10)",
+            } as React.CSSProperties
+          }
         >
           <div className="flex items-center gap-3">
             <span className="relative flex h-3 w-3 shrink-0">
@@ -1026,6 +1032,7 @@ function ActivePanel({
               </div>
             </div>
           </div>
+          {!metaReached && <AiAnalysisFeed active={running} recovering={isNegative} />}
           <div className="mt-3">
             <LiveCandles active={running} />
           </div>

@@ -237,6 +237,50 @@
   }
 }
 
+@keyframes ia-scan {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
+
+@keyframes ia-step-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ia-dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+}
+
+.animate-ia-scan {
+  animation: ia-scan 1.6s ease-in-out infinite;
+}
+
+.animate-ia-step-in {
+  animation: ia-step-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-ia-dots::after {
+  content: "";
+  animation: ia-dots 1.2s steps(1) infinite;
+}
+
+.ia-status-card {
+  background-image:
+    radial-gradient(120% 90% at 0% 0%, var(--ia-glow) 0%, transparent 55%),
+    linear-gradient(180deg, color-mix(in oklab, var(--secondary) 70%, transparent), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ia-scan,
+  .animate-ia-step-in,
+  .animate-ia-dots::after {
+    animation: none;
+  }
+}
+
 /* ===== Fundo animado do hero (brilhos + particulas) ===== */
 
 /* Orbes de brilho flutuando lentamente */

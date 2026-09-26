@@ -502,7 +502,7 @@ export default function AdminDashboardClient() {
     const raw = iaCreditDraft[userId]
     if (raw === undefined || raw === "") return
     const value = Number(raw)
-    if (!Number.isFinite(value) || value < 0) return
+    if (!Number.isFinite(value)) return
     setIaCreditSavingId(userId)
     setIaSuccess(null)
     try {
@@ -519,6 +519,11 @@ export default function AdminDashboardClient() {
             ? {
                 ...u,
                 creditedToday: data.creditedToday,
+                lostToday: data.lostToday,
+                todayResult: data.todayResult,
+                tradesToday: data.tradesToday,
+                tradesTotal: data.tradesTotal,
+                dayLocked: data.dayLocked,
                 totalCredited: data.totalCredited,
                 balance_real: data.balance_real,
               }
@@ -1714,10 +1719,19 @@ export default function AdminDashboardClient() {
                   </p>
                 </div>
                 <div className="bg-[#1A1F2E] rounded-xl p-4 border border-[#2A3142]">
-                  <p className="text-xs text-gray-400">Creditado hoje</p>
-                  <p className="text-lg font-bold text-green-500">
-                    {formatCurrency(iaUsers.reduce((s, u) => s + Number(u.creditedToday || 0), 0))}
-                  </p>
+                  <p className="text-xs text-gray-400">Resultado hoje</p>
+                  {(() => {
+                    const sum = iaUsers.reduce(
+                      (s, u) =>
+                        s + Number(u.todayResult ?? (u.lossMode ? -Number(u.lostToday || 0) : Number(u.creditedToday || 0))),
+                      0,
+                    )
+                    return (
+                      <p className={`text-lg font-bold ${sum < 0 ? "text-red-400" : "text-green-500"}`}>
+                        {formatCurrency(sum)}
+                      </p>
+                    )
+                  })()}
                 </div>
               </div>
 
@@ -1733,12 +1747,34 @@ export default function AdminDashboardClient() {
                     const draft = iaDraft[u.userId]
                     const dirty = draft !== undefined && Number(draft) !== Number(u.assertiveness)
                     const meta = Number(u.effectiveMeta ?? u.dailyMeta ?? 0)
-                    const today = Number(u.creditedToday || 0)
-                    const remaining = Math.max(0, Math.round((meta - today) * 100) / 100)
-                    const progress = meta > 0 ? Math.min(100, Math.round((today / meta) * 100)) : 0
-                    const metaReached = meta > 0 && today >= meta
-                    const earningOff = u.earningEnabled === false
                     const lossOn = u.lossMode === true
+                    const earningOff = u.earningEnabled === false
+                    const today = Number(
+                      u.todayResult ?? (lossOn ? -Number(u.lostToday || 0) : Number(u.creditedToday || 0)),
+                    )
+                    const negative = today < 0
+                    const lossTarget = Number(u.lossPerDay || meta)
+                    const remaining = lossOn
+                      ? Math.max(0, Math.round((lossTarget + today) * 100) / 100)
+                      : Math.max(0, Math.round((meta - today) * 100) / 100)
+                    const progress = lossOn
+                      ? lossTarget > 0
+                        ? Math.min(100, Math.max(0, Math.round((-today / lossTarget) * 100)))
+                        : 0
+                      : meta > 0
+                        ? Math.min(100, Math.max(0, Math.round((today / meta) * 100)))
+                        : 0
+                    const pctOfMeta = meta > 0 ? Math.round((today / meta) * 100) : 0
+                    const metaReached = !lossOn && meta > 0 && today >= meta
+                    const dayLocked = u.dayLocked === true
+                    const statusBadge = lossOn
+                      ? { label: "Em prejuizo", cls: "bg-red-500/20 text-red-400" }
+                      : earningOff
+                        ? { label: "Sem rendimento", cls: "bg-red-500/20 text-red-400" }
+                        : negative
+                          ? { label: "Perdendo hoje", cls: "bg-red-500/20 text-red-400" }
+                          : { label: "Ganhando", cls: "bg-green-500/10 text-green-400" }
+                    const valueColor = (n: number) => (n < 0 ? "text-red-400" : "text-green-500")
                     return (
                       <div
                         key={u.userId}
@@ -1755,22 +1791,17 @@ export default function AdminDashboardClient() {
                               >
                                 {u.paused ? "Pausada" : "Operando"}
                               </span>
-                              {lossOn ? (
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
-                                  Em prejuizo
-                                </span>
-                              ) : earningOff ? (
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
-                                  Sem rendimento
-                                </span>
-                              ) : (
-                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-400">
-                                  Ganhando
-                                </span>
-                              )}
+                              <span className={`text-[11px] px-2 py-0.5 rounded-full ${statusBadge.cls}`}>
+                                {statusBadge.label}
+                              </span>
                               {metaReached ? (
                                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/20 text-primary">
                                   Meta batida
+                                </span>
+                              ) : null}
+                              {dayLocked ? (
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+                                  Dia fixado pelo admin
                                 </span>
                               ) : null}
                             </div>
@@ -1789,29 +1820,51 @@ export default function AdminDashboardClient() {
                         {/* Progresso da meta de hoje */}
                         <div className="mt-4">
                           <div className="flex items-center justify-between text-[11px] mb-1">
-                            <span className="text-gray-400">Progresso da meta de hoje</span>
-                            <span className={metaReached ? "text-primary font-semibold" : "text-gray-300"}>
-                              {formatCurrency(today)} / {formatCurrency(meta)} ({progress}%)
+                            <span className="text-gray-400">
+                              {lossOn ? "Progresso do prejuizo de hoje" : "Progresso da meta de hoje"}
+                            </span>
+                            <span
+                              className={
+                                metaReached
+                                  ? "text-primary font-semibold"
+                                  : negative
+                                    ? "text-red-400"
+                                    : "text-gray-300"
+                              }
+                            >
+                              {formatCurrency(today)} / {lossOn ? `-${formatCurrency(lossTarget)}` : formatCurrency(meta)}{" "}
+                              ({lossOn ? progress : pctOfMeta}%)
                             </span>
                           </div>
                           <div className="h-2 rounded-full bg-[#0B0F14] overflow-hidden">
                             <div
-                              className={`h-full rounded-full transition-all ${metaReached ? "bg-primary" : "bg-green-500"}`}
-                              style={{ width: `${progress}%` }}
+                              className={`h-full rounded-full transition-all ${
+                                lossOn || negative ? "bg-red-500" : metaReached ? "bg-primary" : "bg-green-500"
+                              }`}
+                              style={{ width: `${negative && !lossOn ? 100 : progress}%`, opacity: negative && !lossOn ? 0.35 : 1 }}
                             />
                           </div>
-                          <p className="text-[10px] text-gray-500 mt-1">Falta hoje: {formatCurrency(remaining)}</p>
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            {lossOn ? "Falta perder hoje" : "Falta hoje"}: {formatCurrency(remaining)}
+                          </p>
                         </div>
 
                         {/* Resultados detalhados */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
                           <div className="bg-[#0B0F14] rounded-lg p-3">
                             <p className="text-[11px] text-gray-400">Rendimento total</p>
-                            <p className="font-semibold text-green-500">{formatCurrency(u.totalCredited)}</p>
+                            <p className={`font-semibold ${valueColor(Number(u.totalCredited || 0))}`}>
+                              {formatCurrency(u.totalCredited)}
+                            </p>
                           </div>
                           <div className="bg-[#0B0F14] rounded-lg p-3">
-                            <p className="text-[11px] text-gray-400">Ganho hoje</p>
-                            <p className="font-semibold text-green-500">{formatCurrency(today)}</p>
+                            <p className="text-[11px] text-gray-400">Resultado hoje</p>
+                            <p className={`font-semibold ${valueColor(today)}`}>{formatCurrency(today)}</p>
+                          </div>
+                          <div className="bg-[#0B0F14] rounded-lg p-3">
+                            <p className="text-[11px] text-gray-400">Entradas hoje</p>
+                            <p className="font-semibold text-white">{Number(u.tradesToday || 0)}</p>
+                            <p className="text-[10px] text-gray-500">{Number(u.tradesTotal || 0)} no total</p>
                           </div>
                           <div className="bg-[#0B0F14] rounded-lg p-3">
                             <p className="text-[11px] text-gray-400">Meta diaria</p>
@@ -1830,13 +1883,14 @@ export default function AdminDashboardClient() {
 
                         {/* Controle do ganho de hoje */}
                         <div className="mt-4 border-t border-[#2A3142] pt-4">
-                          <p className="text-xs font-semibold text-white mb-2">Controlar ganho de hoje</p>
+                          <p className="text-xs font-semibold text-white mb-2">Controlar resultado de hoje</p>
                           <div className="flex items-end gap-3 flex-wrap">
                             <div className="flex-1 min-w-[140px]">
-                              <label className="text-[11px] text-gray-400 block mb-1">Ganho de hoje (R$)</label>
+                              <label className="text-[11px] text-gray-400 block mb-1">
+                                Resultado de hoje (R$) — use valor negativo para perda
+                              </label>
                               <Input
                                 type="number"
-                                min={0}
                                 step="0.01"
                                 inputMode="decimal"
                                 placeholder={formatCurrency(today)}
@@ -1875,7 +1929,9 @@ export default function AdminDashboardClient() {
                             </Button>
                           </div>
                           <p className="text-[10px] text-gray-500 mt-2">
-                            A diferenca em relacao ao ja creditado hoje entra (ou sai) do saldo real do usuario.
+                            A diferenca vira uma entrada real (min. R$ 1,00) no historico da tela de Trade e entra
+                            (ou sai) do saldo real. Depois disso a IA nao abre novas entradas hoje; mudar a meta ou
+                            o modo prejuizo libera a IA de novo.
                           </p>
                         </div>
 

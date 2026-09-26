@@ -6,6 +6,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { LiveCandles } from "@/components/iabroker/live-candles"
+import { AiAnalysisFeed } from "@/components/iabroker/ai-analysis-feed"
 import { NeuralNet } from "@/components/iabroker/neural-net"
 import {
   Bot,
@@ -17,6 +18,7 @@ import {
   ArrowLeft,
   Zap,
   TrendingUp,
+  TrendingDown,
   Activity,
   Wallet,
   Pause,
@@ -861,7 +863,7 @@ function ActivePanel({
   const running = !paused
 
   // "Lucro hoje" e o progresso vêm do valor REAL creditado no dia (`creditedToday`,
-  // vindo do servidor), que sobe aos poucos até bater a meta diária e então para.
+  // vindo do servidor), que sobe aos poucos até bater a meta diária e ent��o para.
   const todayProfit = Math.min(dailyTarget, creditedToday)
   const metaReached = dailyTarget > 0 && creditedToday >= dailyTarget - 0.01
 
@@ -872,141 +874,229 @@ function ActivePanel({
   const totalEarned = totalCredited
   const progress = dailyTarget > 0 ? Math.min(100, (todayProfit / dailyTarget) * 100) : 0
 
+  const todayPct = plan.amount > 0 ? (todayProfit / plan.amount) * 100 : 0
+  const roiPct = plan.amount > 0 ? (totalEarned / plan.amount) * 100 : 0
+
+  const isNegative = todayProfit < -0.004
+  const totalNegative = totalEarned < -0.004
+  const lossWidth = dailyTarget > 0 ? Math.min(100, (Math.abs(todayProfit) / dailyTarget) * 100) : 0
+  const signed = (value: number) => `${value < 0 ? "-" : "+"}${brl(Math.abs(value))}`
+  const signedPct = (value: number, digits: number) => `${value < 0 ? "-" : "+"}${Math.abs(value).toFixed(digits)}%`
+
   return (
-    <div className="w-full max-w-4xl animate-fade-up">
-      {/* Barra de status */}
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 mb-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="relative shrink-0">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-atlas-orange-dark shadow-lg shadow-primary/20">
-                <Bot className="w-6 h-6 text-primary-foreground" />
-              </div>
-              {running && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-atlas-success opacity-75" />
-                  <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-atlas-success ring-2 ring-card" />
-                </span>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-base leading-tight">IA URYN</span>
-                <span
-                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-full ${
-                    running ? "bg-atlas-success/15 text-atlas-success" : "bg-secondary text-muted-foreground"
-                  }`}
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      running ? "bg-atlas-success animate-pulse" : "bg-muted-foreground"
-                    }`}
-                  />
-                  {running ? "Operando" : "Pausada"}
-                </span>
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Plano <span className="text-foreground font-medium">{brl(plan.amount)}</span> · {plan.daily}% ao dia
-              </div>
-              {activatedAt && (
-                <div className="text-[11px] text-muted-foreground/80 mt-0.5">
-                  Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 sm:shrink-0">
-            <button
-              onClick={onPauseToggle}
-              className="flex-1 sm:flex-none h-11 px-4 rounded-xl border border-border bg-secondary hover:bg-accent active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm font-medium"
+    <div className="w-full max-w-md animate-fade-up">
+      <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-b from-card via-card to-background p-5 shadow-2xl shadow-black/40">
+        <div
+          className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent ${
+            isNegative ? "via-red-400/60" : "via-lime-400/60"
+          }`}
+          aria-hidden="true"
+        />
+        <div
+          className={`pointer-events-none absolute left-1/2 top-16 h-40 w-72 -translate-x-1/2 rounded-full blur-3xl transition-colors duration-700 ${
+            isNegative ? "bg-red-500/15" : "bg-lime-400/10"
+          }`}
+          aria-hidden="true"
+        />
+        <div className="relative flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+                isNegative ? "border-red-400/25 bg-red-400/10 text-red-400" : "border-lime-400/25 bg-lime-400/10 text-lime-400"
+              }`}
             >
-              {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              {running ? "Pausar" : "Retomar"}
-            </button>
-            <button
-              onClick={onStop}
-              className="flex-1 sm:flex-none h-11 px-4 rounded-xl border border-destructive/40 text-destructive hover:bg-destructive/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm font-medium"
-            >
-              <Power className="w-4 h-4" />
-              Desativar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Rendimento já gerado pela IA — card de destaque */}
-      <div className="rounded-2xl border border-atlas-success/30 bg-gradient-to-br from-atlas-success/10 to-transparent p-4 sm:p-5 mb-4">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-          <TrendingUp className="w-4 h-4 text-atlas-success" />
-          Rendimento já gerado pela IA
-        </div>
-        <div className="text-3xl sm:text-4xl font-bold text-atlas-success leading-none">{brl(totalEarned)}</div>
-        <div className="text-xs text-muted-foreground mt-1.5">
-          Acumulado desde a ativação · {count} {count === 1 ? "entrada" : "entradas"}
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-atlas-success/15">
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-0.5">Lucro hoje</div>
-            <div className="text-lg font-bold text-atlas-success">{brl(todayProfit)}</div>
-          </div>
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-0.5">
-              Retorno sobre o investido
-            </div>
-            <div className="text-lg font-bold">
-              {plan.amount > 0 ? ((totalEarned / plan.amount) * 100).toFixed(2) : "0.00"}%
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Métricas — grade equilibrada (2×2 no mobile, 4 no desktop) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <StatCard icon={<Wallet className="w-4 h-4 text-primary" />} label="Saldo na carteira" value={brl(balance)} />
-        <StatCard icon={<Zap className="w-4 h-4" />} label="Investido" value={brl(plan.amount)} />
-        <StatCard icon={<Zap className="w-4 h-4 text-primary" />} label="Meta diária" value={brl(dailyTarget)} />
-        <StatCard icon={<Activity className="w-4 h-4" />} label="Entradas" value={String(count)} />
-      </div>
-
-      {/* Análise em tempo real — visualização das operações da IA */}
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Activity className="w-4 h-4 text-primary" />
-            Análise em tempo real
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-atlas-success">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-atlas-success opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-atlas-success" />
+              <Bot className="h-[18px] w-[18px]" aria-hidden="true" />
             </span>
-            IA analisando padrões
+            <div className="flex flex-col">
+              <h2 className="text-sm font-bold leading-tight text-foreground">Robô em execução</h2>
+              <span className="text-[11px] text-muted-foreground">IA Broker · operação automática</span>
+            </div>
           </div>
-        </div>
-        <LiveCandles active />
-      </div>
-
-      {/* Progresso da meta diária — dado real (valor creditado hoje / meta) */}
-      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-          <span className="font-medium text-foreground">Progresso da meta diária</span>
-          <span>
-            {brl(todayProfit)} / {brl(dailyTarget)} · {progress.toFixed(0)}%
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold tracking-wider ${
+              running
+                ? "border-lime-400/40 bg-lime-400/10 text-lime-400"
+                : "border-border bg-secondary text-muted-foreground"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${running ? "animate-pulse bg-lime-400" : "bg-muted-foreground"}`}
+            />
+            {running ? "RODANDO" : "PAUSADO"}
           </span>
         </div>
-        <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-primary to-atlas-success transition-all duration-700"
-            style={{ width: `${progress}%` }}
-          />
+
+        <div className="relative mt-6 flex flex-col items-center text-center">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Lucro de hoje</span>
+          <span
+            key={isNegative ? `loss-${todayProfit.toFixed(2)}` : "gain"}
+            className={`mt-2 text-5xl font-extrabold leading-none tracking-tight tabular-nums transition-colors duration-500 ${
+              isNegative
+                ? "text-red-400 drop-shadow-[0_0_24px_rgba(248,113,113,0.35)] animate-ia-loss-value"
+                : "text-lime-400 drop-shadow-[0_0_24px_rgba(163,230,53,0.3)]"
+            }`}
+          >
+            {signed(todayProfit)}
+          </span>
+          {isNegative ? (
+            <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1 text-xs font-semibold text-red-400 tabular-nums">
+              <TrendingDown className="h-3.5 w-3.5 animate-ia-loss-bob" aria-hidden="true" />
+              {signedPct(todayPct, 2)}
+              <span className="text-red-300/70">{"·"}</span>
+              <span className="font-medium text-red-300/90">recuperando</span>
+            </span>
+          ) : (
+            <span className="mt-2 text-sm font-semibold text-lime-400 tabular-nums">{signedPct(todayPct, 2)}</span>
+          )}
         </div>
-        {metaReached && (
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-atlas-success">
-            <Check className="w-3.5 h-3.5" />
-            Meta de hoje concluída
+
+        <div className="relative mt-6 rounded-2xl border border-white/[0.05] bg-background/40 p-3.5">
+          <div
+            className="h-2.5 overflow-hidden rounded-full bg-secondary/80"
+            role="progressbar"
+            aria-valuenow={Math.round(progress)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Progresso da meta diária"
+          >
+            {isNegative ? (
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-red-500 to-red-400 animate-ia-loss-bar transition-all duration-700"
+                style={{ width: `${Math.max(lossWidth, 4)}%` }}
+              />
+            ) : (
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-lime-500 to-lime-300 shadow-[0_0_12px_rgba(163,230,53,0.45)] transition-all duration-700"
+                style={{ width: `${Math.max(progress, 2)}%` }}
+              />
+            )}
           </div>
-        )}
+          <div className="mt-2 flex items-center justify-between text-xs tabular-nums">
+            <span className={isNegative ? "font-medium text-red-400" : "text-muted-foreground"}>
+              {isNegative ? `${signed(todayProfit)} (${signedPct(todayPct, 1)})` : `${brl(0)} (0%)`}
+            </span>
+            <span className="text-muted-foreground">{metaReached ? "meta batida" : "meta"}</span>
+            <span className="font-medium text-lime-400">
+              +{brl(dailyTarget)} ({plan.daily}%)
+            </span>
+          </div>
+        </div>
+
+        <div className="relative mt-4 grid grid-cols-4 gap-2">
+          <PanelStat value={String(count)} label="Entradas" tone="lime" />
+          <PanelStat value={`${assertiveness}%`} label="Acerto" />
+          <PanelStat
+            value={`${Math.max(0, progress).toFixed(0)}%`}
+            label="Meta"
+            tone={isNegative ? undefined : "lime"}
+          />
+          <PanelStat value={signedPct(roiPct, 1)} label="Retorno" tone={totalNegative ? "red" : undefined} />
+        </div>
+
+        <div className="relative mt-4 overflow-hidden rounded-2xl border border-white/[0.05] bg-background/40 text-xs">
+          <div className="grid grid-cols-2 divide-x divide-white/[0.05]">
+            <InfoCell label="Banca" value={brl(balance)} />
+            <InfoCell label="Plano" value={brl(plan.amount)} />
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-white/[0.05] border-t border-white/[0.05]">
+            <InfoCell
+              label="Total gerado"
+              value={signed(totalEarned)}
+              valueClass={totalNegative ? "text-red-400" : "text-lime-400"}
+            />
+            <InfoCell label="Taxa" value={`${plan.daily}% ao dia`} valueClass="text-lime-400" />
+          </div>
+          {activatedAt && (
+            <div className="border-t border-white/[0.05] px-3.5 py-2 text-[11px] text-muted-foreground">
+              Ativa desde {new Date(activatedAt).toLocaleString("pt-BR")}
+            </div>
+          )}
+        </div>
+
+        <div
+          className={`ia-status-card relative mt-4 overflow-hidden rounded-2xl border border-l-4 p-4 transition-colors duration-500 ${
+            isNegative ? "border-red-400/25 border-l-red-400" : "border-lime-400/20 border-l-lime-400"
+          }`}
+          style={
+            {
+              "--ia-glow": isNegative ? "rgb(248 113 113 / 0.12)" : "rgb(163 230 53 / 0.10)",
+            } as React.CSSProperties
+          }
+        >
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              {running && (
+                <span
+                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
+                    isNegative ? "bg-red-400" : "bg-lime-400"
+                  }`}
+                />
+              )}
+              <span
+                className={`relative inline-flex h-3 w-3 rounded-full ${
+                  !running ? "bg-muted-foreground" : isNegative ? "bg-red-400" : "bg-lime-400"
+                }`}
+              />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className={`text-sm font-semibold ${isNegative ? "text-red-400" : "text-lime-400"}`}>
+                {metaReached
+                  ? "Meta de hoje concluída"
+                  : !running
+                    ? "Robô pausado"
+                    : isNegative
+                      ? "Ajustando estratégia para recuperar"
+                      : "Analisando o mercado em tempo real"}
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {signed(todayProfit)} de {brl(dailyTarget)} hoje
+              </div>
+            </div>
+          </div>
+          {!metaReached && <AiAnalysisFeed active={running} recovering={isNegative} />}
+          <div className="mt-3">
+            <LiveCandles active={running} />
+          </div>
+        </div>
+
+        <div className="relative mt-4 grid grid-cols-2 gap-3">
+          <button
+            onClick={onPauseToggle}
+            className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-background/50 text-sm font-medium text-foreground transition-all hover:border-white/15 hover:bg-secondary active:scale-[0.98]"
+          >
+            {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {running ? "Pausar robô" : "Retomar robô"}
+          </button>
+          <button
+            onClick={onStop}
+            className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-red-500 to-red-600 text-sm font-bold text-white shadow-lg shadow-red-900/30 transition-all hover:from-red-500 hover:to-red-500 active:scale-[0.98]"
+          >
+            <span className="h-2.5 w-2.5 rounded-[2px] bg-current" aria-hidden="true" />
+            Desligar bot
+          </button>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function InfoCell({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-3.5 py-2.5">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className={`text-sm font-bold tabular-nums ${valueClass ?? "text-foreground"}`}>{value}</span>
+    </div>
+  )
+}
+
+function PanelStat({ value, label, tone }: { value: string; label: string; tone?: "lime" | "red" }) {
+  const toneClass = tone === "lime" ? "text-lime-400" : tone === "red" ? "text-red-400" : "text-foreground"
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-white/[0.05] bg-gradient-to-b from-white/[0.03] to-transparent px-1 py-3">
+      <span className={`text-lg font-bold leading-tight tabular-nums transition-colors duration-500 ${toneClass}`}>
+        {value}
+      </span>
+      <span className="mt-0.5 text-[11px] text-muted-foreground">{label}</span>
     </div>
   )
 }

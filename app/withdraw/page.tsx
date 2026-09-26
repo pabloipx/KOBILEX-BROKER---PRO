@@ -256,6 +256,9 @@ export default function WithdrawPage() {
             <Check className="w-8 h-8 text-white" strokeWidth={3} />
           </div>
           <p className="text-xl font-semibold text-[#fb923c] text-center">Saque solicitado com sucesso!</p>
+          <p className="text-sm text-[#9CA3AF] mt-3 text-center max-w-xs text-pretty">
+            {`O valor cairá na sua conta em até ${withdrawalHours} horas.`}
+          </p>
           <p className="text-sm text-[#6B7280] mt-2">Redirecionando...</p>
         </div>
       </div>

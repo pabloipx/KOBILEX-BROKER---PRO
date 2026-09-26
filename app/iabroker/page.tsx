@@ -888,13 +888,13 @@ function ActivePanel({
       <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-b from-card via-card to-background p-5 shadow-2xl shadow-black/40">
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent ${
-            isNegative ? "via-red-400/60" : "via-lime-400/60"
+            isNegative ? "via-red-400/60" : "via-orange-400/60"
           }`}
           aria-hidden="true"
         />
         <div
           className={`pointer-events-none absolute left-1/2 top-16 h-40 w-72 -translate-x-1/2 rounded-full blur-3xl transition-colors duration-700 ${
-            isNegative ? "bg-red-500/15" : "bg-lime-400/10"
+            isNegative ? "bg-red-500/15" : "bg-orange-400/10"
           }`}
           aria-hidden="true"
         />
@@ -902,7 +902,7 @@ function ActivePanel({
           <div className="flex items-center gap-2.5">
             <span
               className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
-                isNegative ? "border-red-400/25 bg-red-400/10 text-red-400" : "border-lime-400/25 bg-lime-400/10 text-lime-400"
+                isNegative ? "border-red-400/25 bg-red-400/10 text-red-400" : "border-orange-400/25 bg-orange-400/10 text-orange-400"
               }`}
             >
               <Bot className="h-[18px] w-[18px]" aria-hidden="true" />
@@ -915,12 +915,12 @@ function ActivePanel({
           <span
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold tracking-wider ${
               running
-                ? "border-lime-400/40 bg-lime-400/10 text-lime-400"
+                ? "border-orange-400/40 bg-orange-400/10 text-orange-400"
                 : "border-border bg-secondary text-muted-foreground"
             }`}
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${running ? "animate-pulse bg-lime-400" : "bg-muted-foreground"}`}
+              className={`h-1.5 w-1.5 rounded-full ${running ? "animate-pulse bg-orange-400" : "bg-muted-foreground"}`}
             />
             {running ? "RODANDO" : "PAUSADO"}
           </span>
@@ -933,7 +933,7 @@ function ActivePanel({
             className={`mt-2 text-5xl font-extrabold leading-none tracking-tight tabular-nums transition-colors duration-500 ${
               isNegative
                 ? "text-red-400 drop-shadow-[0_0_24px_rgba(248,113,113,0.35)] animate-ia-loss-value"
-                : "text-lime-400 drop-shadow-[0_0_24px_rgba(163,230,53,0.3)]"
+                : "text-orange-400 drop-shadow-[0_0_24px_rgba(249,115,22,0.3)]"
             }`}
           >
             {signed(todayProfit)}
@@ -946,7 +946,7 @@ function ActivePanel({
               <span className="font-medium text-red-300/90">recuperando</span>
             </span>
           ) : (
-            <span className="mt-2 text-sm font-semibold text-lime-400 tabular-nums">{signedPct(todayPct, 2)}</span>
+            <span className="mt-2 text-sm font-semibold text-orange-400 tabular-nums">{signedPct(todayPct, 2)}</span>
           )}
         </div>
 
@@ -966,7 +966,7 @@ function ActivePanel({
               />
             ) : (
               <div
-                className="h-full rounded-full bg-gradient-to-r from-lime-500 to-lime-300 shadow-[0_0_12px_rgba(163,230,53,0.45)] transition-all duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-orange-300 shadow-[0_0_12px_rgba(249,115,22,0.45)] transition-all duration-700"
                 style={{ width: `${Math.max(progress, 2)}%` }}
               />
             )}
@@ -976,7 +976,7 @@ function ActivePanel({
               {isNegative ? `${signed(todayProfit)} (${signedPct(todayPct, 1)})` : `${brl(0)} (0%)`}
             </span>
             <span className="text-muted-foreground">{metaReached ? "meta batida" : "meta"}</span>
-            <span className="font-medium text-lime-400">
+            <span className="font-medium text-orange-400">
               +{brl(dailyTarget)} ({plan.daily}%)
             </span>
           </div>
@@ -1002,9 +1002,9 @@ function ActivePanel({
             <InfoCell
               label="Total gerado"
               value={signed(totalEarned)}
-              valueClass={totalNegative ? "text-red-400" : "text-lime-400"}
+              valueClass={totalNegative ? "text-red-400" : "text-orange-400"}
             />
-            <InfoCell label="Taxa" value={`${plan.daily}% ao dia`} valueClass="text-lime-400" />
+            <InfoCell label="Taxa" value={`${plan.daily}% ao dia`} valueClass="text-orange-400" />
           </div>
           {activatedAt && (
             <div className="border-t border-white/[0.05] px-3.5 py-2 text-[11px] text-muted-foreground">
@@ -1015,11 +1015,11 @@ function ActivePanel({
 
         <div
           className={`ia-status-card relative mt-4 overflow-hidden rounded-2xl border border-l-4 p-4 transition-colors duration-500 ${
-            isNegative ? "border-red-400/25 border-l-red-400" : "border-lime-400/20 border-l-lime-400"
+            isNegative ? "border-red-400/25 border-l-red-400" : "border-orange-400/20 border-l-orange-400"
           }`}
           style={
             {
-              "--ia-glow": isNegative ? "rgb(248 113 113 / 0.12)" : "rgb(163 230 53 / 0.10)",
+              "--ia-glow": isNegative ? "rgb(248 113 113 / 0.12)" : "rgb(249 115 22 / 0.10)",
             } as React.CSSProperties
           }
         >
@@ -1028,18 +1028,18 @@ function ActivePanel({
               {running && (
                 <span
                   className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
-                    isNegative ? "bg-red-400" : "bg-lime-400"
+                    isNegative ? "bg-red-400" : "bg-orange-400"
                   }`}
                 />
               )}
               <span
                 className={`relative inline-flex h-3 w-3 rounded-full ${
-                  !running ? "bg-muted-foreground" : isNegative ? "bg-red-400" : "bg-lime-400"
+                  !running ? "bg-muted-foreground" : isNegative ? "bg-red-400" : "bg-orange-400"
                 }`}
               />
             </span>
             <div className="min-w-0 flex-1">
-              <div className={`text-sm font-semibold ${isNegative ? "text-red-400" : "text-lime-400"}`}>
+              <div className={`text-sm font-semibold ${isNegative ? "text-red-400" : "text-orange-400"}`}>
                 {metaReached
                   ? "Meta de hoje concluída"
                   : !running
@@ -1090,7 +1090,7 @@ function InfoCell({ label, value, valueClass }: { label: string; value: string; 
 }
 
 function PanelStat({ value, label, tone }: { value: string; label: string; tone?: "lime" | "red" }) {
-  const toneClass = tone === "lime" ? "text-lime-400" : tone === "red" ? "text-red-400" : "text-foreground"
+  const toneClass = tone === "lime" ? "text-orange-400" : tone === "red" ? "text-red-400" : "text-foreground"
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-white/[0.05] bg-gradient-to-b from-white/[0.03] to-transparent px-1 py-3">
       <span className={`text-lg font-bold leading-tight tabular-nums transition-colors duration-500 ${toneClass}`}>

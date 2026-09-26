@@ -241,19 +241,64 @@ export default function IaBrokerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        if (typeof data.balance === "number") setBalance(data.balance)
-        if (data.state) {
-          setPaused(!!data.state.paused)
-          setTotalCredited(Number(data.state.totalCredited || 0))
-          setCreditedToday(Number(data.state.creditedToday || 0))
-        }
+      if (!res.ok) {
+        setPaused(paused)
+        return
+      }
+      const data = await res.json()
+      if (typeof data.balance === "number") setBalance(data.balance)
+      if (data.state) {
+        setPaused(!!data.state.paused)
+        setTotalCredited(Number(data.state.totalCredited || 0))
+        setCreditedToday(Number(data.state.creditedToday || 0))
       }
     } catch {
-      // mantém o estado otimista
+      // Sem resposta do servidor, a pausa não foi gravada: volta ao estado anterior.
+      setPaused(paused)
     }
   }
+
+  // Ao voltar para a página (celular desbloqueado, aba reaberta ou restaurada do cache do Safari),
+  // relê o estado do servidor, que é quem manda — inclusive se o robô está pausado ou rodando.
+  useEffect(() => {
+    if (step !== "active") return
+    const resync = async () => {
+      if (document.visibilityState !== "visible") return
+      try {
+        const res = await fetch("/api/iabroker/state", { cache: "no-store" })
+        if (!res.ok || !mounted.current) return
+        const { state, balance: srvBalance } = await res.json()
+        if (!mounted.current) return
+        if (typeof srvBalance === "number") setBalance(srvBalance)
+        if (!state?.active) {
+          setActivatedAt(null)
+          setTotalCredited(0)
+          setCreditedToday(0)
+          setStep("plans")
+          return
+        }
+        setPaused(!!state.paused)
+        setTotalCredited(Number(state.totalCredited || 0))
+        setCreditedToday(Number(state.creditedToday || 0))
+        setEntriesTotal(Number(state.tradesTotal || 0))
+        setRecentOps(parseRecentOps(state.recentOps))
+        if (state.assertiveness != null) setAssertiveness(Number(state.assertiveness))
+      } catch {
+        // tenta de novo na próxima volta à página
+      }
+    }
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) resync()
+    }
+    document.addEventListener("visibilitychange", resync)
+    window.addEventListener("pageshow", onPageShow)
+    window.addEventListener("focus", resync)
+    return () => {
+      document.removeEventListener("visibilitychange", resync)
+      window.removeEventListener("pageshow", onPageShow)
+      window.removeEventListener("focus", resync)
+    }
+  }, [step])
 
   const handleDeactivate = async () => {
     try {
@@ -298,6 +343,7 @@ export default function IaBrokerPage() {
           setEntriesTotal(Number(data.state.tradesTotal || 0))
           setRecentOps(parseRecentOps(data.state.recentOps))
           if (data.state.assertiveness != null) setAssertiveness(Number(data.state.assertiveness))
+          if (data.state.paused) setPaused(true)
         } else if (!data.state) {
           // Foi desativada em outro lugar
           setActivatedAt(null)

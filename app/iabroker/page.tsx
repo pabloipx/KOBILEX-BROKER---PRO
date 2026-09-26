@@ -864,7 +864,7 @@ function ActivePanel({
 
   // "Lucro hoje" e o progresso vêm do valor REAL creditado no dia (`creditedToday`,
   // vindo do servidor), que sobe aos poucos até bater a meta diária e ent��o para.
-  const todayProfit = Math.min(dailyTarget, creditedToday)
+  const todayProfit = creditedToday
   const metaReached = dailyTarget > 0 && creditedToday >= dailyTarget - 0.01
 
   // As entradas da IA são operações reais gravadas no servidor (aparecem no histórico da tela de

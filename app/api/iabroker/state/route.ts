@@ -119,18 +119,54 @@ async function recordTransaction(
   })
 }
 
+// Versão (updated_at) de cada estado lido, para o acerto não rodar em duplicidade quando duas
+// requisições chegam juntas (abrir a página dispara GET + settle ao mesmo tempo).
+const stateVersions = new WeakMap<IaState, string>()
+
 async function loadState(admin: SupabaseClient, settingKey: string): Promise<IaState | null> {
   const { data } = await admin
     .from("platform_settings")
-    .select("setting_value")
+    .select("setting_value, updated_at")
     .eq("setting_key", settingKey)
     .maybeSingle()
   if (!data?.setting_value) return null
   try {
     const parsed = typeof data.setting_value === "string" ? JSON.parse(data.setting_value) : data.setting_value
-    return parsed && parsed.active ? (parsed as IaState) : null
+    if (!parsed || !parsed.active) return null
+    if (data.updated_at) stateVersions.set(parsed as IaState, String(data.updated_at))
+    return parsed as IaState
   } catch {
     return null
+  }
+}
+
+/**
+ * Números exibidos no painel vêm das operações reais da IA (transações `ia_yield`) desde a ativação,
+ * então "Lucro de hoje", "Total gerado" e "Entradas" sempre batem com o histórico e entre si.
+ */
+async function withLedger(admin: SupabaseClient, userId: string, state: IaState): Promise<IaState> {
+  const { data, error } = await admin
+    .from("transactions")
+    .select("amount, created_at")
+    .eq("user_id", userId)
+    .eq("type", "ia_yield")
+    .gte("created_at", state.activatedAt)
+  if (error || !data) return state
+
+  const todayStart = `${dayKeyOf(Date.now())}T03:00:00.000Z`
+  const todayStartMs = new Date(todayStart).getTime()
+  let total = 0
+  let today = 0
+  for (const row of data) {
+    const amount = Number(row.amount || 0)
+    total += amount
+    if (new Date(row.created_at).getTime() >= todayStartMs) today += amount
+  }
+  return {
+    ...state,
+    totalCredited: round2(total),
+    creditedToday: round2(today),
+    tradesTotal: data.length,
   }
 }
 
@@ -277,12 +313,6 @@ async function settle(
     })
   }
 
-  if (rows.length) {
-    await admin.from("trades").insert(rows)
-    await writeBalance(admin, userId, runningBalance)
-    await admin.from("transactions").insert(txs)
-  }
-
   const updated: IaState = {
     ...state,
     lastSettleAt: new Date(now).toISOString(),
@@ -295,8 +325,35 @@ async function settle(
     tradesTargetToday,
     tradesTotal,
   }
-  await saveState(admin, settingKey, updated)
-  return { state: updated, balance: runningBalance, credited: delta }
+
+  if (!rows.length) {
+    await saveState(admin, settingKey, updated)
+    return { state: updated, balance: runningBalance, credited: 0 }
+  }
+
+  // Reserva o acerto: só grava entradas se ninguém mexeu no estado desde a leitura.
+  const version = stateVersions.get(state)
+  const claimQuery = admin
+    .from("platform_settings")
+    .update({ setting_value: JSON.stringify(updated), updated_at: new Date(now).toISOString() })
+    .eq("setting_key", settingKey)
+  const { data: claimed } = await (version ? claimQuery.eq("updated_at", version) : claimQuery).select("id")
+  if (!claimed || claimed.length === 0) {
+    const fresh = await loadState(admin, settingKey)
+    return { state: fresh ?? state, balance: await readBalance(admin, userId), credited: 0 }
+  }
+
+  // Aplica o resultado sobre o saldo atual (não sobre o lido no início), para não perder outros lançamentos.
+  const currentBalance = await readBalance(admin, userId)
+  const shift = round2(currentBalance - balance)
+  const finalBalance = round2(currentBalance + delta)
+  await admin.from("trades").insert(rows)
+  await writeBalance(admin, userId, finalBalance)
+  await admin
+    .from("transactions")
+    .insert(txs.map((t) => ({ ...t, balance_after: round2(Number(t.balance_after) + shift) })))
+
+  return { state: updated, balance: finalBalance, credited: delta }
 }
 
 export async function GET() {
@@ -313,7 +370,7 @@ export async function GET() {
 
   // Ao consultar, já acerta o rendimento acumulado (inclusive o tempo com o site fechado).
   const result = await settle(admin, userId, settingKey, state)
-  return NextResponse.json({ state: result.state, balance: result.balance })
+  return NextResponse.json({ state: await withLedger(admin, userId, result.state), balance: result.balance })
 }
 
 export async function POST(req: Request) {
@@ -329,7 +386,11 @@ export async function POST(req: Request) {
     const state = await loadState(admin, settingKey)
     if (!state) return NextResponse.json({ state: null, balance: await readBalance(admin, userId) })
     const result = await settle(admin, userId, settingKey, state)
-    return NextResponse.json({ state: result.state, balance: result.balance, credited: result.credited })
+    return NextResponse.json({
+      state: await withLedger(admin, userId, result.state),
+      balance: result.balance,
+      credited: result.credited,
+    })
   }
 
   if (body.action === "pause" || body.action === "resume") {
@@ -341,13 +402,16 @@ export async function POST(req: Request) {
       const result = await settle(admin, userId, settingKey, state)
       const paused: IaState = { ...result.state, paused: true }
       await saveState(admin, settingKey, paused)
-      return NextResponse.json({ state: paused, balance: result.balance })
+      return NextResponse.json({ state: await withLedger(admin, userId, paused), balance: result.balance })
     }
 
     // resume: retoma a contagem a partir de agora.
     const resumed: IaState = { ...state, paused: false, lastSettleAt: new Date().toISOString() }
     await saveState(admin, settingKey, resumed)
-    return NextResponse.json({ state: resumed, balance: await readBalance(admin, userId) })
+    return NextResponse.json({
+      state: await withLedger(admin, userId, resumed),
+      balance: await readBalance(admin, userId),
+    })
   }
 
   if (body.action === "deactivate") {
@@ -388,7 +452,7 @@ export async function POST(req: Request) {
     const existing = await loadState(admin, settingKey)
     if (existing?.active) {
       const result = await settle(admin, userId, settingKey, existing)
-      return NextResponse.json({ state: result.state, balance: result.balance })
+      return NextResponse.json({ state: await withLedger(admin, userId, result.state), balance: result.balance })
     }
 
     // O plano é apenas a base de cálculo do rendimento — não desconta do saldo.

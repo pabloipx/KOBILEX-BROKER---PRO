@@ -87,6 +87,7 @@ export default function IaBrokerPage() {
   const [assertiveness, setAssertiveness] = useState(87)
   // Total real de entradas registradas pela IA (vem do servidor, aparece no card "Entradas").
   const [entriesTotal, setEntriesTotal] = useState(0)
+  const [recentOps, setRecentOps] = useState<RecentOp[]>([])
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -176,6 +177,7 @@ export default function IaBrokerPage() {
           setCreditedToday(Number(state.creditedToday || 0))
           setAssertiveness(Number(state.assertiveness ?? 87))
           setEntriesTotal(Number(state.tradesTotal || 0))
+          setRecentOps(parseRecentOps(state.recentOps))
           setStep("active")
           return
         }
@@ -222,6 +224,7 @@ export default function IaBrokerPage() {
       setCreditedToday(Number(data.state?.creditedToday || 0))
       setAssertiveness(Number(data.state?.assertiveness ?? 87))
       setEntriesTotal(Number(data.state?.tradesTotal || 0))
+      setRecentOps(parseRecentOps(data.state?.recentOps))
       setStep("active")
     } catch {
       setError("Falha de conexão ao ativar a IA.")
@@ -270,6 +273,7 @@ export default function IaBrokerPage() {
     setPaused(false)
     setTotalCredited(0)
     setEntriesTotal(0)
+    setRecentOps([])
     setStep("plans")
   }
 
@@ -292,6 +296,7 @@ export default function IaBrokerPage() {
           setTotalCredited(Number(data.state.totalCredited))
           setCreditedToday(Number(data.state.creditedToday || 0))
           setEntriesTotal(Number(data.state.tradesTotal || 0))
+          setRecentOps(parseRecentOps(data.state.recentOps))
           if (data.state.assertiveness != null) setAssertiveness(Number(data.state.assertiveness))
         } else if (!data.state) {
           // Foi desativada em outro lugar
@@ -361,6 +366,7 @@ export default function IaBrokerPage() {
             paused={paused}
             assertiveness={assertiveness}
             entriesCount={entriesTotal}
+            recentOps={recentOps}
             onPauseToggle={handlePauseToggle}
             onStop={handleDeactivate}
           />
@@ -845,6 +851,7 @@ function ActivePanel({
   paused,
   assertiveness,
   entriesCount,
+  recentOps,
   onPauseToggle,
   onStop,
 }: {
@@ -856,6 +863,7 @@ function ActivePanel({
   paused: boolean
   assertiveness: number
   entriesCount: number
+  recentOps: RecentOp[]
   onPauseToggle: () => void
   onStop: () => void
 }) {
@@ -1013,6 +1021,8 @@ function ActivePanel({
           )}
         </div>
 
+        <RecentOpsList ops={recentOps} />
+
         <div
           className={`ia-status-card relative mt-4 overflow-hidden rounded-2xl border border-l-4 p-4 transition-colors duration-500 ${
             isNegative ? "border-red-400/25 border-l-red-400" : "border-orange-400/20 border-l-orange-400"
@@ -1086,6 +1096,50 @@ function InfoCell({ label, value, valueClass }: { label: string; value: string; 
       <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className={`text-sm font-bold tabular-nums ${valueClass ?? "text-foreground"}`}>{value}</span>
     </div>
+  )
+}
+
+type RecentOp = { side: "COMPRA" | "VENDA"; profit: number; at: string }
+
+function parseRecentOps(raw: unknown): RecentOp[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((op) => ({
+    side: op?.side === "VENDA" ? "VENDA" : "COMPRA",
+    profit: Number(op?.profit || 0),
+    at: String(op?.at || ""),
+  }))
+}
+
+function RecentOpsList({ ops }: { ops: RecentOp[] }) {
+  return (
+    <section className="relative mt-4" aria-label="Últimas operações">
+      <h3 className="mb-2 text-xs font-medium text-muted-foreground">Últimas operações</h3>
+      {ops.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-white/[0.08] px-3 py-2.5 text-xs text-muted-foreground">
+          Aguardando a primeira entrada da IA
+        </p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {ops.map((op, i) => {
+            const win = op.profit >= 0
+            return (
+              <li
+                key={`${op.at}-${i}`}
+                title={op.at ? new Date(op.at).toLocaleString("pt-BR") : undefined}
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold tabular-nums tracking-wide ${
+                  win
+                    ? "border-orange-400/30 bg-orange-500/10 text-orange-400"
+                    : "border-red-400/30 bg-red-500/10 text-red-400"
+                }`}
+              >
+                {op.side} {win ? "+" : "-"}
+                {brl(Math.abs(op.profit))}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 

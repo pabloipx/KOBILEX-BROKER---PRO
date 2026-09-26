@@ -42,7 +42,12 @@ type IaState = {
   tradesProfitToday?: number // soma do profit das entradas de hoje (deve fechar igual ao rendimento do dia)
   tradesTotal?: number // total acumulado de entradas desde a ativação (exibido no card "Entradas")
   dayLockedKey?: string | null // dia em que o admin fixou o resultado manualmente; a IA não abre entradas nesse dia
+  recentOps?: RecentOp[] // últimas entradas da IA (mais recente primeiro), só para exibição
 }
+
+type RecentOp = { side: "COMPRA" | "VENDA"; profit: number; at: string }
+
+const RECENT_OPS_LIMIT = 9
 
 const DEFAULT_ASSERTIVENESS = 87 // taxa de acerto padrão exibida ao usuário
 
@@ -147,11 +152,18 @@ async function loadState(admin: SupabaseClient, settingKey: string): Promise<IaS
 async function withLedger(admin: SupabaseClient, userId: string, state: IaState): Promise<IaState> {
   const { data, error } = await admin
     .from("transactions")
-    .select("amount, created_at")
+    .select("amount, created_at, description")
     .eq("user_id", userId)
     .eq("type", "ia_yield")
     .gte("created_at", state.activatedAt)
+    .order("created_at", { ascending: false })
   if (error || !data) return state
+
+  const recentOps: RecentOp[] = data.slice(0, RECENT_OPS_LIMIT).map((row) => ({
+    side: String(row.description || "").includes("VENDA") ? "VENDA" : "COMPRA",
+    profit: round2(Number(row.amount || 0)),
+    at: String(row.created_at),
+  }))
 
   const todayStart = `${dayKeyOf(Date.now())}T03:00:00.000Z`
   const todayStartMs = new Date(todayStart).getTime()
@@ -167,6 +179,7 @@ async function withLedger(admin: SupabaseClient, userId: string, state: IaState)
     totalCredited: round2(total),
     creditedToday: round2(today),
     tradesTotal: data.length,
+    recentOps,
   }
 }
 

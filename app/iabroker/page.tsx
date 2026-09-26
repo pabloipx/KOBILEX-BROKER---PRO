@@ -1121,16 +1121,17 @@ function RecentOpsList({ ops }: { ops: RecentOp[] }) {
       ) : (
         <ul className="flex flex-wrap gap-1.5">
           {ops.map((op, i) => {
-            const win = op.profit >= 0
-            return (
-              <li
-                key={`${op.at}-${i}`}
-                title={op.at ? new Date(op.at).toLocaleString("pt-BR") : undefined}
-                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold tabular-nums tracking-wide ${
-                  win
-                    ? "border-orange-400/30 bg-orange-500/10 text-orange-400"
-                    : "border-red-400/30 bg-red-500/10 text-red-400"
-                }`}
+  const win = op.profit >= 0
+  const isSell = String(op.side).toUpperCase() === "VENDA"
+  return (
+  <li
+  key={`${op.at}-${i}`}
+  title={op.at ? new Date(op.at).toLocaleString("pt-BR") : undefined}
+  className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold tabular-nums tracking-wide ${
+  isSell
+  ? "border-red-400/30 bg-red-500/10 text-red-400"
+  : "border-emerald-400/30 bg-emerald-500/10 text-emerald-400"
+  }`}
               >
                 {op.side} {win ? "+" : "-"}
                 {brl(Math.abs(op.profit))}

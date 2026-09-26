@@ -41,11 +41,7 @@ type Plan = {
   daily: number
 }
 
-const PLANS: Plan[] = [
-  { id: "start", amount: 500, daily: 5 },
-  { id: "pro", amount: 1000, daily: 7 },
-  { id: "elite", amount: 5000, daily: 9 },
-]
+const PLANS: Plan[] = [{ id: "teste", amount: 100, daily: 5 }]
 
 const CONNECT_STAGES = [
   { label: "Autenticando credenciais na corretora", detail: "Validando sessão segura" },

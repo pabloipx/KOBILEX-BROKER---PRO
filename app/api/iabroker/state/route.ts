@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic"
 
 // Planos válidos (fonte de verdade no servidor). `daily` é o percentual ao dia.
 const PLANS: Record<string, { amount: number; daily: number }> = {
+  teste: { amount: 100, daily: 5 },
   start: { amount: 500, daily: 5 },
   pro: { amount: 1000, daily: 7 },
   elite: { amount: 5000, daily: 9 },

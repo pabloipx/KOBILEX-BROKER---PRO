@@ -239,7 +239,9 @@ async function settle(
     let entry: AiEntry
     if (isFinal) {
       const remaining = round2(goal - realized)
-      if (Math.abs(remaining) < 0.01) {
+      // Sobra menor que uma entrada mínima não vira operação de centavos: o dia fecha como está.
+      const minResult = remaining >= 0 ? MIN_ENTRY * PAYOUT : MIN_ENTRY
+      if (Math.abs(remaining) < minResult) {
         tradesToday += 1
         continue
       }

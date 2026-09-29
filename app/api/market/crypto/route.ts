@@ -238,12 +238,6 @@ function aggregate(candles: RealCandle[], tf: number): RealCandle[] {
   return Array.from(byBucket.values()).sort((a, b) => a.time - b.time)
 }
 
-// Cotacao e velas sao iguais para todos os usuarios. Com isto a CDN da Vercel absorve as
-// consultas repetidas (cada cliente pergunta o preco a cada 1-2s) e a funcao so roda uma vez
-// por janela e regiao.
-const PRICE_CACHE = { headers: { "Cache-Control": "public, max-age=0, s-maxage=1, stale-while-revalidate=2" } }
-const CANDLES_CACHE = { headers: { "Cache-Control": "public, max-age=0, s-maxage=15, stale-while-revalidate=45" } }
-
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const symbol = searchParams.get("symbol") || "BTCUSD"
@@ -334,12 +328,14 @@ export async function GET(req: Request) {
     if (!candles.length) throw new Error("sem velas")
 
     // O Yahoo devolve float32 alargado (64256.01171875); a UI espera a precisao do par.
-    const rounded = candles.map(c => ({
+    // So as 240 velas que o grafico mostra: o range de 1 mes chega a milhares de pontos.
+    const d = info.decimals
+    const rounded = candles.slice(-240).map(c => ({
       time: c.time,
-      open: round(c.open, info.decimals),
-      high: round(c.high, info.decimals),
-      low: round(c.low, info.decimals),
-      close: round(c.close, info.decimals),
+      open: round(c.open, d),
+      high: round(c.high, d),
+      low: round(c.low, d),
+      close: round(c.close, d),
     }))
     return NextResponse.json({ candles: rounded }, CANDLES_CACHE)
   } catch (e) {

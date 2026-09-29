@@ -12,6 +12,7 @@ import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
 import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
 import { AssetPanel } from "@/components/trading/asset-panel"
 import { useGlobalOTC } from "@/lib/hooks/use-global-otc"
+import { TabTimer } from "@/components/trading/tab-timer"
 import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { getLivePrice } from "@/lib/price-engine/live-price-store"
 import { LivePriceText } from "@/components/trading/live-price-text"
@@ -285,37 +286,19 @@ export default function TradePage() {
     return () => clearInterval(id)
   }, [])
 
-  // Tick de 1s usado apenas para a contagem regressiva das abas. O intervalo é criado uma única
-  // vez e nunca reinicia — reiniciá-lo a cada atualização de activeTrades (polling do servidor)
-  // dessincronizava o relógio e fazia a contagem "pular" segundos. O cálculo do tempo restante
-  // lê Date.now() direto, então o tick serve apenas para forçar o re-render a cada segundo.
-  const hasActiveTrades = activeTrades.length > 0
-  const [tabTick, setTabTick] = useState(() => Date.now())
-  useEffect(() => {
-    if (!hasActiveTrades) return
-    const id = setInterval(() => setTabTick(Date.now()), 500)
-    return () => clearInterval(id)
-  }, [hasActiveTrades])
-
-  // Segundos restantes por ativo: para cada símbolo com operação aberta, pega a operação que
-  // vence primeiro (a mais urgente) e calcula quanto falta para ela finalizar.
-  const remainingBySymbol = useMemo(() => {
-    // Lê o relógio no instante do cálculo em vez de depender do valor capturado em tabTick.
-    // tabTick serve só para disparar este recálculo a cada 500ms; usar Date.now() aqui evita
-    // que uma atualização de activeTrades (polling) fora do compasso do tick faça o número saltar.
+  // Earliest pending expiry per symbol. The per-second countdown lives in <TabTimer>, so the
+  // page only recomputes this when activeTrades actually changes.
+  const expiresAtBySymbol = useMemo(() => {
     const now = Date.now()
     const map: Record<string, number> = {}
     for (const t of activeTrades) {
-      const remaining = Math.round((t.timestamp + t.expiryTime * 1000 - now) / 1000)
-      if (remaining <= 0) continue
-      if (map[t.symbol] === undefined || remaining < map[t.symbol]) {
-        map[t.symbol] = remaining
-      }
+      const expiresAt = t.timestamp + t.expiryTime * 1000
+      if (expiresAt <= now) continue
+      const current = map[t.symbol]
+      if (current === undefined || expiresAt < current) map[t.symbol] = expiresAt
     }
     return map
-    // tabTick é dependência intencional: cada tick reavalia este memo com o Date.now() atual.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTrades, tabTick])
+  }, [activeTrades])
 
   // Status do mercado do ativo selecionado (fechado no fim de semana para forex de mercado aberto).
   const marketStatus = useMemo(
@@ -782,17 +765,45 @@ export default function TradePage() {
     }
   }, [user?.id])
 
+  // Latest values read by the settlement loop, so the interval is created once per session
+  // instead of being torn down and rebuilt on every activeTrades/payout change.
+  const activeTradesRef = useRef(activeTrades)
+  activeTradesRef.current = activeTrades
+  const payoutRef = useRef(payout)
+  payoutRef.current = payout
+  const settlingRef = useRef(false)
+  const hasOpenTrades = activeTrades.length > 0
+
   // Check active trades results - ROBUST
   useEffect(() => {
-    if (activeTrades.length === 0 || !user || !mountedRef.current) return
+    if (!hasOpenTrades || !user || !mountedRef.current) return
 
     const checkTradeResults = async () => {
-      if (!mountedRef.current) return
+      // Each run awaits several network calls; overlapping runs every 500ms piled up requests
+      // and state updates, which is what froze the UI when multiple trades expired together.
+      if (!mountedRef.current || settlingRef.current) return
 
       const now = Date.now()
       const tradesToFinalize: ActiveTrade[] = []
 
-      for (const trade of activeTrades) {
+      for (const trade of activeTradesRef.current) {
+        const expiresAt = trade.timestamp + trade.expiryTime * 1000
+        if (now < expiresAt || processedTradesRef.current.has(trade.id)) continue
+        if (multiAssetEngine.getCurrentPrice(trade.symbol) > 0) tradesToFinalize.push(trade)
+      }
+      if (tradesToFinalize.length === 0) return
+
+      settlingRef.current = true
+      const payout = payoutRef.current
+      try {
+        await settleTrades(tradesToFinalize, payout)
+      } finally {
+        settlingRef.current = false
+      }
+    }
+
+    const settleTrades = async (tradesToFinalize: ActiveTrade[], payout: number) => {
+      for (const trade of [] as ActiveTrade[]) {
         if (!mountedRef.current) break
         const expiresAt = trade.timestamp + trade.expiryTime * 1000
 
@@ -1240,15 +1251,6 @@ export default function TradePage() {
               const asset = assetBySymbol(sym)
               if (!asset) return null
               const isActive = sym === selectedSymbol
-              const remaining = remainingBySymbol[sym]
-              const hasTimer = remaining !== undefined && remaining > 0
-              const urgent = hasTimer && remaining <= 10
-              const timerLabel =
-                hasTimer
-                  ? remaining >= 60
-                    ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`
-                    : `:${String(remaining).padStart(2, "0")}`
-                  : ""
               return (
                 <div
                   key={sym}
@@ -1288,20 +1290,10 @@ export default function TradePage() {
                     <p className="text-white font-bold text-xs lg:text-sm leading-tight truncate max-w-[90px] lg:max-w-[110px]">
                       {asset.name}
                     </p>
-                    {hasTimer ? (
-                      <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-semibold leading-tight tabular-nums ${
-                          urgent ? "text-red-400" : "text-[#ff8a00]"
-                        }`}
-                      >
-                        <Clock className={`w-3 h-3 ${urgent ? "animate-pulse" : ""}`} />
-                        {timerLabel}
-                      </span>
-                    ) : (
-                      (asset.market || "otc") === "otc" && (
-                        <p className="text-gray-500 text-[10px] leading-tight">Binária</p>
-                      )
-                    )}
+                    <TabTimer
+                      expiresAt={expiresAtBySymbol[sym]}
+                      isOtc={(asset.market || "otc") === "otc"}
+                    />
                   </div>
 
                   {/* Sublinhado laranja na aba ativa */}

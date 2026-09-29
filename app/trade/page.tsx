@@ -803,17 +803,6 @@ export default function TradePage() {
     }
 
     const settleTrades = async (tradesToFinalize: ActiveTrade[], payout: number) => {
-      for (const trade of [] as ActiveTrade[]) {
-        if (!mountedRef.current) break
-        const expiresAt = trade.timestamp + trade.expiryTime * 1000
-
-        if (now >= expiresAt && multiAssetEngine.getCurrentPrice(trade.symbol) > 0) {
-          // Skip if already being processed
-          if (processedTradesRef.current.has(trade.id)) continue
-          tradesToFinalize.push(trade)
-        }
-      }
-
       for (const trade of tradesToFinalize) {
         if (!mountedRef.current) break
 
@@ -987,7 +976,7 @@ export default function TradePage() {
     checkTradeResults()
     const interval = setInterval(checkTradeResults, 500)
     return () => clearInterval(interval)
-  }, [activeTrades, user, payout])
+  }, [hasOpenTrades, user])
 
   const executeTrade = useCallback(
     async (direction: "CALL" | "PUT") => {

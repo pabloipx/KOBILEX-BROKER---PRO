@@ -202,81 +202,135 @@ function slowNaturalDev(symSeed: number, timestamp: number): number {
   return dev / PRICE_OCTAVE_TOTAL
 }
 
-// Retorna o deslocamento de preco a aplicar para um ativo em um dado timestamp.
-// = caminho direcional (pernas + pullbacks) + ruido rapido (pavios/cor mista).
-function manipulationDrift(asset: OTCAsset, timestamp: number): number {
-  if (!activeManipulations.length) return 0
+// Termos de cada manipulacao que nao dependem do tempo, calculados uma vez so. Antes eram
+// refeitos a cada ponto de preco — com ~200 manipulacoes isso levava ~1,4s para montar o
+// historico e congelava a tela na troca de tempo do grafico.
+type ManipPre = {
+  start: number
+  end: number
+  duration: number
+  dir: number
+  total: number
+  path: ManipPath
+  band: number
+  symSeed: number
+  counterBase: number
+  wickAmp: number
+  // Depois do fim da janela o deslocamento e constante (congelado em endTime).
+  frozen: number | null
+}
+
+const manipPreCache = new WeakMap<Manipulation, ManipPre>()
+let manipsBySymbolSrc: Manipulation[] | null = null
+const manipsBySymbol = new Map<string, Manipulation[]>()
+
+function manipsFor(symbol: string): Manipulation[] | undefined {
+  if (manipsBySymbolSrc !== activeManipulations) {
+    manipsBySymbol.clear()
+    for (const m of activeManipulations) {
+      const list = manipsBySymbol.get(m.symbol)
+      if (list) list.push(m)
+      else manipsBySymbol.set(m.symbol, [m])
+    }
+    manipsBySymbolSrc = activeManipulations
+  }
+  return manipsBySymbol.get(symbol)
+}
+
+function manipPre(asset: OTCAsset, m: Manipulation): ManipPre {
+  let pre = manipPreCache.get(m)
+  if (pre) return pre
 
   // Mesma "banda" natural usada em getLivePrice, para o movimento ficar na escala do ativo.
   const bandPct = 0.004 + (asset.volatility / 100) * 0.012
   const band = asset.basePrice * bandPct
   const symSeed = asset.basePrice * 13.37
+  const duration = Math.max(1, m.endTime - m.startTime)
+  const strength = Math.max(0, Math.min(100, m.strength)) / 100
+  const prof = STYLE_PROFILES[m.style && STYLE_PROFILES[m.style] ? m.style : "natural"]
+
+  const key = `${m.symbol}|${m.startTime}|${m.endTime}|${m.direction}|${m.style || "natural"}|${m.strength}`
+  let path = pathCache.get(key)
+  if (!path) {
+    path = buildManipPath(m.startTime + symSeed, prof, strength)
+    if (pathCache.size > 200) pathCache.clear()
+    pathCache.set(key, path)
+  }
+
+  // O deslocamento total nasce de uma VELOCIDADE (velas por minuto) multiplicada pela duracao,
+  // em vez de um tamanho fixo. E isso que garante que os candles manipulados tenham o mesmo
+  // porte dos naturais: uma janela de 1 min anda ~meia vela, uma de 15 min anda ~7 velas.
+  const unit = band * NATURAL_CANDLE
+  const minutes = duration / 60
+  // Teto: nem a tendencia mais forte pode arrastar o preco alem de ~10 velas normais, senao
+  // o grafico sai da escala e a manipulacao volta a ficar visivel.
+  // Piso de 1,6 vela: numa janela de 1 minuto o deslocamento seria menor que o proprio ruido
+  // do minuto e a direcao forcada podia nao se confirmar.
+  const total = Math.min(unit * 10, Math.max(unit * 1.6, unit * prof.pace * (0.4 + 1.2 * strength) * minutes))
+
+  pre = {
+    start: m.startTime,
+    end: m.endTime,
+    duration,
+    dir: m.direction === "up" ? 1 : -1,
+    total,
+    path,
+    band,
+    symSeed,
+    counterBase: slowNaturalDev(symSeed, m.startTime),
+    wickAmp: unit * prof.wick * (0.8 + 0.5 * strength),
+    frozen: null,
+  }
+  manipPreCache.set(m, pre)
+  return pre
+}
+
+function manipTermAt(pre: ManipPre, te: number): number {
+  const { symSeed } = pre
+  const p = Math.min(1, (te - pre.start) / pre.duration)
+  const value = shapeAt(pre.path, p)
+
+  // Compensacao: cancela o quanto a tendencia natural lenta andou desde o inicio da janela.
+  // Sem isso o mercado sintetico podia empurrar o preco para o lado oposto com mais forca do
+  // que a manipulacao e a operacao perdia apesar da direcao forcada. Congela em `te`: depois do
+  // fim, deixa de cancelar e a tendencia natural volta a andar a partir do nivel alcancado.
+  const counter = (slowNaturalDev(symSeed, te) - pre.counterBase) * pre.band
+
+  // Ruido rapido sobreposto: pavios e candles de cor contraria dentro de cada perna. Nao muda
+  // o destino (media zero), so tira a aparencia de linha desenhada.
+  // Perto do fim da janela o ruido e reduzido: assim o fechamento e definido pelo caminho
+  // controlado e nao por um pavio aleatorio que poderia inverter o resultado da operacao.
+  const easeIn = Math.min(1, (te - pre.start) / 20) * (1 - 0.75 * Math.max(0, (p - 0.85) / 0.15))
+  const wick =
+    0.5 * valueNoise(te / 34 + symSeed, symSeed + 21) +
+    0.3 * valueNoise(te / 13 + symSeed, symSeed + 41) +
+    0.2 * valueNoise(te / 5 + symSeed, symSeed + 61)
+
+  return pre.dir * pre.total * value - counter + pre.wickAmp * wick * easeIn
+}
+
+// Retorna o deslocamento de preco a aplicar para um ativo em um dado timestamp.
+// = caminho direcional (pernas + pullbacks) + ruido rapido (pavios/cor mista).
+//
+// CONGELAMENTO NO FIM DA JANELA: quando a manipulacao termina, o deslocamento NAO volta ao
+// normal — ele congela no valor que tinha no ultimo instante (endTime) e o preco segue a partir
+// dali, como numa corretora real. Esse valor constante fica guardado em `frozen`.
+function manipulationDrift(asset: OTCAsset, timestamp: number): number {
+  if (!activeManipulations.length) return 0
+  const list = manipsFor(asset.symbol)
+  if (!list) return 0
 
   let drift = 0
-  for (let i = 0; i < activeManipulations.length; i++) {
-    const m = activeManipulations[i]
-    if (m.symbol !== asset.symbol) continue
-
-    const duration = Math.max(1, m.endTime - m.startTime)
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i]
     if (timestamp < m.startTime) continue
-
-    // CONGELAMENTO NO FIM DA JANELA: quando a manipulacao termina, o deslocamento NAO volta ao
-    // normal — ele congela no valor que tinha no ultimo instante e o preco segue a partir dali,
-    // como numa corretora real. Antes existia uma "cauda" que devolvia o deslocamento ao natural,
-    // e era ela que gerava a rajada de candles rapidos assim que a janela acabava.
-    // Para congelar, avaliamos TODOS os termos que dependem do tempo no instante `te`: durante a
-    // janela `te` acompanha o relogio; depois do fim ele fica preso em endTime, entao o resultado
-    // deste bloco vira uma constante. Como a compensacao (`counter`) tambem congela, a tendencia
-    // natural lenta volta a mover o preco a partir do nivel — transicao continua, sem salto.
-    const te = Math.min(timestamp, m.endTime)
-
-    const dir = m.direction === "up" ? 1 : -1
-    const strength = Math.max(0, Math.min(100, m.strength)) / 100
-    const prof = STYLE_PROFILES[m.style && STYLE_PROFILES[m.style] ? m.style : "natural"]
-
-    const key = `${m.symbol}|${m.startTime}|${m.endTime}|${m.direction}|${m.style || "natural"}|${m.strength}`
-    let path = pathCache.get(key)
-    if (!path) {
-      path = buildManipPath(m.startTime + symSeed, prof, strength)
-      if (pathCache.size > 200) pathCache.clear()
-      pathCache.set(key, path)
+    const pre = manipPre(asset, m)
+    if (timestamp >= pre.end) {
+      if (pre.frozen === null) pre.frozen = manipTermAt(pre, pre.end)
+      drift += pre.frozen
+    } else {
+      drift += manipTermAt(pre, timestamp)
     }
-
-    const p = Math.min(1, (te - m.startTime) / duration)
-
-    // O deslocamento total nasce de uma VELOCIDADE (velas por minuto) multiplicada pela duracao,
-    // em vez de um tamanho fixo. E isso que garante que os candles manipulados tenham o mesmo
-    // porte dos naturais: uma janela de 1 min anda ~meia vela, uma de 15 min anda ~7 velas.
-    const unit = band * NATURAL_CANDLE
-    const minutes = duration / 60
-    // Teto: nem a tendencia mais forte pode arrastar o preco alem de ~10 velas normais, senao
-    // o grafico sai da escala e a manipulacao volta a ficar visivel.
-    // Piso de 1,6 vela: numa janela de 1 minuto o deslocamento seria menor que o proprio ruido
-    // do minuto e a direcao forcada podia nao se confirmar.
-    const total = Math.min(unit * 10, Math.max(unit * 1.6, unit * prof.pace * (0.4 + 1.2 * strength) * minutes))
-    const value = shapeAt(path, p)
-
-    // Compensacao: cancela o quanto a tendencia natural lenta andou desde o inicio da janela.
-    // Sem isso o mercado sintetico podia empurrar o preco para o lado oposto com mais forca do
-    // que a manipulacao e a operacao perdia apesar da direcao forcada. Congela em `te`: depois do
-    // fim, deixa de cancelar e a tendencia natural volta a andar a partir do nivel alcancado.
-    const counter = (slowNaturalDev(symSeed, te) - slowNaturalDev(symSeed, m.startTime)) * band
-
-    // Ruido rapido sobreposto: pavios e candles de cor contraria dentro de cada perna. Nao muda
-    // o destino (media zero), so tira a aparencia de linha desenhada.
-    // Perto do fim da janela o ruido e reduzido: assim o fechamento e definido pelo caminho
-    // controlado e nao por um pavio aleatorio que poderia inverter o resultado da operacao.
-    const easeIn = Math.min(1, (te - m.startTime) / 20) * (1 - 0.75 * Math.max(0, (p - 0.85) / 0.15))
-    const wick =
-      0.5 * valueNoise(te / 34 + symSeed, symSeed + 21) +
-      0.3 * valueNoise(te / 13 + symSeed, symSeed + 41) +
-      0.2 * valueNoise(te / 5 + symSeed, symSeed + 61)
-
-    // O ruido tambem e medido em velas normais (antes usava a banda inteira, o que sozinho ja
-    // gerava pavios de 2,5 velas). Nao tem direcao: e simetrico e de media zero.
-    // Sem `fade`: apos o fim da janela todos os termos acima ja estao congelados em `te`, entao
-    // esta contribuicao vira uma constante e o deslocamento permanece no nivel — sem retorno.
-    drift += dir * total * value - counter + unit * prof.wick * (0.8 + 0.5 * strength) * wick * easeIn
   }
   return drift
 }
@@ -548,8 +602,8 @@ class MultiAssetEngine {
     if (real && real.length) return this.anchoredCandles(asset, real)
     if (isRealSymbol(symbol)) return []
     const now = Math.floor(Date.now() / 1000)
-    const candleStart = Math.floor(now / timeframe) * timeframe
     const count = Math.min(1440, Math.ceil((24 * 60 * 60) / timeframe))
+    const candleStart = Math.floor(now / timeframe) * timeframe
     const candles: OTCCandle[] = []
     for (let i = count; i > 0; i--) {
       candles.push(buildCandle(asset, candleStart - i * timeframe, timeframe))

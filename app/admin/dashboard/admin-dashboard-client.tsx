@@ -27,6 +27,7 @@ import {
   Gift,
   Repeat,
   Bot,
+  BarChart3,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +40,7 @@ import { UsersChart, DepositsChart } from "@/components/admin/sections/tab-chart
 import { AdminAssets } from "@/components/admin/sections/admin-assets"
 import { AdminManipulation } from "@/components/admin/sections/admin-manipulation"
 import { AdminPromotions } from "@/components/admin/sections/admin-promotions"
+import { AdminReports } from "@/components/admin/sections/admin-reports"
 
 // A autorizacao do painel e feita por cookie HttpOnly assinado, enviado automaticamente
 // pelo navegador em requisicoes same-origin. Nenhum segredo trafega pelo bundle.
@@ -106,7 +108,7 @@ interface KycRequest {
 export default function AdminDashboardClient() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [activeTab, setActiveTab] = useState<"home" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "promotions" | "cards" | "assets" | "manipulation" | "robo_ia" | "settings">("home")
+  const [activeTab, setActiveTab] = useState<"home" | "reports" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "promotions" | "cards" | "assets" | "manipulation" | "robo_ia" | "settings">("home")
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Stats - initialize with default values to prevent null errors
@@ -248,21 +250,92 @@ export default function AdminDashboardClient() {
   }, [isAuthenticated, activeTab])
 
   // Menu items
-  const menuItems = [
-    { id: "home", label: "Dashboard", icon: Home },
-    { id: "users", label: "Usuarios", icon: Users },
-    { id: "deposits", label: "Depositos", icon: CreditCard },
-    { id: "withdrawals", label: "Saques", icon: Banknote },
-    { id: "kyc", label: "KYC", icon: ShieldCheck },
-    { id: "robo_ia", label: "Robo IA", icon: Bot },
-    { id: "affiliates", label: "Afiliados", icon: UserPlus },
-    { id: "promotions", label: "Promocoes", icon: Gift },
-    { id: "trades", label: "Operacoes", icon: History },
-    { id: "assets", label: "Ativos", icon: CandlestickChart },
-    { id: "manipulation", label: "Manipulacao", icon: Zap },
-    { id: "cards", label: "Cartoes", icon: CreditCard },
-    { id: "settings", label: "Configuracoes", icon: Settings },
+  const menuGroups = [
+    {
+      title: "Visão geral",
+      items: [
+        { id: "home", label: "Dashboard", icon: Home },
+        { id: "reports", label: "Relatórios", icon: BarChart3 },
+      ],
+    },
+    {
+      title: "Financeiro",
+      items: [
+        { id: "users", label: "Usuários", icon: Users },
+        { id: "deposits", label: "Depósitos", icon: CreditCard },
+        { id: "withdrawals", label: "Saques", icon: Banknote },
+        { id: "kyc", label: "KYC", icon: ShieldCheck },
+      ],
+    },
+    {
+      title: "Operação",
+      items: [
+        { id: "robo_ia", label: "Robô IA", icon: Bot },
+        { id: "trades", label: "Operações", icon: History },
+        { id: "assets", label: "Ativos", icon: CandlestickChart },
+        { id: "manipulation", label: "Manipulação", icon: Zap },
+      ],
+    },
+    {
+      title: "Marketing",
+      items: [
+        { id: "affiliates", label: "Afiliados", icon: UserPlus },
+        { id: "promotions", label: "Promoções", icon: Gift },
+        { id: "cards", label: "Cartões", icon: CreditCard },
+      ],
+    },
+    {
+      title: "Sistema",
+      items: [{ id: "settings", label: "Configurações", icon: Settings }],
+    },
   ]
+
+  const navBadge = (id: string) => {
+    if (id === "kyc") return stats?.pendingKyc || 0
+    if (id === "deposits") return stats?.pendingDeposits || 0
+    if (id === "withdrawals") return stats?.pendingWithdrawals || 0
+    return 0
+  }
+
+  const renderNav = (onPick?: () => void) => (
+    <nav className="flex-1 space-y-5 overflow-y-auto pr-1" aria-label="Menu do admin">
+      {menuGroups.map((group) => (
+        <div key={group.title}>
+          <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{group.title}</p>
+          <div className="space-y-0.5">
+            {group.items.map((item) => {
+              const active = activeTab === item.id
+              const badge = navBadge(item.id)
+              return (
+                <button
+                  key={item.id}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => {
+                    setActiveTab(item.id as any)
+                    onPick?.()
+                  }}
+                  className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active ? "bg-orange-500/10 text-orange-400" : "text-gray-400 hover:bg-white/[0.04] hover:text-white"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-orange-500" />
+                  )}
+                  <item.icon className="h-[18px] w-[18px] shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                  {badge > 0 ? (
+                    <span className="ml-auto rounded-md bg-yellow-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-yellow-400">
+                      {badge}
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </nav>
+  )
 
   // Utility functions
   const formatCurrency = (value: number) => {
@@ -993,8 +1066,11 @@ export default function AdminDashboardClient() {
       {/* Mobile Sidebar */}
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setSidebarOpen(false)}>
-          <div className="w-64 h-full bg-[#0B0F14] border-r border-[#1E2633] p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-8">
+          <div
+            className="flex h-full w-72 flex-col border-r border-white/[0.06] bg-[#0a0e14] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-6 flex items-center justify-between">
               <Image
           src="/images/uryn-fox-logo.png"
           alt="URYNBROKER"
@@ -1007,73 +1083,40 @@ export default function AdminDashboardClient() {
                 <X className="w-6 h-6 text-white" />
               </button>
             </div>
-            <nav className="space-y-2">
-              {menuItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id as any)
-                    setSidebarOpen(false)
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
-                    activeTab === item.id ? "bg-orange-500/20 text-orange-500" : "text-gray-400 hover:bg-[#1A1F2E]"
-                  }`}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.label}
-                  {item.id === "kyc" && stats?.pendingKyc ? (
-                    <span className="ml-auto px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-xs rounded">
-                      {stats.pendingKyc}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </nav>
+            {renderNav(() => setSidebarOpen(false))}
           </div>
         </div>
       )}
 
       <div className="flex">
         {/* Desktop Sidebar */}
-        <div className="hidden lg:flex lg:flex-col w-64 min-h-screen border-r border-[#1E2633] p-4">
-          <div className="mb-8">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0e14] p-4 lg:flex">
+          <div className="mb-6 px-2">
             <Image
               src="/images/uryn-fox-logo.png"
               alt="URYNBROKER"
-              width={180}
-              height={48}
+              width={160}
+              height={42}
               priority
-              className="h-auto w-[180px]"
+              className="h-auto w-[160px]"
             />
-            <p className="text-gray-400 text-sm mt-2">Painel Admin</p>
+            <span className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-orange-400">
+              <ShieldCheck className="h-3 w-3" />
+              Painel Admin
+            </span>
           </div>
-          <nav className="space-y-2 flex-1">
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
-                  activeTab === item.id ? "bg-orange-500/20 text-orange-500" : "text-gray-400 hover:bg-[#1A1F2E]"
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                {item.label}
-                {item.id === "kyc" && stats?.pendingKyc ? (
-                  <span className="ml-auto px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-xs rounded">
-                    {stats.pendingKyc}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </nav>
-          <button onClick={handleLogout} className="flex items-center gap-2 text-red-500 hover:text-red-400 mt-auto">
-            <LogOut className="w-5 h-5" />
+          {renderNav()}
+          <button
+            onClick={handleLogout}
+            className="mt-4 flex items-center gap-3 rounded-lg border-t border-white/[0.06] px-3 pt-4 text-sm font-medium text-red-400 transition-colors hover:text-red-300"
+          >
+            <LogOut className="h-[18px] w-[18px]" />
             Sair
           </button>
-        </div>
+        </aside>
 
         {/* Main Content */}
-        <div className="flex-1 p-4 lg:p-8 overflow-auto">
+        <main className="min-w-0 flex-1 p-4 lg:p-8">
           {error && <div className="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-500">{error}</div>}
 
           {/* Dashboard Tab */}
@@ -2178,6 +2221,8 @@ export default function AdminDashboardClient() {
           )}
 
           {/* Affiliates Tab */}
+          {activeTab === "reports" && <AdminReports />}
+
           {activeTab === "affiliates" && <AdminAffiliates />}
 
           {activeTab === "promotions" && <AdminPromotions />}
@@ -2379,7 +2424,7 @@ export default function AdminDashboardClient() {
               </div>
             </div>
           )}
-        </div>
+        </main>
       </div>
 
       {/* Edit User Modal */}

@@ -150,11 +150,11 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
                 <h3 className="text-white font-bold text-base text-balance">
                   {eligibility.error && eligibility.totalDeposited === undefined
                     ? eligibility.error
-                    : "Disponível a partir de R$ 250,00 depositados"}
+                    : `Faltam ${formatBRL(eligibility.missing ?? 250)} de depósito para liberar a IA`}
                 </h3>
                 {eligibility.totalDeposited !== undefined && (
                   <p className="text-white/50 text-sm mt-2 text-pretty">
-                    Faça um depósito para liberar o TRADER PRO na sua conta.
+                    O TRADER PRO é liberado para contas com pelo menos R$ 250,00 depositados.
                   </p>
                 )}
               </div>

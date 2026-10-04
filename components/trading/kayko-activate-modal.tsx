@@ -1,7 +1,26 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { X, Loader2, Lock, CheckCircle, Eye, EyeOff } from "lucide-react"
+import Link from "next/link"
+import useSWR from "swr"
+import { X, Loader2, Lock, CheckCircle, Eye, EyeOff, Wallet } from "lucide-react"
+
+interface Eligibility {
+  eligible: boolean
+  totalDeposited?: number
+  minDeposit?: number
+  missing?: number
+  error?: string
+}
+
+const eligibilityFetcher = async (url: string): Promise<Eligibility> => {
+  const res = await fetch(url, { cache: "no-store" })
+  const data = await res.json().catch(() => null)
+  return data ?? { eligible: false, error: "Erro ao verificar sua conta" }
+}
+
+const formatBRL = (value: number) =>
+  value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
 interface KaykoActivateModalProps {
   isOpen: boolean
@@ -19,6 +38,15 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  const {
+    data: eligibility,
+    isLoading: checkingEligibility,
+    mutate: recheckEligibility,
+  } = useSWR(isOpen ? "/api/kayko/validate" : null, eligibilityFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5000,
+  })
 
   const reset = useCallback(() => {
     setStep("password")
@@ -103,7 +131,77 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
         </div>
 
         <div className="p-6">
-          {step === "password" && (
+          {step === "password" && (checkingEligibility || !eligibility) && (
+            <div className="text-center py-8" role="status">
+              <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin" style={{ color: ACCENT }} />
+              <p className="text-white/70 text-sm">Verificando sua conta...</p>
+            </div>
+          )}
+
+          {step === "password" && !checkingEligibility && eligibility && !eligibility.eligible && (
+            <div className="space-y-5">
+              <div className="text-center">
+                <div
+                  className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: `${ACCENT}22` }}
+                >
+                  <Wallet className="w-8 h-8" style={{ color: ACCENT }} />
+                </div>
+                <h3 className="text-white font-bold text-base text-balance">
+                  {eligibility.error && eligibility.totalDeposited === undefined
+                    ? eligibility.error
+                    : "Disponível a partir de R$ 250,00 depositados"}
+                </h3>
+                {eligibility.totalDeposited !== undefined && (
+                  <p className="text-white/50 text-sm mt-2 text-pretty">
+                    Faça um depósito para liberar o TRADER PRO na sua conta.
+                  </p>
+                )}
+              </div>
+
+              {eligibility.totalDeposited !== undefined && (
+                <div className="rounded-2xl border border-white/5 bg-[#121826] p-4">
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <span className="text-white/50">Depositado</span>
+                    <span className="text-white font-semibold">
+                      {formatBRL(eligibility.totalDeposited)} / {formatBRL(eligibility.minDeposit ?? 250)}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, (eligibility.totalDeposited / (eligibility.minDeposit ?? 250)) * 100)}%`,
+                        background: `linear-gradient(90deg, ${ACCENT}, #0891b2)`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs mt-3" style={{ color: ACCENT }}>
+                    Faltam {formatBRL(eligibility.missing ?? 0)}
+                  </p>
+                </div>
+              )}
+
+              <Link
+                href="/deposit"
+                onClick={handleClose}
+                className="w-full py-3.5 text-[#04121a] font-bold rounded-xl transition flex items-center justify-center gap-2 active:scale-[0.98]"
+                style={{ background: `linear-gradient(90deg, ${ACCENT}, #0891b2)`, boxShadow: `0 8px 24px ${ACCENT}44` }}
+              >
+                <Wallet className="w-5 h-5" />
+                Fazer depósito
+              </Link>
+              <button
+                type="button"
+                onClick={() => recheckEligibility()}
+                className="w-full text-white/50 hover:text-white/80 text-sm transition"
+              >
+                Já depositei, verificar de novo
+              </button>
+            </div>
+          )}
+
+          {step === "password" && !checkingEligibility && eligibility?.eligible && (
             <div className="space-y-4">
               <div className="text-center mb-2">
                 <div
@@ -113,7 +211,7 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
                   <Lock className="w-8 h-8" style={{ color: ACCENT }} />
                 </div>
                 <p className="text-white/70 text-sm">Digite a senha do robô para ativá-lo na tela de trade.</p>
-                <p className="text-white/40 text-xs mt-2">Disponível para contas com depósito mínimo de R$ 250,00.</p>
+                <p className="text-xs mt-2" style={{ color: ACCENT }}>Conta liberada para o TRADER PRO.</p>
               </div>
 
               <div className="relative">

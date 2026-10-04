@@ -98,26 +98,54 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
         style={{ backgroundColor: "#0a0e13" }}
       >
         {/* Header */}
-        <div className="relative p-5 border-b border-white/5" style={{ background: `linear-gradient(135deg, ${ACCENT}1f 0%, #0a0e13 70%)` }}>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 rounded-2xl overflow-hidden ring-2"
-              style={{ boxShadow: `0 0 16px ${ACCENT}55`, borderColor: ACCENT }}
-            >
-              <img src="/images/kayko-robot.png" alt="Robô TRADER PRO" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h2 className="text-white font-black text-lg tracking-wide">
-                <span style={{ color: ACCENT }}>TRADER PRO</span>
-              </h2>
-              <p className="text-white/40 text-xs">Analisador de entradas</p>
-            </div>
-          </div>
-          <button
-            onClick={handleClose}
-            className="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition flex items-center justify-center"
-            aria-label="Fechar"
-          >
+  <div className="relative overflow-hidden px-5 pt-5 pb-4 border-b border-white/5">
+  <div
+  aria-hidden="true"
+  className="pointer-events-none absolute -top-16 -left-10 w-56 h-40 rounded-full blur-3xl opacity-40"
+  style={{ background: ACCENT }}
+  />
+  <div
+  aria-hidden="true"
+  className="pointer-events-none absolute inset-x-0 top-0 h-px"
+  style={{ background: `linear-gradient(90deg, transparent, ${ACCENT}99, transparent)` }}
+  />
+  <div className="relative flex items-center gap-4 pr-10">
+  <div className="relative shrink-0">
+  <div
+  className="w-14 h-14 rounded-2xl p-[2px]"
+  style={{ background: `linear-gradient(135deg, ${ACCENT}, #3b82f6)`, boxShadow: `0 0 22px ${ACCENT}55` }}
+  >
+  <div className="w-full h-full rounded-[14px] overflow-hidden bg-[#0a0e13]">
+  <img src="/images/kayko-robot.png" alt="Robô TRADER PRO" className="w-full h-full object-cover" />
+  </div>
+  </div>
+  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5">
+  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
+  <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-emerald-400 ring-2 ring-[#0a0e13]" />
+  </span>
+  </div>
+  <div className="min-w-0">
+  <div className="flex items-center gap-2">
+  <h2 className="text-white font-black text-xl tracking-tight leading-none">TRADER</h2>
+  <span
+  className="px-2 py-0.5 rounded-md text-[11px] font-black tracking-wider text-[#0a0e13] leading-none"
+  style={{ background: `linear-gradient(135deg, ${ACCENT}, #3b82f6)` }}
+  >
+  PRO
+  </span>
+  </div>
+  <p className="mt-1.5 text-white/55 text-xs">Analisador de entradas</p>
+  <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5">
+  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+  <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300">IA online</span>
+  </div>
+  </div>
+  </div>
+  <button
+  onClick={handleClose}
+  className="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white/60 hover:text-white transition flex items-center justify-center"
+  aria-label="Fechar"
+  >
             <X className="w-4 h-4" />
           </button>
         </div>

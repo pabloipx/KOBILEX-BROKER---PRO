@@ -644,21 +644,39 @@ export default function ProfilePage() {
                   </h3>
                   <Bot className="w-4 h-4" style={{ color: "#22d3ee" }} />
                 </div>
-                <p className="text-[#6B7280] text-xs truncate">
+                <p className="text-[#6B7280] text-xs leading-snug line-clamp-2">
                   {kaykoActive ? "Ativo na tela de trade" : "Analisa o ativo e mostra a entrada"}
                 </p>
               </div>
             </div>
-            <span
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0"
-              style={{
-                color: kaykoActive ? "#04121a" : "#22d3ee",
-                backgroundColor: kaykoActive ? "#22d3ee" : "#22d3ee1f",
-              }}
-            >
-              <Power className="w-3.5 h-3.5" />
-              {kaykoActive ? "Ativado" : "Ativar"}
-            </span>
+            {kaykoActive ? (
+              <span
+                className="inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-full text-sm font-bold shrink-0 border"
+                style={{
+                  color: "#22d3ee",
+                  borderColor: "#22d3ee66",
+                  backgroundColor: "#22d3ee14",
+                }}
+              >
+                <span className="relative flex w-2.5 h-2.5" aria-hidden="true">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-[#22d3ee] opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-[#22d3ee]" />
+                </span>
+                Ativado
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full text-sm font-bold shrink-0"
+                style={{
+                  color: "#04121a",
+                  background: "linear-gradient(135deg, #67e8f9 0%, #22d3ee 45%, #0ea5e9 100%)",
+                  boxShadow: "0 6px 20px -4px #22d3ee80, inset 0 1px 0 #ffffff55",
+                }}
+              >
+                <Power className="w-4 h-4" strokeWidth={2.75} aria-hidden="true" />
+                Ativar
+              </span>
+            )}
           </div>
         </button>
       </div>

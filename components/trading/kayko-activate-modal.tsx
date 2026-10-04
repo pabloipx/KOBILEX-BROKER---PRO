@@ -84,11 +84,11 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
               className="w-12 h-12 rounded-2xl overflow-hidden ring-2"
               style={{ boxShadow: `0 0 16px ${ACCENT}55`, borderColor: ACCENT }}
             >
-              <img src="/images/kayko-robot.png" alt="Robô KAYKO" className="w-full h-full object-cover" />
+              <img src="/images/kayko-robot.png" alt="Robô TRADER PRO" className="w-full h-full object-cover" />
             </div>
             <div>
               <h2 className="text-white font-black text-lg tracking-wide">
-                ROBÔ <span style={{ color: ACCENT }}>KAYKO</span>
+                <span style={{ color: ACCENT }}>TRADER PRO</span>
               </h2>
               <p className="text-white/40 text-xs">Analisador de entradas</p>
             </div>
@@ -113,6 +113,7 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
                   <Lock className="w-8 h-8" style={{ color: ACCENT }} />
                 </div>
                 <p className="text-white/70 text-sm">Digite a senha do robô para ativá-lo na tela de trade.</p>
+                <p className="text-white/40 text-xs mt-2">Disponível para contas com depósito mínimo de R$ 250,00.</p>
               </div>
 
               <div className="relative">
@@ -168,9 +169,9 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
               <div className="w-20 h-20 mx-auto mb-6 relative">
                 <div className="absolute inset-0 rounded-full border-4" style={{ borderColor: `${ACCENT}33` }} />
                 <div className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: ACCENT, borderTopColor: "transparent" }} />
-                <img src="/images/kayko-robot.png" alt="KAYKO" className="absolute inset-2 rounded-full object-cover" />
+                <img src="/images/kayko-robot.png" alt="TRADER PRO" className="absolute inset-2 rounded-full object-cover" />
               </div>
-              <p className="text-white font-medium text-lg animate-pulse">Ativando o robô KAYKO...</p>
+              <p className="text-white font-medium text-lg animate-pulse">Ativando o TRADER PRO...</p>
             </div>
           )}
 

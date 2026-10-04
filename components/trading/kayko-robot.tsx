@@ -269,7 +269,7 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
         onTouchStart={handleTouchStart}
         onClick={handleClick}
         role="button"
-        aria-label="Abrir robô KAYKO"
+        aria-label="Abrir robô TRADER PRO"
       >
         <div className="flex flex-col items-center">
           <div className="relative w-20 h-20 md:w-28 md:h-28">
@@ -279,7 +279,7 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
             />
             <img
               src="/images/kayko-robot.png"
-              alt="Robô KAYKO"
+              alt="Robô TRADER PRO"
               className="relative w-full h-full object-contain"
               style={{ filter: `drop-shadow(0 0 12px ${ACCENT}aa) drop-shadow(0 2px 6px rgba(0,0,0,0.7))` }}
               draggable={false}
@@ -334,14 +334,14 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
                 <div className="w-14 h-14 flex items-center justify-center shrink-0">
                   <img
                     src="/images/kayko-robot.png"
-                    alt="Robô KAYKO"
+                    alt="Robô TRADER PRO"
                     className="w-full h-full object-contain"
                     style={{ filter: `drop-shadow(0 0 8px ${ACCENT}88)` }}
                   />
                 </div>
                 <div className="flex-1">
                   <h2 className="text-white font-black text-lg tracking-wide">
-                    ROBÔ <span style={{ color: ACCENT }}>KAYKO</span>
+                    <span style={{ color: ACCENT }}>TRADER PRO</span>
                   </h2>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs font-medium flex items-center gap-1.5" style={{ color: ACCENT }}>

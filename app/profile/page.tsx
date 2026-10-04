@@ -617,7 +617,7 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Robô KAYKO */}
+      {/* Robô TRADER PRO */}
       <div className="px-4 pt-6">
         <button
           onClick={() => (kaykoActive ? setKayko(false) : setShowKaykoModal(true))}
@@ -635,12 +635,12 @@ export default function ProfilePage() {
                 className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "#22d3ee1f", boxShadow: kaykoActive ? "0 0 16px #22d3ee55" : "none" }}
               >
-                <img src="/images/kayko-robot.png" alt="Robô KAYKO" className="w-full h-full object-cover" />
+                <img src="/images/kayko-robot.png" alt="Robô TRADER PRO" className="w-full h-full object-cover" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-white">
-                    Robô <span style={{ color: "#22d3ee" }}>KAYKO</span>
+                  <h3 className="text-base font-bold" style={{ color: "#22d3ee" }}>
+                    TRADER PRO
                   </h3>
                   <Bot className="w-4 h-4" style={{ color: "#22d3ee" }} />
                 </div>
@@ -674,7 +674,7 @@ export default function ProfilePage() {
               <ShieldCheck className="w-4 h-4 text-[#f97316]" />
               <h3 className="text-base font-bold text-white">Editar placar do flutuante</h3>
             </div>
-            <p className="text-[#6B7280] text-xs mb-4">Somente admin. Define o resultado exibido no robô KAYKO.</p>
+            <p className="text-[#6B7280] text-xs mb-4">Somente admin. Define o resultado exibido no robô TRADER PRO.</p>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: "#22c55e" }}>

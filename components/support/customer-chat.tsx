@@ -1,14 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import useSWR from "swr"
 import {
   ArrowLeft,
+  BadgeCheck,
   Check,
   CheckCheck,
   ChevronRight,
-  Headset,
   Loader2,
   PencilLine,
   RotateCcw,
@@ -249,45 +250,92 @@ export function CustomerChat() {
   )
 }
 
+const SUPPORT_AGENT = {
+  name: "Thiago Morais",
+  role: "Suporte oficial",
+  photo: "/images/support-agent.jpg",
+}
+
+function AgentPhoto({ size, className }: { size: number; className?: string }) {
+  return (
+    <Image
+      src={SUPPORT_AGENT.photo || "/placeholder.svg"}
+      alt=""
+      width={size * 2}
+      height={size * 2}
+      style={{ width: size, height: size }}
+      className={cn("shrink-0 rounded-full object-cover object-[50%_20%]", className)}
+    />
+  )
+}
+
 function ChatHeader({ conversation, stage }: { conversation: MeResponse["conversation"]; stage: Stage }) {
   const category = getCategory(conversation?.category)
-  const online = !!conversation?.agentName && stage !== "closed"
+  const closed = stage === "closed"
+  const online = !!conversation?.agentName && !closed
+  const status = !conversation
+    ? "Online · responde em minutos"
+    : online
+      ? "Online agora · respondendo"
+      : closed
+        ? "Atendimento encerrado"
+        : getStatusLabel(conversation.status)
+
   return (
-    <header className="flex items-center gap-3 border-b border-border bg-card/80 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">
-      <Link
-        href="/trade"
-        aria-label="Voltar"
-        className="flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-muted"
-      >
-        <ArrowLeft className="size-5" aria-hidden />
-      </Link>
-      <div className="relative shrink-0">
-        <div className="flex size-11 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-primary-foreground">
-          <Headset className="size-5" aria-hidden />
+    <header className="relative overflow-hidden border-b border-border bg-card/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary/15 via-primary/5 to-transparent"
+      />
+      <div className="relative flex items-center gap-2 px-2 py-2.5">
+        <Link
+          href="/trade"
+          aria-label="Voltar"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground/80 transition-colors hover:bg-muted"
+        >
+          <ArrowLeft className="size-5" aria-hidden />
+        </Link>
+
+        <div className="relative shrink-0">
+          <div className="rounded-full bg-gradient-to-br from-primary to-primary/40 p-[2px]">
+            <AgentPhoto size={46} className="border-2 border-card" />
+          </div>
+          <span
+            aria-hidden
+            className={cn(
+              "absolute right-0 bottom-0.5 size-3.5 rounded-full border-[2.5px] border-card",
+              closed ? "bg-muted-foreground" : "bg-emerald-500",
+            )}
+          />
         </div>
-        <span
-          aria-hidden
-          className={cn(
-            "absolute right-0 bottom-0 size-3 rounded-full border-2 border-card",
-            online ? "bg-emerald-500" : stage === "closed" ? "bg-muted-foreground" : "bg-amber-400",
+
+        <div className="ml-1 min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <h1 className="truncate text-[17px] font-semibold leading-tight">{SUPPORT_AGENT.name}</h1>
+            <BadgeCheck className="size-4 shrink-0 fill-primary text-card" aria-label="Verificado" />
+          </div>
+          <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+            {!closed && (
+              <span aria-hidden className="relative flex size-1.5 shrink-0">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+              </span>
+            )}
+            <span className={cn("truncate", online && "text-emerald-400")}>{status}</span>
+          </p>
+          {conversation && category && (
+            <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
+              {SUPPORT_AGENT.role} · {category.short}
+            </p>
           )}
-        />
+        </div>
+
+        {conversation && (
+          <span className="mr-1.5 shrink-0 rounded-lg border border-primary/25 bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary tabular-nums">
+            #{conversation.number}
+          </span>
+        )}
       </div>
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base font-semibold leading-tight">{conversation?.agentName ?? "Suporte"}</h1>
-        <p className="truncate text-xs text-muted-foreground">
-          {conversation
-            ? online
-              ? "Online agora · respondendo"
-              : `${category ? category.short : "Novo atendimento"} · ${getStatusLabel(conversation.status)}`
-            : "Atendimento ao cliente"}
-        </p>
-      </div>
-      {conversation && (
-        <span className="mr-2 shrink-0 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums">
-          #{conversation.number}
-        </span>
-      )}
     </header>
   )
 }
@@ -352,14 +400,8 @@ function MessageList({
 
 function BotAvatar({ visible }: { visible: boolean }) {
   return (
-    <div
-      aria-hidden
-      className={cn(
-        "flex size-7 shrink-0 items-center justify-center self-end rounded-full bg-primary/15 text-primary",
-        !visible && "invisible",
-      )}
-    >
-      <Headset className="size-3.5" />
+    <div aria-hidden className={cn("shrink-0 self-end", !visible && "invisible")}>
+      <AgentPhoto size={28} className="ring-1 ring-primary/40" />
     </div>
   )
 }
@@ -395,7 +437,7 @@ function MessageBubble({
         )}
       >
         {!mine && !isSystem && showAvatar && (
-          <span className="mb-0.5 block text-[11px] font-semibold text-primary">Atendente</span>
+          <span className="mb-0.5 block text-[11px] font-semibold text-primary">{SUPPORT_AGENT.name}</span>
         )}
         <p className="whitespace-pre-wrap break-words">{message.message}</p>
         <div
@@ -489,7 +531,7 @@ function AnalyzingIndicator() {
             />
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">Um atendente está analisando sua mensagem...</p>
+        <p className="text-xs text-muted-foreground">Thiago está analisando sua mensagem...</p>
       </div>
     </div>
   )
@@ -573,8 +615,9 @@ function CenteredState({ children }: { children: React.ReactNode }) {
 
 function IconBubble() {
   return (
-    <div className="flex size-20 items-center justify-center rounded-3xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-lg shadow-primary/20">
-      <Headset className="size-9" aria-hidden />
+    <div className="relative rounded-full bg-gradient-to-br from-primary to-primary/40 p-[3px] shadow-lg shadow-primary/20">
+      <AgentPhoto size={88} className="border-[3px] border-background" />
+      <span aria-hidden className="absolute right-1 bottom-1 size-4 rounded-full border-[3px] border-background bg-emerald-500" />
     </div>
   )
 }

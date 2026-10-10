@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 import { ADMIN_COOKIE, adminCookieOptions, createAdminSessionValue, isAdminAuthConfigured } from "@/lib/admin/session"
 import { AGENT_COOKIE, agentCookieOptions, createAgentSessionValue, verifyPassword } from "@/lib/support/staff"
-import { db, readJson } from "@/lib/support/server"
+import { queryOne, readJson } from "@/lib/support/server"
 
 export const runtime = "nodejs"
 
@@ -21,11 +21,13 @@ export async function POST(request: Request) {
     return Response.json({ success: true, role: "admin" })
   }
 
-  const { data: agent } = await db()
-    .from("support_agents")
-    .select("id, password_hash, active")
-    .eq("email", email)
-    .maybeSingle()
+  let agent: { id: string; password_hash: string | null; active: boolean } | null = null
+  try {
+    agent = await queryOne("select id, password_hash, active from support_agents where email = $1", [email])
+  } catch (error) {
+    console.error("[support] falha no login da equipe:", (error as Error).message)
+    return Response.json({ error: "Não foi possível entrar agora. Tente novamente." }, { status: 503 })
+  }
 
   if (agent?.active && (await verifyPassword(password, agent.password_hash))) {
     store.set(AGENT_COOKIE, await createAgentSessionValue(agent.id), agentCookieOptions())

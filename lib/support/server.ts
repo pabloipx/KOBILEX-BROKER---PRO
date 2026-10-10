@@ -1,10 +1,33 @@
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { getSupabaseSecretKey, getSupabaseUrl } from "@/lib/supabase/env"
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export function db() {
+/** Cliente do Supabase com service role. Usado apenas para dados que continuam no Supabase (ex.: profiles). */
+export function supabaseAdmin() {
   return createAdminClient()
+}
+
+let neonClient: NeonQueryFunction<false, false> | null = null
+
+/** Consulta parametrizada no banco Neon, onde ficam as tabelas do suporte. */
+export async function query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+  if (!neonClient) {
+    const url = process.env.DATABASE_URL
+    if (!url) throw new Error("DATABASE_URL não configurada")
+    neonClient = neon(url)
+  }
+  return (await neonClient.query(text, params)) as T[]
+}
+
+export async function queryOne<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T | null> {
+  const rows = await query<T>(text, params)
+  return rows[0] ?? null
+}
+
+export function isUniqueViolation(error: unknown) {
+  return (error as { code?: string } | null)?.code === "23505"
 }
 
 /** Resolve o cliente logado pelo cookie do Supabase. Nunca confia em ids enviados pelo navegador. */

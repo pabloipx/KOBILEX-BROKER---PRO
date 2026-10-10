@@ -1,4 +1,4 @@
-import { UUID_RE, db, jsonError, readJson } from "@/lib/support/server"
+import { UUID_RE, jsonError, query, readJson } from "@/lib/support/server"
 import { getStaff, hashPassword, staffUnauthorized } from "@/lib/support/staff"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -11,15 +11,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (id === staff.id) return jsonError("Você não pode alterar a própria conta por aqui.", 400)
 
   const body = await readJson(request)
-  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  if (typeof body?.active === "boolean") update.active = body.active
-  if (body?.role === "admin" || body?.role === "agent") update.role = body.role
+  const active = typeof body?.active === "boolean" ? body.active : null
+  const role = body?.role === "admin" || body?.role === "agent" ? body.role : null
+  let passwordHash: string | null = null
   if (typeof body?.password === "string" && body.password) {
     if (body.password.length < 8) return jsonError("A senha precisa ter pelo menos 8 caracteres.", 400)
-    update.password_hash = await hashPassword(body.password)
+    passwordHash = await hashPassword(body.password)
   }
 
-  const { error } = await db().from("support_agents").update(update).eq("id", id)
-  if (error) return jsonError("Não foi possível atualizar o atendente.", 503)
+  try {
+    await query(
+      `update support_agents
+       set active = coalesce($2, active),
+           role = coalesce($3, role),
+           password_hash = coalesce($4, password_hash),
+           updated_at = now()
+       where id = $1`,
+      [id, active, role, passwordHash],
+    )
+  } catch (error) {
+    console.error("[support] falha ao atualizar atendente:", (error as Error).message)
+    return jsonError("Não foi possível atualizar o atendente.", 503)
+  }
   return Response.json({ ok: true })
 }

@@ -1,5 +1,7 @@
 import { CATEGORY_KEYS, CONFIRMATION_MESSAGE, STAFF_TOPIC, getCategory, userTopic } from "@/lib/support/constants"
-import { UUID_RE, broadcast, db, getCustomer, jsonError, readJson, supportError } from "@/lib/support/server"
+import { UUID_RE, broadcast, getCustomer, jsonError, queryOne, readJson, supportError } from "@/lib/support/server"
+
+type ConversationRow = { id: string; status: string; category: string | null }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCustomer()
@@ -13,14 +15,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!(CATEGORY_KEYS as string[]).includes(key)) return jsonError("Assunto inválido.", 400)
   const category = getCategory(key)!
 
-  const { data, error } = await db().rpc("support_set_category", {
-    p_conversation_id: id,
-    p_user_id: user.id,
-    p_category: category.key,
-    p_label: `${category.emoji} ${category.label}`,
-    p_confirmation: CONFIRMATION_MESSAGE,
-  })
-  if (error) return supportError(error)
+  let data: ConversationRow | null
+  try {
+    data = await queryOne<ConversationRow>(
+      "select id, status, category from support_set_category($1, $2, $3, $4, $5)",
+      [id, user.id, category.key, `${category.emoji} ${category.label}`, CONFIRMATION_MESSAGE],
+    )
+  } catch (error) {
+    return supportError(error as Error)
+  }
+  if (!data) return supportError(null)
 
   await broadcast([
     { topic: STAFF_TOPIC, event: "message", payload: { conversationId: id } },

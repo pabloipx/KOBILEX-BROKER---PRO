@@ -2,7 +2,7 @@ import { randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto"
 import { promisify } from "node:util"
 import { cookies } from "next/headers"
 import { getSecret, isAdminRequest } from "@/lib/admin/session"
-import { db } from "./server"
+import { query, queryOne } from "./server"
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>
 
@@ -79,31 +79,15 @@ async function ensureAdminStaff(): Promise<Staff | null> {
   if (!email) return null
   if (cachedAdmin?.email === email) return cachedAdmin
 
-  const client = db()
-  const { data: existing } = await client
-    .from("support_agents")
-    .select("id, name, email, role")
-    .eq("email", email)
-    .maybeSingle()
-
-  let row = existing
-  if (!row) {
-    const { data: inserted, error } = await client
-      .from("support_agents")
-      .insert({ email, name: "Administrador", role: "admin" })
-      .select("id, name, email, role")
-      .single()
-    if (error) {
-      const { data: retry } = await client
-        .from("support_agents")
-        .select("id, name, email, role")
-        .eq("email", email)
-        .maybeSingle()
-      row = retry
-    } else {
-      row = inserted
-    }
-  }
+  await query(
+    `insert into support_agents (email, name, role) values ($1, 'Administrador', 'admin')
+     on conflict (email) do nothing`,
+    [email],
+  )
+  const row = await queryOne<{ id: string; name: string; email: string }>(
+    "select id, name, email from support_agents where email = $1",
+    [email],
+  )
   if (!row) return null
   cachedAdmin = { id: row.id, name: row.name, email: row.email, role: "admin" }
   return cachedAdmin
@@ -118,11 +102,10 @@ export async function getStaff(): Promise<Staff | null> {
     const agentId = await verifyAgentSessionValue(store.get(AGENT_COOKIE)?.value)
     if (!agentId) return null
 
-    const { data } = await db()
-      .from("support_agents")
-      .select("id, name, email, role, active")
-      .eq("id", agentId)
-      .maybeSingle()
+    const data = await queryOne<{ id: string; name: string; email: string; role: string; active: boolean }>(
+      "select id, name, email, role, active from support_agents where id = $1",
+      [agentId],
+    )
     if (!data || !data.active) return null
     return { id: data.id, name: data.name, email: data.email, role: data.role === "admin" ? "admin" : "agent" }
   } catch (error) {

@@ -1,7 +1,9 @@
 import { CATEGORY_KEYS, CONFIRMATION_MESSAGE, STAFF_TOPIC, WELCOME_MESSAGE, getCategory, userTopic } from "@/lib/support/constants"
-import { broadcast, db, getCustomer, jsonError, readJson, supportError } from "@/lib/support/server"
+import { broadcast, getCustomer, jsonError, queryOne, readJson, supportError } from "@/lib/support/server"
 
 export const dynamic = "force-dynamic"
+
+type ConversationRow = { id: string; status: string; category: string | null }
 
 /** Inicia (ou retorna) o atendimento ativo do cliente. Opcionalmente já registra o assunto. */
 export async function POST(request: Request) {
@@ -12,25 +14,28 @@ export async function POST(request: Request) {
   const categoryKey = typeof body.category === "string" ? body.category : null
   if (categoryKey && !(CATEGORY_KEYS as string[]).includes(categoryKey)) return jsonError("Assunto inválido.", 400)
 
-  const client = db()
-  const { data: conversation, error } = await client.rpc("support_start_conversation", {
-    p_user_id: user.id,
-    p_welcome: WELCOME_MESSAGE,
-  })
-  if (error || !conversation) return supportError(error)
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>
+  const name = typeof meta.full_name === "string" ? meta.full_name : typeof meta.name === "string" ? meta.name : null
+  const username = typeof meta.username === "string" ? meta.username : null
 
-  let result = conversation
-  if (categoryKey && !conversation.category) {
-    const category = getCategory(categoryKey)!
-    const { data, error: catError } = await client.rpc("support_set_category", {
-      p_conversation_id: conversation.id,
-      p_user_id: user.id,
-      p_category: category.key,
-      p_label: `${category.emoji} ${category.label}`,
-      p_confirmation: CONFIRMATION_MESSAGE,
-    })
-    if (catError) return supportError(catError)
-    result = data
+  let result: ConversationRow | null
+  try {
+    result = await queryOne<ConversationRow>(
+      "select id, status, category from support_start_conversation($1, $2, $3, $4, $5)",
+      [user.id, WELCOME_MESSAGE, name, username, user.email ?? null],
+    )
+    if (!result) return supportError(null)
+
+    if (categoryKey && !result.category) {
+      const category = getCategory(categoryKey)!
+      result = await queryOne<ConversationRow>(
+        "select id, status, category from support_set_category($1, $2, $3, $4, $5)",
+        [result.id, user.id, category.key, `${category.emoji} ${category.label}`, CONFIRMATION_MESSAGE],
+      )
+      if (!result) return supportError(null)
+    }
+  } catch (error) {
+    return supportError(error as Error)
   }
 
   await broadcast([

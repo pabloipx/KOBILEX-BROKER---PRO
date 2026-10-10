@@ -1,5 +1,5 @@
 import { MAX_MESSAGE_LENGTH, STAFF_TOPIC, userTopic } from "@/lib/support/constants"
-import { UUID_RE, broadcast, db, getCustomer, jsonError, readJson, supportError } from "@/lib/support/server"
+import { UUID_RE, broadcast, getCustomer, jsonError, queryOne, readJson, supportError } from "@/lib/support/server"
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCustomer()
@@ -14,15 +14,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!text) return jsonError("A mensagem não pode ficar vazia.", 400)
   if (text.length > MAX_MESSAGE_LENGTH) return jsonError(`Limite de ${MAX_MESSAGE_LENGTH} caracteres.`, 400)
 
-  const { data, error } = await db().rpc("support_post_message", {
-    p_message_id: messageId,
-    p_conversation_id: id,
-    p_sender_id: user.id,
-    p_sender_role: "customer",
-    p_message: text,
-    p_allow_override: false,
-  })
-  if (error) return supportError(error)
+  let data
+  try {
+    data = await queryOne("select * from support_post_message($1, $2, $3, 'customer', $4, false)", [
+      messageId,
+      id,
+      user.id,
+      text,
+    ])
+  } catch (error) {
+    return supportError(error as Error)
+  }
 
   await broadcast([
     { topic: STAFF_TOPIC, event: "message", payload: { conversationId: id } },

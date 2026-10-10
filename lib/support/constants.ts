@@ -36,7 +36,7 @@ export const WELCOME_MESSAGE =
   "Olá! 👋 Seja bem-vindo ao suporte da nossa plataforma!\n\nPara direcionarmos seu atendimento, selecione abaixo o assunto que você precisa resolver:"
 
 export const CONFIRMATION_MESSAGE =
-  "Entendido! ✅ Sua solicitação foi registrada. Aguarde enquanto um de nossos atendentes analisa sua mensagem."
+  "Perfeito! Agora descreva o seu problema com o máximo de detalhes (o que aconteceu, valor e data, se houver). Assim que você enviar, um atendente analisa e responde por aqui em tempo real."
 
 export const CLOSED_MESSAGE =
   "✅ Seu atendimento foi concluído!\n\nSe precisar de ajuda novamente, estamos à disposição. Clique abaixo para iniciar um novo atendimento."

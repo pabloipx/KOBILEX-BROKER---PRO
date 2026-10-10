@@ -2,6 +2,7 @@
 
 import { memo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { SupportUnreadBadge } from "@/components/support/support-unread-badge"
 import {
   X,
   History,
@@ -199,6 +200,7 @@ function SidebarMenuBase({
                 <item.icon className="w-4 h-4 text-white/40 group-hover:text-[#fb923c] transition" />
               </div>
               <span className="flex-1 text-left text-[13px] font-medium">{item.label}</span>
+              {isOpen && <SupportUnreadBadge />}
               <ChevronRight className="w-3.5 h-3.5 text-white/15 group-hover:text-white/30 transition" />
             </button>
           ))}

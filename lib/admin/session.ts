@@ -13,7 +13,7 @@ export const ADMIN_COOKIE = "admin_session"
 
 const SESSION_TTL_SECONDS = 60 * 60 * 8 // 8 horas
 
-function getSecret(): string {
+export function getSecret(): string {
   // Nenhuma variavel nova e obrigatoria: a chave de assinatura e derivada de
   // segredos que ja existem no servidor. Trocar a senha do admin invalida
   // automaticamente as sessoes emitidas antes da troca.

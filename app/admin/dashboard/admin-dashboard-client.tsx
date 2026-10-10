@@ -28,6 +28,7 @@ import {
   Repeat,
   Bot,
   BarChart3,
+  Headphones,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -285,6 +286,10 @@ export default function AdminDashboardClient() {
       ],
     },
     {
+      title: "Atendimento",
+      items: [{ id: "support", label: "Suporte", icon: Headphones, href: "/admin001/suporte" }],
+    },
+    {
       title: "Sistema",
       items: [{ id: "settings", label: "Configurações", icon: Settings }],
     },
@@ -311,6 +316,10 @@ export default function AdminDashboardClient() {
                   key={item.id}
                   aria-current={active ? "page" : undefined}
                   onClick={() => {
+                    if ("href" in item && item.href) {
+                      router.push(item.href)
+                      return
+                    }
                     setActiveTab(item.id as any)
                     onPick?.()
                   }}

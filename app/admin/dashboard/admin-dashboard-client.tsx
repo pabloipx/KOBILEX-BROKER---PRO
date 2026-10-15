@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
 import { TradeEditor } from "@/components/admin/trade-editor"
+import { WithdrawalPaymentInfo } from "@/components/admin/withdrawal-payment-info"
 import { AdminAffiliates } from "@/components/admin/sections/admin-affiliates"
 import { AdminCards } from "@/components/admin/sections/admin-cards"
 import { AdminCharts } from "@/components/admin/sections/admin-charts"
@@ -88,6 +89,13 @@ interface Withdrawal {
   amount: number
   status: string
   payment_details: any
+  method?: string | null
+  pix_key?: string | null
+  pix_key_type?: string | null
+  crypto_type?: string | null
+  crypto_wallet?: string | null
+  holder_name?: string | null
+  document?: string | null
   created_at: string
   user_name?: string
   user_email?: string
@@ -1448,25 +1456,7 @@ export default function AdminDashboardClient() {
                           <p className="text-gray-400 text-sm">{withdrawal.user_name || ""}</p>
                           <p className="text-gray-500 text-xs">{formatDate(withdrawal.created_at)}</p>
 
-                          {withdrawal.payment_details?.pix_key && (
-                            <div className="mt-2 p-2 rounded-lg bg-[#0B0F14]">
-                              <p className="text-cyan-400 text-xs">
-                                <span className="text-gray-500">Chave PIX:</span> {withdrawal.payment_details.pix_key}
-                              </p>
-                              {withdrawal.payment_details.pix_key_type && (
-                                <p className="text-cyan-400 text-xs">
-                                  <span className="text-gray-500">Tipo:</span>{" "}
-                                  {withdrawal.payment_details.pix_key_type === "cpf"
-                                    ? "CPF"
-                                    : withdrawal.payment_details.pix_key_type === "email"
-                                      ? "E-mail"
-                                      : withdrawal.payment_details.pix_key_type === "phone"
-                                        ? "Celular"
-                                        : "Chave Aleatória"}
-                                </p>
-                              )}
-                            </div>
-                          )}
+                          <WithdrawalPaymentInfo withdrawal={withdrawal} />
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">

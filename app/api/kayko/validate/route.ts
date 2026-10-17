@@ -3,7 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 // Senha de ativacao do Robo TRADER PRO (validada no servidor para nao ficar exposta no bundle).
 const VALID_PASSWORD = "iabroker"
-const MIN_DEPOSIT = 250
+const MIN_DEPOSIT = 100
 
 async function getSessionUserId() {
   const supabase = await createClient()
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
         {
           success: false,
           code: "MIN_DEPOSIT",
-          error: `Para usar o TRADER PRO é preciso ter depositado pelo menos R$ 250,00. Faltam ${missing}.`,
+          error: `Para usar o TRADER PRO é preciso ter depositado pelo menos R$ 100,00 na conta real. Faltam ${missing}.`,
         },
         { status: 403 },
       )

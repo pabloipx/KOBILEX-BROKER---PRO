@@ -169,7 +169,7 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated }: KaykoActiva
               <p className="text-white/80 text-sm text-pretty">
                 {eligibility.error && eligibility.totalDeposited === undefined
                   ? eligibility.error
-                  : "Disponível para contas com depósito mínimo de R$ 250,00."}
+                  : "Disponível para contas com depósito mínimo de R$ 100,00 na conta real."}
               </p>
             </div>
           )}

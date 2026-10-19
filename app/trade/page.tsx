@@ -8,6 +8,7 @@ import { SidebarMenu } from "@/components/trading/sidebar-menu"
 import { TraderIAModal } from "@/components/trading/trader-ia-modal"
 import { TraderIAWatermark } from "@/components/trading/trader-ia-watermark"
 import { KaykoRobot } from "@/components/trading/kayko-robot"
+import { OLHO_DE_CRONOS } from "@/lib/robots"
 import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
 import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
 import { AssetPanel } from "@/components/trading/asset-panel"
@@ -217,6 +218,32 @@ export default function TradePage() {
 
   // Robô KAYKO: ativado pelo perfil (senha) e persistido no dispositivo. A tela de trade
   // apenas lê o estado — reage a mudanças em outra aba/página e ao voltar do segundo plano.
+  const [isCronosActive, setIsCronosActive] = useState(false)
+  useEffect(() => {
+    const read = () => {
+      try {
+        setIsCronosActive(localStorage.getItem(OLHO_DE_CRONOS.activeKey) === "1")
+      } catch {
+        setIsCronosActive(false)
+      }
+    }
+    read()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === OLHO_DE_CRONOS.activeKey) read()
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") read()
+    }
+    window.addEventListener("storage", onStorage)
+    window.addEventListener(OLHO_DE_CRONOS.changedEvent, read as EventListener)
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener(OLHO_DE_CRONOS.changedEvent, read as EventListener)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [])
+
   const [isKaykoActive, setIsKaykoActive] = useState(false)
   useEffect(() => {
     const read = () => {
@@ -1380,6 +1407,16 @@ export default function TradePage() {
                 assetName={selectedAsset?.name}
                 symbol={selectedSymbol}
                 expirySeconds={expiryTime}
+              />
+            )}
+            {isCronosActive && (
+              <KaykoRobot
+                isActive={isCronosActive}
+                assetName={selectedAsset?.name}
+                symbol={selectedSymbol}
+                expirySeconds={expiryTime}
+                robot={OLHO_DE_CRONOS}
+                initialY={isKaykoActive ? 250 : 130}
               />
             )}
             <MarketChart

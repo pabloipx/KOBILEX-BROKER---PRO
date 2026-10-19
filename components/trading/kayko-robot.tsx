@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { X, Loader2, TrendingUp, TrendingDown, Radar, Clock, Cpu } from "lucide-react"
 import { subscribeLivePrice, getLivePrice } from "@/lib/price-engine/live-price-store"
+import { TRADER_PRO, TRADE_RESULT_EVENT, type RobotConfig } from "@/lib/robots"
 
 interface KaykoSignal {
   type: "CALL" | "PUT"
@@ -18,9 +19,9 @@ interface KaykoRobotProps {
   assetName?: string
   symbol?: string
   expirySeconds?: number
+  robot?: RobotConfig
+  initialY?: number
 }
-
-const ACCENT = "#F97316"
 
 interface KaykoScore {
   win: number
@@ -28,19 +29,20 @@ interface KaykoScore {
   profit: number
 }
 
-const SCORE_KEY = "kayko_score_v1"
-const ACTIVATED_KEY = "kayko_activated_at"
-
-function getActivatedAt(): number {
+function readActivatedAt(key: string): number {
   try {
-    return Number(localStorage.getItem(ACTIVATED_KEY)) || 0
+    return Number(localStorage.getItem(key)) || 0
   } catch {
     return 0
   }
 }
 
-export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: KaykoRobotProps) {
-  const [position, setPosition] = useState({ x: 16, y: 130 })
+export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, robot = TRADER_PRO, initialY = 130 }: KaykoRobotProps) {
+  const ACCENT = robot.robotAccent
+  const SCORE_KEY = robot.scoreKey
+  const ACTIVATED_KEY = robot.activatedAtKey
+  const getActivatedAt = () => readActivatedAt(ACTIVATED_KEY)
+  const [position, setPosition] = useState({ x: 16, y: initialY })
   const [isDragging, setIsDragging] = useState(false)
   const [showPopup, setShowPopup] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -112,9 +114,10 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
         return next
       })
     }
-    window.addEventListener("kayko:trade-result", onResult as EventListener)
-    return () => window.removeEventListener("kayko:trade-result", onResult as EventListener)
-  }, [])
+    window.addEventListener(TRADE_RESULT_EVENT, onResult as EventListener)
+    return () => window.removeEventListener(TRADE_RESULT_EVENT, onResult as EventListener)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [SCORE_KEY, ACTIVATED_KEY])
 
   // Placar definido manualmente pelo admin (tela de perfil). Atualiza o flutuante ao vivo.
   useEffect(() => {
@@ -128,9 +131,9 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
         profit: Math.round((detail.profit ?? 0) * 100) / 100,
       })
     }
-    window.addEventListener("kayko:score-set", onSet as EventListener)
-    return () => window.removeEventListener("kayko:score-set", onSet as EventListener)
-  }, [])
+    window.addEventListener(robot.scoreSetEvent, onSet as EventListener)
+    return () => window.removeEventListener(robot.scoreSetEvent, onSet as EventListener)
+  }, [robot.scoreSetEvent])
 
   // Acompanha o preço do ativo em tela para a análise reagir ao mercado atual.
   // Assina o live-price-store diretamente (em vez de receber `price` por prop), para o robô NÃO
@@ -269,7 +272,7 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
         onTouchStart={handleTouchStart}
         onClick={handleClick}
         role="button"
-        aria-label="Abrir robô TRADER PRO"
+        aria-label={`Abrir robô ${robot.name}`}
       >
         <div className="flex flex-col items-center">
           <div className="relative w-20 h-20 md:w-28 md:h-28">
@@ -278,9 +281,9 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
               style={{ backgroundColor: `${ACCENT}44` }}
             />
             <img
-              src="/images/kayko-robot.png"
-              alt="Robô TRADER PRO"
-              className="relative w-full h-full object-contain"
+              src={robot.image || "/placeholder.svg"}
+              alt={`Robô ${robot.name}`}
+              className={`relative w-full h-full ${robot.id === "cronos" ? "object-cover rounded-full p-1.5" : "object-contain"}`}
               style={{ filter: `drop-shadow(0 0 12px ${ACCENT}aa) drop-shadow(0 2px 6px rgba(0,0,0,0.7))` }}
               draggable={false}
             />
@@ -333,15 +336,15 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 flex items-center justify-center shrink-0">
                   <img
-                    src="/images/kayko-robot.png"
-                    alt="Robô TRADER PRO"
-                    className="w-full h-full object-contain"
+                    src={robot.image || "/placeholder.svg"}
+                    alt={`Robô ${robot.name}`}
+                    className={`w-full h-full ${robot.id === "cronos" ? "object-cover rounded-xl" : "object-contain"}`}
                     style={{ filter: `drop-shadow(0 0 8px ${ACCENT}88)` }}
                   />
                 </div>
                 <div className="flex-1">
                   <h2 className="text-white font-black text-lg tracking-wide">
-                    <span style={{ color: ACCENT }}>TRADER PRO</span>
+                    <span style={{ color: ACCENT }}>{robot.name}</span>
                   </h2>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs font-medium flex items-center gap-1.5" style={{ color: ACCENT }}>
@@ -377,7 +380,7 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60 }: 
                 onClick={analyze}
                 disabled={isAnalyzing}
                 className="w-full py-4 text-[#04121a] font-bold rounded-2xl transition-all duration-300 disabled:opacity-70 flex items-center justify-center gap-3 active:scale-[0.98]"
-                style={{ background: `linear-gradient(90deg, ${ACCENT}, #0891b2)`, boxShadow: `0 8px 24px ${ACCENT}44` }}
+                style={{ background: `linear-gradient(90deg, ${ACCENT}, ${robot.robotAccentTo})`, boxShadow: `0 8px 24px ${ACCENT}44` }}
               >
                 {isAnalyzing ? (
                   <>

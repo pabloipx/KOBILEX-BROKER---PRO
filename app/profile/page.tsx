@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { computeRank, RANKS, type RankProgress } from "@/lib/ranks"
 import { KaykoActivateModal } from "@/components/trading/kayko-activate-modal"
+import { OLHO_DE_CRONOS } from "@/lib/robots"
 
 interface UserProfile {
   id: string
@@ -102,6 +103,33 @@ export default function ProfilePage() {
       // ignora
     }
     setKaykoActive(active)
+  }
+
+  const [cronosActive, setCronosActive] = useState(false)
+  const [showCronosModal, setShowCronosModal] = useState(false)
+
+  useEffect(() => {
+    try {
+      setCronosActive(localStorage.getItem(OLHO_DE_CRONOS.activeKey) === "1")
+    } catch {
+      setCronosActive(false)
+    }
+  }, [])
+
+  const setCronos = (active: boolean) => {
+    try {
+      if (active) {
+        localStorage.setItem(OLHO_DE_CRONOS.activeKey, "1")
+        localStorage.setItem(OLHO_DE_CRONOS.scoreKey, JSON.stringify({ win: 0, loss: 0, profit: 0 }))
+        localStorage.setItem(OLHO_DE_CRONOS.activatedAtKey, String(Date.now()))
+      } else {
+        localStorage.removeItem(OLHO_DE_CRONOS.activeKey)
+      }
+      window.dispatchEvent(new Event(OLHO_DE_CRONOS.changedEvent))
+    } catch {
+      // ignora
+    }
+    setCronosActive(active)
   }
 
   // Painel admin: editar manualmente o placar do robô flutuante.
@@ -681,6 +709,64 @@ export default function ProfilePage() {
         </button>
       </div>
 
+      {/* Robô OLHO DE CRONOS */}
+      <div className="px-4 pt-3">
+        <button
+          onClick={() => (cronosActive ? setCronos(false) : setShowCronosModal(true))}
+          className="w-full text-left p-5 rounded-2xl border active:scale-[0.99] transition-transform"
+          style={{
+            borderColor: cronosActive ? "#facc1555" : "#1F2933",
+            background: cronosActive ? "linear-gradient(135deg, #facc1518 0%, #121826 100%)" : "#121826",
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
+                style={{ backgroundColor: "#facc151f", boxShadow: cronosActive ? "0 0 16px #facc1555" : "none" }}
+              >
+                <img src={OLHO_DE_CRONOS.image || "/placeholder.svg"} alt="Robô OLHO DE CRONOS" className="w-full h-full object-cover" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold" style={{ color: "#facc15" }}>
+                    OLHO DE CRONOS
+                  </h3>
+                  <Bot className="w-4 h-4 shrink-0" style={{ color: "#facc15" }} />
+                </div>
+                <p className="text-[#6B7280] text-xs leading-snug line-clamp-2">
+                  {cronosActive ? "Ativo na tela de trade" : "Visão do tempo certo da entrada"}
+                </p>
+              </div>
+            </div>
+            {cronosActive ? (
+              <span
+                className="inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-full text-sm font-bold shrink-0 border"
+                style={{ color: "#facc15", borderColor: "#facc1566", backgroundColor: "#facc1514" }}
+              >
+                <span className="relative flex w-2.5 h-2.5" aria-hidden="true">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-[#facc15] opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-[#facc15]" />
+                </span>
+                Ativado
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full text-sm font-bold shrink-0"
+                style={{
+                  color: "#1a1204",
+                  background: "linear-gradient(135deg, #fde68a 0%, #facc15 45%, #d97706 100%)",
+                  boxShadow: "0 6px 20px -4px #facc1580, inset 0 1px 0 #ffffff55",
+                }}
+              >
+                <Power className="w-4 h-4" strokeWidth={2.75} aria-hidden="true" />
+                Ativar
+              </span>
+            )}
+          </div>
+        </button>
+      </div>
+
       {/* Admin: editar placar do flutuante (apenas admin@admin.com) */}
       {isAdmin && (
         <div className="px-4 pt-4">
@@ -843,6 +929,12 @@ export default function ProfilePage() {
         isOpen={showKaykoModal}
         onClose={() => setShowKaykoModal(false)}
         onActivated={() => setKayko(true)}
+      />
+      <KaykoActivateModal
+        isOpen={showCronosModal}
+        onClose={() => setShowCronosModal(false)}
+        onActivated={() => setCronos(true)}
+        robot={OLHO_DE_CRONOS}
       />
     </div>
   )

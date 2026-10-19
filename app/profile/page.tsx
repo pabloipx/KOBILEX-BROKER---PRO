@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { computeRank, RANKS, type RankProgress } from "@/lib/ranks"
 import { KaykoActivateModal } from "@/components/trading/kayko-activate-modal"
+import { OLHO_DE_CRONOS, TRADER_PRO, type RobotConfig } from "@/lib/robots"
 
 interface UserProfile {
   id: string
@@ -104,47 +105,74 @@ export default function ProfilePage() {
     setKaykoActive(active)
   }
 
-  // Painel admin: editar manualmente o placar do robô flutuante.
-  // Visível apenas para a conta admin (admin@admin.com).
-  const isAdmin = profile?.email?.toLowerCase() === "admin@admin.com"
-  const [adminScore, setAdminScore] = useState({ win: "", loss: "", profit: "" })
-  const [adminSaved, setAdminSaved] = useState(false)
+  const [cronosActive, setCronosActive] = useState(false)
+  const [showCronosModal, setShowCronosModal] = useState(false)
 
-  // Ao virar admin (perfil carregado), pré-carrega os campos com o placar salvo.
   useEffect(() => {
-    if (!isAdmin) return
     try {
-      const raw = localStorage.getItem("kayko_score_v1")
-      if (raw) {
-        const p = JSON.parse(raw)
-        setAdminScore({
-          win: String(p.win ?? 0),
-          loss: String(p.loss ?? 0),
-          profit: String(p.profit ?? 0),
-        })
+      setCronosActive(localStorage.getItem(OLHO_DE_CRONOS.activeKey) === "1")
+    } catch {
+      setCronosActive(false)
+    }
+  }, [])
+
+  const setCronos = (active: boolean) => {
+    try {
+      if (active) {
+        localStorage.setItem(OLHO_DE_CRONOS.activeKey, "1")
+        localStorage.setItem(OLHO_DE_CRONOS.scoreKey, JSON.stringify({ win: 0, loss: 0, profit: 0 }))
+        localStorage.setItem(OLHO_DE_CRONOS.activatedAtKey, String(Date.now()))
+      } else {
+        localStorage.removeItem(OLHO_DE_CRONOS.activeKey)
       }
+      window.dispatchEvent(new Event(OLHO_DE_CRONOS.changedEvent))
     } catch {
       // ignora
     }
-  }, [isAdmin])
+    setCronosActive(active)
+  }
+
+  // Painel admin: editar manualmente o placar do robô flutuante.
+  // Visível apenas para a conta admin (admin@admin.com).
+  const isAdmin = profile?.email?.toLowerCase() === "admin@admin.com"
+  const [adminRobot, setAdminRobot] = useState<RobotConfig>(TRADER_PRO)
+  const [adminScore, setAdminScore] = useState({ win: "", loss: "", profit: "" })
+  const [adminSaved, setAdminSaved] = useState(false)
+
+  // Pré-carrega os campos com o placar salvo do robô selecionado.
+  useEffect(() => {
+    if (!isAdmin) return
+    try {
+      const raw = localStorage.getItem(adminRobot.scoreKey)
+      const p = raw ? JSON.parse(raw) : {}
+      setAdminScore({
+        win: String(p.win ?? 0),
+        loss: String(p.loss ?? 0),
+        profit: String(p.profit ?? 0),
+      })
+    } catch {
+      setAdminScore({ win: "0", loss: "0", profit: "0" })
+    }
+    setAdminSaved(false)
+  }, [isAdmin, adminRobot])
 
   const saveAdminScore = () => {
     try {
       // O placar do robô fica atrelado ao carimbo de ativação. Garante que existe um,
       // para que o valor definido pelo admin seja respeitado pelo flutuante.
-      let activatedAt = Number(localStorage.getItem("kayko_activated_at")) || 0
+      let activatedAt = Number(localStorage.getItem(adminRobot.activatedAtKey)) || 0
       if (activatedAt === 0) {
         activatedAt = Date.now()
-        localStorage.setItem("kayko_activated_at", String(activatedAt))
+        localStorage.setItem(adminRobot.activatedAtKey, String(activatedAt))
       }
       const next = {
         win: Math.max(0, Math.floor(Number(adminScore.win) || 0)),
         loss: Math.max(0, Math.floor(Number(adminScore.loss) || 0)),
         profit: Math.round((Number(adminScore.profit) || 0) * 100) / 100,
       }
-      localStorage.setItem("kayko_score_v1", JSON.stringify({ ...next, for: activatedAt }))
+      localStorage.setItem(adminRobot.scoreKey, JSON.stringify({ ...next, for: activatedAt }))
       // Atualiza o flutuante ao vivo caso esteja montado (mesma aba).
-      window.dispatchEvent(new CustomEvent("kayko:score-set", { detail: next }))
+      window.dispatchEvent(new CustomEvent(adminRobot.scoreSetEvent, { detail: next }))
       setAdminScore({ win: String(next.win), loss: String(next.loss), profit: String(next.profit) })
       setAdminSaved(true)
       setTimeout(() => setAdminSaved(false), 1500)
@@ -617,7 +645,7 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Robô KAYKO */}
+      {/* Robô TRADER PRO */}
       <div className="px-4 pt-6">
         <button
           onClick={() => (kaykoActive ? setKayko(false) : setShowKaykoModal(true))}
@@ -635,30 +663,106 @@ export default function ProfilePage() {
                 className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "#22d3ee1f", boxShadow: kaykoActive ? "0 0 16px #22d3ee55" : "none" }}
               >
-                <img src="/images/kayko-robot.png" alt="Robô KAYKO" className="w-full h-full object-cover" />
+                <img src="/images/kayko-robot.png" alt="Robô TRADER PRO" className="w-full h-full object-cover" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-white">
-                    Robô <span style={{ color: "#22d3ee" }}>KAYKO</span>
+                  <h3 className="text-base font-bold" style={{ color: "#22d3ee" }}>
+                    TRADER PRO
                   </h3>
                   <Bot className="w-4 h-4" style={{ color: "#22d3ee" }} />
                 </div>
-                <p className="text-[#6B7280] text-xs truncate">
+                <p className="text-[#6B7280] text-xs leading-snug line-clamp-2">
                   {kaykoActive ? "Ativo na tela de trade" : "Analisa o ativo e mostra a entrada"}
                 </p>
               </div>
             </div>
-            <span
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0"
-              style={{
-                color: kaykoActive ? "#04121a" : "#22d3ee",
-                backgroundColor: kaykoActive ? "#22d3ee" : "#22d3ee1f",
-              }}
-            >
-              <Power className="w-3.5 h-3.5" />
-              {kaykoActive ? "Ativado" : "Ativar"}
-            </span>
+            {kaykoActive ? (
+              <span
+                className="inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-full text-sm font-bold shrink-0 border"
+                style={{
+                  color: "#22d3ee",
+                  borderColor: "#22d3ee66",
+                  backgroundColor: "#22d3ee14",
+                }}
+              >
+                <span className="relative flex w-2.5 h-2.5" aria-hidden="true">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-[#22d3ee] opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-[#22d3ee]" />
+                </span>
+                Ativado
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full text-sm font-bold shrink-0"
+                style={{
+                  color: "#04121a",
+                  background: "linear-gradient(135deg, #67e8f9 0%, #22d3ee 45%, #0ea5e9 100%)",
+                  boxShadow: "0 6px 20px -4px #22d3ee80, inset 0 1px 0 #ffffff55",
+                }}
+              >
+                <Power className="w-4 h-4" strokeWidth={2.75} aria-hidden="true" />
+                Ativar
+              </span>
+            )}
+          </div>
+        </button>
+      </div>
+
+      {/* Robô OLHO DE CRONOS */}
+      <div className="px-4 pt-3">
+        <button
+          onClick={() => (cronosActive ? setCronos(false) : setShowCronosModal(true))}
+          className="w-full text-left p-5 rounded-2xl border active:scale-[0.99] transition-transform"
+          style={{
+            borderColor: cronosActive ? "#facc1555" : "#1F2933",
+            background: cronosActive ? "linear-gradient(135deg, #facc1518 0%, #121826 100%)" : "#121826",
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
+                style={{ backgroundColor: "#facc151f", boxShadow: cronosActive ? "0 0 16px #facc1555" : "none" }}
+              >
+                <img src={OLHO_DE_CRONOS.image || "/placeholder.svg"} alt="Robô OLHO DE CRONOS" className="w-full h-full object-cover" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold" style={{ color: "#facc15" }}>
+                    OLHO DE CRONOS
+                  </h3>
+                  <Bot className="w-4 h-4 shrink-0" style={{ color: "#facc15" }} />
+                </div>
+                <p className="text-[#6B7280] text-xs leading-snug line-clamp-2">
+                  {cronosActive ? "Ativo na tela de trade" : "Visão do tempo certo da entrada"}
+                </p>
+              </div>
+            </div>
+            {cronosActive ? (
+              <span
+                className="inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-full text-sm font-bold shrink-0 border"
+                style={{ color: "#facc15", borderColor: "#facc1566", backgroundColor: "#facc1514" }}
+              >
+                <span className="relative flex w-2.5 h-2.5" aria-hidden="true">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-[#facc15] opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-[#facc15]" />
+                </span>
+                Ativado
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full text-sm font-bold shrink-0"
+                style={{
+                  color: "#1a1204",
+                  background: "linear-gradient(135deg, #fde68a 0%, #facc15 45%, #d97706 100%)",
+                  boxShadow: "0 6px 20px -4px #facc1580, inset 0 1px 0 #ffffff55",
+                }}
+              >
+                <Power className="w-4 h-4" strokeWidth={2.75} aria-hidden="true" />
+                Ativar
+              </span>
+            )}
           </div>
         </button>
       </div>
@@ -674,7 +778,31 @@ export default function ProfilePage() {
               <ShieldCheck className="w-4 h-4 text-[#f97316]" />
               <h3 className="text-base font-bold text-white">Editar placar do flutuante</h3>
             </div>
-            <p className="text-[#6B7280] text-xs mb-4">Somente admin. Define o resultado exibido no robô KAYKO.</p>
+            <p className="text-[#6B7280] text-xs mb-4">
+              Somente admin. Define o resultado exibido no robô {adminRobot.name}.
+            </p>
+            <div role="tablist" aria-label="Robô" className="grid grid-cols-2 gap-2 p-1 mb-4 rounded-xl bg-[#0b111c] border border-[#1F2933]">
+              {[TRADER_PRO, OLHO_DE_CRONOS].map((r) => {
+                const selected = adminRobot.id === r.id
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setAdminRobot(r)}
+                    className="min-h-11 px-2 rounded-lg text-xs font-bold tracking-wide transition-colors"
+                    style={
+                      selected
+                        ? { background: `linear-gradient(135deg, ${r.accent}, ${r.accentTo})`, color: "#0b111c" }
+                        : { color: "#9CA3AF" }
+                    }
+                  >
+                    {r.name}
+                  </button>
+                )
+              })}
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: "#22c55e" }}>
@@ -825,6 +953,12 @@ export default function ProfilePage() {
         isOpen={showKaykoModal}
         onClose={() => setShowKaykoModal(false)}
         onActivated={() => setKayko(true)}
+      />
+      <KaykoActivateModal
+        isOpen={showCronosModal}
+        onClose={() => setShowCronosModal(false)}
+        onActivated={() => setCronos(true)}
+        robot={OLHO_DE_CRONOS}
       />
     </div>
   )

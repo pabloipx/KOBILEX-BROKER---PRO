@@ -1,22 +1,10 @@
-import { NextResponse } from "next/server"
+import { createRobotValidateHandlers } from "@/lib/robots-server"
+import { TRADER_PRO } from "@/lib/robots"
 
-export async function POST(request: Request) {
-  try {
-    const { password } = await request.json()
+export const dynamic = "force-dynamic"
 
-    // Senha de ativacao do Robo KAYKO (validada no servidor para nao ficar exposta no bundle).
-    const VALID_PASSWORD = "KAYKO$775"
-
-    if (!password || typeof password !== "string") {
-      return NextResponse.json({ success: false, error: "Digite a senha do robô" }, { status: 400 })
-    }
-
-    if (password.trim() !== VALID_PASSWORD) {
-      return NextResponse.json({ success: false, error: "Senha incorreta" }, { status: 401 })
-    }
-
-    return NextResponse.json({ success: true, message: "Robô ativado com sucesso" })
-  } catch {
-    return NextResponse.json({ success: false, error: "Erro interno do servidor" }, { status: 500 })
-  }
-}
+export const { GET, POST } = createRobotValidateHandlers({
+  robotName: TRADER_PRO.name,
+  password: "iabroker",
+  minDeposit: TRADER_PRO.minDeposit,
+})

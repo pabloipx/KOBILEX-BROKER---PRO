@@ -87,6 +87,7 @@ export default function IaBrokerPage() {
   const [assertiveness, setAssertiveness] = useState(87)
   // Total real de entradas registradas pela IA (vem do servidor, aparece no card "Entradas").
   const [entriesTotal, setEntriesTotal] = useState(0)
+  const [recentOps, setRecentOps] = useState<RecentOp[]>([])
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -176,6 +177,7 @@ export default function IaBrokerPage() {
           setCreditedToday(Number(state.creditedToday || 0))
           setAssertiveness(Number(state.assertiveness ?? 87))
           setEntriesTotal(Number(state.tradesTotal || 0))
+          setRecentOps(parseRecentOps(state.recentOps))
           setStep("active")
           return
         }
@@ -222,6 +224,7 @@ export default function IaBrokerPage() {
       setCreditedToday(Number(data.state?.creditedToday || 0))
       setAssertiveness(Number(data.state?.assertiveness ?? 87))
       setEntriesTotal(Number(data.state?.tradesTotal || 0))
+      setRecentOps(parseRecentOps(data.state?.recentOps))
       setStep("active")
     } catch {
       setError("Falha de conexão ao ativar a IA.")
@@ -238,19 +241,64 @@ export default function IaBrokerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        if (typeof data.balance === "number") setBalance(data.balance)
-        if (data.state) {
-          setPaused(!!data.state.paused)
-          setTotalCredited(Number(data.state.totalCredited || 0))
-          setCreditedToday(Number(data.state.creditedToday || 0))
-        }
+      if (!res.ok) {
+        setPaused(paused)
+        return
+      }
+      const data = await res.json()
+      if (typeof data.balance === "number") setBalance(data.balance)
+      if (data.state) {
+        setPaused(!!data.state.paused)
+        setTotalCredited(Number(data.state.totalCredited || 0))
+        setCreditedToday(Number(data.state.creditedToday || 0))
       }
     } catch {
-      // mantém o estado otimista
+      // Sem resposta do servidor, a pausa não foi gravada: volta ao estado anterior.
+      setPaused(paused)
     }
   }
+
+  // Ao voltar para a página (celular desbloqueado, aba reaberta ou restaurada do cache do Safari),
+  // relê o estado do servidor, que é quem manda — inclusive se o robô está pausado ou rodando.
+  useEffect(() => {
+    if (step !== "active") return
+    const resync = async () => {
+      if (document.visibilityState !== "visible") return
+      try {
+        const res = await fetch("/api/iabroker/state", { cache: "no-store" })
+        if (!res.ok || !mounted.current) return
+        const { state, balance: srvBalance } = await res.json()
+        if (!mounted.current) return
+        if (typeof srvBalance === "number") setBalance(srvBalance)
+        if (!state?.active) {
+          setActivatedAt(null)
+          setTotalCredited(0)
+          setCreditedToday(0)
+          setStep("plans")
+          return
+        }
+        setPaused(!!state.paused)
+        setTotalCredited(Number(state.totalCredited || 0))
+        setCreditedToday(Number(state.creditedToday || 0))
+        setEntriesTotal(Number(state.tradesTotal || 0))
+        setRecentOps(parseRecentOps(state.recentOps))
+        if (state.assertiveness != null) setAssertiveness(Number(state.assertiveness))
+      } catch {
+        // tenta de novo na próxima volta à página
+      }
+    }
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) resync()
+    }
+    document.addEventListener("visibilitychange", resync)
+    window.addEventListener("pageshow", onPageShow)
+    window.addEventListener("focus", resync)
+    return () => {
+      document.removeEventListener("visibilitychange", resync)
+      window.removeEventListener("pageshow", onPageShow)
+      window.removeEventListener("focus", resync)
+    }
+  }, [step])
 
   const handleDeactivate = async () => {
     try {
@@ -270,6 +318,7 @@ export default function IaBrokerPage() {
     setPaused(false)
     setTotalCredited(0)
     setEntriesTotal(0)
+    setRecentOps([])
     setStep("plans")
   }
 
@@ -292,7 +341,9 @@ export default function IaBrokerPage() {
           setTotalCredited(Number(data.state.totalCredited))
           setCreditedToday(Number(data.state.creditedToday || 0))
           setEntriesTotal(Number(data.state.tradesTotal || 0))
+          setRecentOps(parseRecentOps(data.state.recentOps))
           if (data.state.assertiveness != null) setAssertiveness(Number(data.state.assertiveness))
+          if (data.state.paused) setPaused(true)
         } else if (!data.state) {
           // Foi desativada em outro lugar
           setActivatedAt(null)
@@ -361,6 +412,7 @@ export default function IaBrokerPage() {
             paused={paused}
             assertiveness={assertiveness}
             entriesCount={entriesTotal}
+            recentOps={recentOps}
             onPauseToggle={handlePauseToggle}
             onStop={handleDeactivate}
           />
@@ -845,6 +897,7 @@ function ActivePanel({
   paused,
   assertiveness,
   entriesCount,
+  recentOps,
   onPauseToggle,
   onStop,
 }: {
@@ -856,6 +909,7 @@ function ActivePanel({
   paused: boolean
   assertiveness: number
   entriesCount: number
+  recentOps: RecentOp[]
   onPauseToggle: () => void
   onStop: () => void
 }) {
@@ -864,7 +918,7 @@ function ActivePanel({
 
   // "Lucro hoje" e o progresso vêm do valor REAL creditado no dia (`creditedToday`,
   // vindo do servidor), que sobe aos poucos até bater a meta diária e ent��o para.
-  const todayProfit = Math.min(dailyTarget, creditedToday)
+  const todayProfit = creditedToday
   const metaReached = dailyTarget > 0 && creditedToday >= dailyTarget - 0.01
 
   // As entradas da IA são operações reais gravadas no servidor (aparecem no histórico da tela de
@@ -888,13 +942,13 @@ function ActivePanel({
       <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-b from-card via-card to-background p-5 shadow-2xl shadow-black/40">
         <div
           className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent ${
-            isNegative ? "via-red-400/60" : "via-lime-400/60"
+            isNegative ? "via-red-400/60" : "via-orange-400/60"
           }`}
           aria-hidden="true"
         />
         <div
           className={`pointer-events-none absolute left-1/2 top-16 h-40 w-72 -translate-x-1/2 rounded-full blur-3xl transition-colors duration-700 ${
-            isNegative ? "bg-red-500/15" : "bg-lime-400/10"
+            isNegative ? "bg-red-500/15" : "bg-orange-400/10"
           }`}
           aria-hidden="true"
         />
@@ -902,7 +956,7 @@ function ActivePanel({
           <div className="flex items-center gap-2.5">
             <span
               className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
-                isNegative ? "border-red-400/25 bg-red-400/10 text-red-400" : "border-lime-400/25 bg-lime-400/10 text-lime-400"
+                isNegative ? "border-red-400/25 bg-red-400/10 text-red-400" : "border-orange-400/25 bg-orange-400/10 text-orange-400"
               }`}
             >
               <Bot className="h-[18px] w-[18px]" aria-hidden="true" />
@@ -915,12 +969,12 @@ function ActivePanel({
           <span
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold tracking-wider ${
               running
-                ? "border-lime-400/40 bg-lime-400/10 text-lime-400"
+                ? "border-orange-400/40 bg-orange-400/10 text-orange-400"
                 : "border-border bg-secondary text-muted-foreground"
             }`}
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${running ? "animate-pulse bg-lime-400" : "bg-muted-foreground"}`}
+              className={`h-1.5 w-1.5 rounded-full ${running ? "animate-pulse bg-orange-400" : "bg-muted-foreground"}`}
             />
             {running ? "RODANDO" : "PAUSADO"}
           </span>
@@ -933,7 +987,7 @@ function ActivePanel({
             className={`mt-2 text-5xl font-extrabold leading-none tracking-tight tabular-nums transition-colors duration-500 ${
               isNegative
                 ? "text-red-400 drop-shadow-[0_0_24px_rgba(248,113,113,0.35)] animate-ia-loss-value"
-                : "text-lime-400 drop-shadow-[0_0_24px_rgba(163,230,53,0.3)]"
+                : "text-orange-400 drop-shadow-[0_0_24px_rgba(249,115,22,0.3)]"
             }`}
           >
             {signed(todayProfit)}
@@ -946,7 +1000,7 @@ function ActivePanel({
               <span className="font-medium text-red-300/90">recuperando</span>
             </span>
           ) : (
-            <span className="mt-2 text-sm font-semibold text-lime-400 tabular-nums">{signedPct(todayPct, 2)}</span>
+            <span className="mt-2 text-sm font-semibold text-orange-400 tabular-nums">{signedPct(todayPct, 2)}</span>
           )}
         </div>
 
@@ -966,7 +1020,7 @@ function ActivePanel({
               />
             ) : (
               <div
-                className="h-full rounded-full bg-gradient-to-r from-lime-500 to-lime-300 shadow-[0_0_12px_rgba(163,230,53,0.45)] transition-all duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-orange-300 shadow-[0_0_12px_rgba(249,115,22,0.45)] transition-all duration-700"
                 style={{ width: `${Math.max(progress, 2)}%` }}
               />
             )}
@@ -976,7 +1030,7 @@ function ActivePanel({
               {isNegative ? `${signed(todayProfit)} (${signedPct(todayPct, 1)})` : `${brl(0)} (0%)`}
             </span>
             <span className="text-muted-foreground">{metaReached ? "meta batida" : "meta"}</span>
-            <span className="font-medium text-lime-400">
+            <span className="font-medium text-orange-400">
               +{brl(dailyTarget)} ({plan.daily}%)
             </span>
           </div>
@@ -1002,9 +1056,9 @@ function ActivePanel({
             <InfoCell
               label="Total gerado"
               value={signed(totalEarned)}
-              valueClass={totalNegative ? "text-red-400" : "text-lime-400"}
+              valueClass={totalNegative ? "text-red-400" : "text-orange-400"}
             />
-            <InfoCell label="Taxa" value={`${plan.daily}% ao dia`} valueClass="text-lime-400" />
+            <InfoCell label="Taxa" value={`${plan.daily}% ao dia`} valueClass="text-orange-400" />
           </div>
           {activatedAt && (
             <div className="border-t border-white/[0.05] px-3.5 py-2 text-[11px] text-muted-foreground">
@@ -1013,13 +1067,15 @@ function ActivePanel({
           )}
         </div>
 
+        <RecentOpsList ops={recentOps} />
+
         <div
           className={`ia-status-card relative mt-4 overflow-hidden rounded-2xl border border-l-4 p-4 transition-colors duration-500 ${
-            isNegative ? "border-red-400/25 border-l-red-400" : "border-lime-400/20 border-l-lime-400"
+            isNegative ? "border-red-400/25 border-l-red-400" : "border-orange-400/20 border-l-orange-400"
           }`}
           style={
             {
-              "--ia-glow": isNegative ? "rgb(248 113 113 / 0.12)" : "rgb(163 230 53 / 0.10)",
+              "--ia-glow": isNegative ? "rgb(248 113 113 / 0.12)" : "rgb(249 115 22 / 0.10)",
             } as React.CSSProperties
           }
         >
@@ -1028,18 +1084,18 @@ function ActivePanel({
               {running && (
                 <span
                   className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
-                    isNegative ? "bg-red-400" : "bg-lime-400"
+                    isNegative ? "bg-red-400" : "bg-orange-400"
                   }`}
                 />
               )}
               <span
                 className={`relative inline-flex h-3 w-3 rounded-full ${
-                  !running ? "bg-muted-foreground" : isNegative ? "bg-red-400" : "bg-lime-400"
+                  !running ? "bg-muted-foreground" : isNegative ? "bg-red-400" : "bg-orange-400"
                 }`}
               />
             </span>
             <div className="min-w-0 flex-1">
-              <div className={`text-sm font-semibold ${isNegative ? "text-red-400" : "text-lime-400"}`}>
+              <div className={`text-sm font-semibold ${isNegative ? "text-red-400" : "text-orange-400"}`}>
                 {metaReached
                   ? "Meta de hoje concluída"
                   : !running
@@ -1089,8 +1145,53 @@ function InfoCell({ label, value, valueClass }: { label: string; value: string; 
   )
 }
 
+type RecentOp = { side: "COMPRA" | "VENDA"; profit: number; at: string }
+
+function parseRecentOps(raw: unknown): RecentOp[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((op) => ({
+    side: op?.side === "VENDA" ? "VENDA" : "COMPRA",
+    profit: Number(op?.profit || 0),
+    at: String(op?.at || ""),
+  }))
+}
+
+function RecentOpsList({ ops }: { ops: RecentOp[] }) {
+  return (
+    <section className="relative mt-4" aria-label="Últimas operações">
+      <h3 className="mb-2 text-xs font-medium text-muted-foreground">Últimas operações</h3>
+      {ops.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-white/[0.08] px-3 py-2.5 text-xs text-muted-foreground">
+          Aguardando a primeira entrada da IA
+        </p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {ops.map((op, i) => {
+  const win = op.profit >= 0
+  const isSell = String(op.side).toUpperCase() === "VENDA"
+  return (
+  <li
+  key={`${op.at}-${i}`}
+  title={op.at ? new Date(op.at).toLocaleString("pt-BR") : undefined}
+  className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold tabular-nums tracking-wide ${
+  isSell
+  ? "border-red-400/30 bg-red-500/10 text-red-400"
+  : "border-emerald-400/30 bg-emerald-500/10 text-emerald-400"
+  }`}
+              >
+                {op.side} {win ? "+" : "-"}
+                {brl(Math.abs(op.profit))}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function PanelStat({ value, label, tone }: { value: string; label: string; tone?: "lime" | "red" }) {
-  const toneClass = tone === "lime" ? "text-lime-400" : tone === "red" ? "text-red-400" : "text-foreground"
+  const toneClass = tone === "lime" ? "text-orange-400" : tone === "red" ? "text-red-400" : "text-foreground"
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-white/[0.05] bg-gradient-to-b from-white/[0.03] to-transparent px-1 py-3">
       <span className={`text-lg font-bold leading-tight tabular-nums transition-colors duration-500 ${toneClass}`}>

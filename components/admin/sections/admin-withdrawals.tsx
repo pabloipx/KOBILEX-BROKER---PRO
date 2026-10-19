@@ -210,7 +210,10 @@ export function AdminWithdrawals({ onUpdate }: AdminWithdrawalsProps) {
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-gray-400 text-sm font-mono">
-                        {withdrawal.payment_details?.pix_key || "N/A"}
+                        {(withdrawal as any).pix_key ||
+                          (withdrawal as any).crypto_wallet ||
+                          withdrawal.payment_details?.pix_key ||
+                          "N/A"}
                       </span>
                     </td>
                     <td className="px-4 py-3">{getStatusBadge(withdrawal.status)}</td>

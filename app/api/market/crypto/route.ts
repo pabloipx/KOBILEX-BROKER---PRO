@@ -24,6 +24,10 @@ import {
 //    O scanner do TradingView so expoe o snapshot atual, sem historico.
 export const dynamic = "force-dynamic"
 
+// Cotacao e velas sao iguais para todos os usuarios: a CDN absorve as consultas repetidas.
+const PRICE_CACHE = { headers: { "Cache-Control": "public, max-age=0, s-maxage=1, stale-while-revalidate=2" } }
+const CANDLES_CACHE = { headers: { "Cache-Control": "public, max-age=0, s-maxage=15, stale-while-revalidate=60" } }
+
 // O mapa de simbolos, o arredondamento e a busca de preco vivem em lib/price-engine/real-quote
 // para que a LIQUIDACAO das operacoes use exatamente a mesma cotacao que alimenta o grafico.
 // Duas copias divergiriam com o tempo e o usuario seria pago por um preco diferente do que viu.
@@ -251,7 +255,7 @@ export async function GET(req: Request) {
       const live = await getLivePrice(symbol)
       if (live !== null) {
         recordTick(symbol, live)
-        return NextResponse.json({ price: live })
+        return NextResponse.json({ price: live }, PRICE_CACHE)
       }
 
       // A fonte principal falhou. Cai no meta do Yahoo para manter o ativo negociavel.
@@ -276,7 +280,7 @@ export async function GET(req: Request) {
       // a cotacao do usuario nao pode esperar (nem falhar por causa da) gravacao.
       recordTick(symbol, price)
 
-      return NextResponse.json({ price })
+      return NextResponse.json({ price }, PRICE_CACHE)
     }
 
     // type === "candles"
@@ -293,7 +297,7 @@ export async function GET(req: Request) {
       // O 10m nao existe na fonte: vem em 5min e e agregado aqui, preservando o OHLC do periodo.
       const candles = aggregate(td, tf)
       if (candles.length >= 2) {
-        return NextResponse.json({ candles: candles.slice(-240), source: "twelvedata" })
+        return NextResponse.json({ candles: candles.slice(-240), source: "twelvedata" }, CANDLES_CACHE)
       }
     }
 
@@ -308,7 +312,7 @@ export async function GET(req: Request) {
 
       const merged = buildMinuteCandles(yahoo, recorded, info.decimals)
       if (merged.length >= 2) {
-        return NextResponse.json({ candles: merged.slice(-240), source: "merged" })
+        return NextResponse.json({ candles: merged.slice(-240), source: "merged" }, CANDLES_CACHE)
       }
     }
 
@@ -324,14 +328,16 @@ export async function GET(req: Request) {
     if (!candles.length) throw new Error("sem velas")
 
     // O Yahoo devolve float32 alargado (64256.01171875); a UI espera a precisao do par.
-    const rounded = candles.map(c => ({
+    // So as 240 velas que o grafico mostra: o range de 1 mes chega a milhares de pontos.
+    const d = info.decimals
+    const rounded = candles.slice(-240).map(c => ({
       time: c.time,
-      open: round(c.open, info.decimals),
-      high: round(c.high, info.decimals),
-      low: round(c.low, info.decimals),
-      close: round(c.close, info.decimals),
+      open: round(c.open, d),
+      high: round(c.high, d),
+      low: round(c.low, d),
+      close: round(c.close, d),
     }))
-    return NextResponse.json({ candles: rounded })
+    return NextResponse.json({ candles: rounded }, CANDLES_CACHE)
   } catch (e) {
     console.log("[v0] market feed erro:", symbol, (e as Error).message)
     return NextResponse.json({ error: "feed_unavailable" }, { status: 502 })

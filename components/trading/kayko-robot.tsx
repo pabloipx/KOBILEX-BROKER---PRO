@@ -311,8 +311,24 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
             </div>
           </div>
 
+          <div
+            className="mt-1 flex items-stretch overflow-hidden rounded-full border bg-[#0B0F14]/85 backdrop-blur-md shadow-lg text-[11px] md:text-xs font-bold tabular-nums"
+            style={{ borderColor: `${ACCENT}55`, boxShadow: `0 0 14px -4px ${ACCENT}88` }}
+            aria-label={`Placar: ${score.win} win, ${score.loss} loss`}
+          >
+            <span className="flex items-center gap-1.5 px-2.5 py-1 text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+              WIN <span className="text-white">{score.win}</span>
+            </span>
+            <span className="w-px bg-white/10" aria-hidden="true" />
+            <span className="flex items-center gap-1.5 px-2.5 py-1 text-red-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-400" aria-hidden="true" />
+              LOSS <span className="text-white">{score.loss}</span>
+            </span>
+          </div>
+
           {signal && !isAnalyzing && (
-            <div className="-mt-1 w-[180px] md:w-[220px] rounded-2xl backdrop-blur-md shadow-xl">
+            <div className="mt-1.5 w-[180px] md:w-[220px] rounded-2xl backdrop-blur-md shadow-xl">
               <RobotSignalTimer signal={signal} onFinish={clearSignal} />
             </div>
           )}

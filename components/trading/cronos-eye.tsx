@@ -81,15 +81,15 @@ export function CronosEye({ look, scanning = false, showRings = true, className 
             height: "46%",
             transform: irisTransform,
             transition: look ? "transform 900ms cubic-bezier(.65,0,.25,1)" : undefined,
-            animation: look ? undefined : "cronos-wander 11s ease-in-out infinite",
+            animation: look ? undefined : `cronos-wander ${scanning ? 4.5 : 11}s ease-in-out infinite`,
           }}
         >
           <div
             className="absolute inset-0 rounded-full overflow-hidden"
             style={{
               background:
-                "radial-gradient(circle, transparent 38%, rgba(90,60,10,0.35) 40%, transparent 46%, transparent 88%, rgba(90,60,10,0.45) 100%), repeating-conic-gradient(from 0deg, #fff6dc 0deg 2.6deg, #d8b46a 2.6deg 5.2deg)",
-              boxShadow: "0 0 0 2px #fff3c4, 0 0 14px rgba(255,243,196,0.8), inset 0 0 10px rgba(80,50,0,0.5)",
+                "radial-gradient(circle, transparent 38%, rgba(90,60,10,0.35) 40%, transparent 46%, transparent 88%, rgba(90,60,10,0.45) 100%), radial-gradient(circle, rgba(255,214,102,0.9) 30%, rgba(180,110,10,0.15) 70%), repeating-conic-gradient(from 0deg, #ffe08a 0deg 2.2deg, #a8650a 2.2deg 4.6deg)",
+              boxShadow: "0 0 0 2px #ffd966, 0 0 16px rgba(255,200,60,0.9), inset 0 0 10px rgba(80,40,0,0.6)",
             }}
           >
             {scanning && (

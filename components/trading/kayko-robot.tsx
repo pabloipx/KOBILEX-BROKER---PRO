@@ -2,18 +2,14 @@
 
 import type React from "react"
 import { useState, useRef, useEffect, useCallback } from "react"
-import { X, Loader2, TrendingUp, TrendingDown, Radar, Clock, Cpu } from "lucide-react"
+import { X, Loader2, Radar, Cpu } from "lucide-react"
 import { subscribeLivePrice, getLivePrice } from "@/lib/price-engine/live-price-store"
 import { TRADER_PRO, TRADE_RESULT_EVENT, type RobotConfig } from "@/lib/robots"
 import { CronosEye, CronosEyeStyles, CronosStage } from "@/components/trading/cronos-eye"
+import { CronosEyeIcon } from "@/components/trading/cronos-eye-icon"
+import { RobotScoreBoard, RobotSignalTimer, type RobotSignal } from "@/components/trading/robot-signal-card"
 
-interface KaykoSignal {
-  type: "CALL" | "PUT"
-  assetName: string
-  entryTime: string
-  expirationLabel: string
-  confidence: number
-}
+type KaykoSignal = RobotSignal
 
 interface KaykoRobotProps {
   isActive: boolean
@@ -243,18 +239,13 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
       entry.setSeconds(0, 0)
       const minutesAhead = Math.random() < 0.5 ? 4 : 5
       entry.setMinutes(entry.getMinutes() + minutesAhead)
-      const entryTime = entry.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-
-      const mins = Math.max(1, Math.round(expirySeconds / 60))
-      const expirationLabel = `${mins} ${mins === 1 ? "minuto" : "minutos"}`
-
       const confidence = Math.floor(Math.random() * 12) + 86
 
       setSignal({
         type,
         assetName: assetName || symbol || "Ativo",
-        entryTime,
-        expirationLabel,
+        entryAt: entry.getTime(),
+        expirySeconds: Math.max(30, expirySeconds),
         confidence,
       })
 
@@ -272,9 +263,11 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
     }
   }, [])
 
-  if (!isActive) return null
+  const clearSignal = useCallback(() => {
+    window.setTimeout(() => setSignal(null), 4000)
+  }, [])
 
-  const isCall = signal?.type === "CALL"
+  if (!isActive) return null
 
   return (
     <>
@@ -289,15 +282,17 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
         aria-label={`Abrir robô ${robot.name}`}
       >
         <div className="flex flex-col items-center">
-          <div className="relative w-20 h-20 md:w-28 md:h-28">
-            <span
-              className="absolute left-1/2 top-1/2 w-14 h-14 md:w-20 md:h-20 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
-              style={{ backgroundColor: `${ACCENT}44` }}
-            />
+          <div className={isCronos ? "relative w-[132px] h-[84px] md:w-[176px] md:h-[112px] mb-1" : "relative w-20 h-20 md:w-28 md:h-28"}>
+            {!isCronos && (
+              <span
+                className="absolute left-1/2 top-1/2 w-14 h-14 md:w-20 md:h-20 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
+                style={{ backgroundColor: `${ACCENT}44` }}
+              />
+            )}
             {isCronos ? (
               <>
                 <CronosEyeStyles />
-                <CronosEye showRings={false} scanning={isAnalyzing} className="relative w-full h-full p-2" />
+                <CronosEyeIcon analyzing={isAnalyzing} className="w-full h-full" />
               </>
             ) : (
               <img
@@ -318,27 +313,11 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
 
           {/* Placar WIN/LOSS acumulado */}
           <div
-            className="-mt-1 w-[132px] md:w-[168px] rounded-xl p-1.5 md:p-2 backdrop-blur-md border shadow-xl"
-            style={{ backgroundColor: "rgba(8,12,17,0.82)", borderColor: `${ACCENT}55` }}
+            className="-mt-1 w-[180px] md:w-[220px] rounded-2xl p-2 md:p-2.5 space-y-2 backdrop-blur-md border shadow-xl"
+            style={{ backgroundColor: "rgba(8,12,17,0.88)", borderColor: `${ACCENT}66` }}
           >
-            <div className="flex gap-1">
-              <div className="flex-1 rounded-lg px-2 py-1 flex items-center justify-between" style={{ backgroundColor: "rgba(34,197,94,0.15)" }}>
-                <span className="text-[9px] font-bold uppercase tracking-wide text-[#22c55e]">Win</span>
-                <span className="text-sm font-black text-[#22c55e] leading-none">{score.win}</span>
-              </div>
-              <div className="flex-1 rounded-lg px-2 py-1 flex items-center justify-between" style={{ backgroundColor: "rgba(239,68,68,0.15)" }}>
-                <span className="text-[9px] font-bold uppercase tracking-wide text-[#EF4444]">Loss</span>
-                <span className="text-sm font-black text-[#EF4444] leading-none">{score.loss}</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between px-1 pt-1">
-              <span className={`text-[11px] font-bold ${score.profit >= 0 ? "text-[#22c55e]" : "text-[#EF4444]"}`}>
-                {score.profit >= 0 ? "+" : "-"}R$ {Math.abs(score.profit).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-              <span className="text-[11px] font-bold text-white/70">
-                {score.win + score.loss > 0 ? Math.round((score.win / (score.win + score.loss)) * 100) : 0}%
-              </span>
-            </div>
+            <RobotScoreBoard score={score} />
+            {signal && !isAnalyzing && <RobotSignalTimer signal={signal} onFinish={clearSignal} />}
           </div>
         </div>
       </div>
@@ -434,54 +413,9 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
               </button>
 
               {signal && !isAnalyzing && (
-                <div
-                  className="relative p-5 rounded-2xl border animate-in slide-in-from-bottom-4 duration-500 overflow-hidden"
-                  style={{
-                    borderColor: isCall ? "#22c55e80" : "#EF444480",
-                    background: isCall
-                      ? "linear-gradient(135deg, rgba(34,197,94,0.18), transparent)"
-                      : "linear-gradient(135deg, rgba(239,68,68,0.18), transparent)",
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-white/60 text-sm font-medium">Entrada confirmada</span>
-                    <div
-                      className="px-3 py-1 rounded-full text-xs font-bold text-white"
-                      style={{ backgroundColor: isCall ? "#22c55e" : "#EF4444" }}
-                    >
-                      {signal.confidence}% de acerto
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-white/50 text-xs">Ativo</p>
-                      <p className="text-white font-bold text-lg leading-tight">{signal.assetName}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isCall ? (
-                        <TrendingUp className="w-7 h-7 text-[#22c55e]" />
-                      ) : (
-                        <TrendingDown className="w-7 h-7 text-[#EF4444]" />
-                      )}
-                      <p className={`font-black text-2xl ${isCall ? "text-[#22c55e]" : "text-[#EF4444]"}`}>
-                        {isCall ? "COMPRA" : "VENDA"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 mt-4">
-                    <div className="rounded-xl px-3 py-2.5 bg-black/30">
-                      <p className="text-white/40 text-[10px] uppercase tracking-wide flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> Horário de entrada
-                      </p>
-                      <p className="text-white font-mono font-bold text-base mt-0.5">{signal.entryTime}</p>
-                    </div>
-                    <div className="rounded-xl px-3 py-2.5 bg-black/30">
-                      <p className="text-white/40 text-[10px] uppercase tracking-wide">Expiração</p>
-                      <p className="text-white font-bold text-base mt-0.5">{signal.expirationLabel}</p>
-                    </div>
-                  </div>
+                <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-500">
+                  <RobotScoreBoard score={score} size="lg" />
+                  <RobotSignalTimer signal={signal} size="lg" />
                 </div>
               )}
 

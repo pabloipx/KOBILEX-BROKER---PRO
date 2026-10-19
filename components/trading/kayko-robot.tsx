@@ -7,7 +7,7 @@ import { subscribeLivePrice, getLivePrice } from "@/lib/price-engine/live-price-
 import { TRADER_PRO, TRADE_RESULT_EVENT, type RobotConfig } from "@/lib/robots"
 import { CronosEye, CronosEyeStyles, CronosStage } from "@/components/trading/cronos-eye"
 import { CronosEyeIcon } from "@/components/trading/cronos-eye-icon"
-import { RobotScoreBoard, RobotSignalTimer, type RobotSignal } from "@/components/trading/robot-signal-card"
+import { RobotSignalTimer, type RobotSignal } from "@/components/trading/robot-signal-card"
 
 type KaykoSignal = RobotSignal
 
@@ -311,14 +311,11 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
             </div>
           </div>
 
-          {/* Placar WIN/LOSS acumulado */}
-          <div
-            className="-mt-1 w-[180px] md:w-[220px] rounded-2xl p-2 md:p-2.5 space-y-2 backdrop-blur-md border shadow-xl"
-            style={{ backgroundColor: "rgba(8,12,17,0.88)", borderColor: `${ACCENT}66` }}
-          >
-            <RobotScoreBoard score={score} />
-            {signal && !isAnalyzing && <RobotSignalTimer signal={signal} onFinish={clearSignal} />}
-          </div>
+          {signal && !isAnalyzing && (
+            <div className="-mt-1 w-[180px] md:w-[220px] rounded-2xl backdrop-blur-md shadow-xl">
+              <RobotSignalTimer signal={signal} onFinish={clearSignal} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -414,7 +411,6 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
 
               {signal && !isAnalyzing && (
                 <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-500">
-                  <RobotScoreBoard score={score} size="lg" />
                   <RobotSignalTimer signal={signal} size="lg" />
                 </div>
               )}

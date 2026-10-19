@@ -86,6 +86,7 @@ export function RobotSignalTimer({
   onFinish?: () => void
 }) {
   const [now, setNow] = useState(() => Date.now())
+  const [mountedAt] = useState(() => Date.now())
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000)
@@ -105,46 +106,107 @@ export function RobotSignalTimer({
   const remaining = inOperation ? (endAt - now) / 1000 : (signal.entryAt - now) / 1000
   const lg = size === "lg"
   const Icon = isCall ? TrendingUp : TrendingDown
+  const rgb = isCall ? "34,197,94" : "239,68,68"
+
+  const phaseStart = inOperation ? signal.entryAt : Math.min(mountedAt, signal.entryAt)
+  const phaseTotal = inOperation ? signal.expirySeconds * 1000 : Math.max(1, signal.entryAt - phaseStart)
+  const progress = finished ? 0 : Math.min(1, Math.max(0, remaining * 1000 / phaseTotal))
+  const statusLabel = finished ? "Finalizada" : inOperation ? "Encerra em" : "Entrar em"
 
   return (
     <div
-      className={`rounded-2xl border ${lg ? "p-4" : "p-2.5"}`}
+      className={`relative overflow-hidden border ${lg ? "rounded-3xl p-4" : "rounded-2xl p-2.5"}`}
       style={{
-        backgroundColor: isCall ? "rgba(34,197,94,0.10)" : "rgba(239,68,68,0.10)",
-        borderColor: isCall ? "rgba(34,197,94,0.40)" : "rgba(239,68,68,0.40)",
+        background: `linear-gradient(145deg, rgba(${rgb},0.22) 0%, rgba(${rgb},0.06) 45%, rgba(8,10,14,0.92) 100%)`,
+        borderColor: `rgba(${rgb},0.45)`,
+        boxShadow: `0 0 ${lg ? 32 : 18}px -8px rgba(${rgb},0.6), inset 0 1px 0 rgba(255,255,255,0.06)`,
       }}
       role="status"
       aria-live="polite"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Icon className={`shrink-0 ${lg ? "w-6 h-6" : "w-3.5 h-3.5"}`} style={{ color }} aria-hidden="true" />
-          <span className={`${lg ? "text-2xl tracking-wide" : "text-[13px]"} font-black`} style={{ color }}>
-            {isCall ? "COMPRAR" : "VENDER"}
+      <div
+        className="pointer-events-none absolute -top-10 -right-10 rounded-full blur-2xl"
+        style={{ width: lg ? 140 : 80, height: lg ? 140 : 80, backgroundColor: `rgba(${rgb},0.25)` }}
+        aria-hidden="true"
+      />
+
+      <div className="relative flex items-center justify-between gap-2">
+        <div className={`flex items-center min-w-0 ${lg ? "gap-3" : "gap-1.5"}`}>
+          <span
+            className={`shrink-0 flex items-center justify-center rounded-xl ${lg ? "w-11 h-11" : "w-6 h-6 rounded-lg"}`}
+            style={{ backgroundColor: `rgba(${rgb},0.18)`, boxShadow: `inset 0 0 0 1px rgba(${rgb},0.4)` }}
+          >
+            <Icon className={lg ? "w-6 h-6" : "w-3.5 h-3.5"} style={{ color }} aria-hidden="true" />
           </span>
+          <div className="min-w-0">
+            {lg && (
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-white/45">Sinal</span>
+            )}
+            <span
+              className={`block font-black leading-none ${lg ? "text-2xl tracking-wide" : "text-[13px]"}`}
+              style={{ color, textShadow: `0 0 18px rgba(${rgb},0.5)` }}
+            >
+              {isCall ? "COMPRAR" : "VENDER"}
+            </span>
+          </div>
         </div>
-        <span className={`shrink-0 flex items-center gap-0.5 text-white/60 tabular-nums ${lg ? "text-base" : "text-[10px]"}`}>
-          <Clock className={lg ? "w-4 h-4" : "w-3 h-3"} aria-hidden="true" />
+        <span
+          className={`shrink-0 flex items-center gap-1 rounded-full text-white/80 tabular-nums font-semibold ${
+            lg ? "px-2.5 py-1 text-xs" : "px-1.5 py-0.5 text-[9px]"
+          }`}
+          style={{ backgroundColor: "rgba(255,255,255,0.07)" }}
+        >
+          <Clock className={lg ? "w-3.5 h-3.5" : "w-2.5 h-2.5"} aria-hidden="true" />
           {formatClock(signal.expirySeconds)}
         </span>
       </div>
 
       {lg && (
-        <p className="mt-1 text-xs text-white/50 truncate">
-          {signal.assetName} • {signal.confidence}% de acerto
-        </p>
+        <div className="relative mt-3 flex items-center gap-2 text-xs">
+          <span className="truncate rounded-full bg-white/[0.06] px-2.5 py-1 text-white/70">{signal.assetName}</span>
+          <span
+            className="shrink-0 rounded-full px-2.5 py-1 font-semibold"
+            style={{ backgroundColor: `rgba(${rgb},0.14)`, color }}
+          >
+            {signal.confidence}% de acerto
+          </span>
+        </div>
       )}
 
-      <div className={`flex items-end justify-between gap-2 ${lg ? "mt-4" : "mt-2"}`}>
-        <span className={`uppercase text-white/50 leading-tight ${lg ? "text-sm" : "text-[9px]"}`}>
-          {finished ? "Finalizada" : inOperation ? "Encerra em" : "Entrar em"}
-        </span>
-        <span
-          className={`font-black tabular-nums leading-none ${lg ? "text-4xl" : "text-xl"}`}
-          style={{ color: inOperation && !finished ? color : "#fff" }}
+      <div
+        className={`relative rounded-2xl ${lg ? "mt-4 px-4 py-3" : "mt-2 px-2 py-1.5 rounded-xl"}`}
+        style={{ backgroundColor: "rgba(0,0,0,0.35)" }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className={`uppercase font-semibold text-white/55 leading-tight ${lg ? "text-xs tracking-[0.18em]" : "text-[8px] tracking-wider"}`}
+          >
+            {statusLabel}
+          </span>
+          <span
+            className={`font-black tabular-nums leading-none ${lg ? "text-4xl" : "text-lg"}`}
+            style={{ color: inOperation && !finished ? color : "#fff" }}
+          >
+            {formatClock(finished ? 0 : remaining)}
+          </span>
+        </div>
+        <div
+          className={`overflow-hidden rounded-full bg-white/10 ${lg ? "mt-3 h-1.5" : "mt-1.5 h-1"}`}
+          role="progressbar"
+          aria-label={statusLabel}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress * 100)}
         >
-          {formatClock(finished ? 0 : remaining)}
-        </span>
+          <div
+            className="h-full rounded-full transition-[width] duration-1000 ease-linear"
+            style={{
+              width: `${progress * 100}%`,
+              background: `linear-gradient(90deg, rgba(${rgb},0.6), ${color})`,
+              boxShadow: `0 0 10px ${color}`,
+            }}
+          />
+        </div>
       </div>
     </div>
   )

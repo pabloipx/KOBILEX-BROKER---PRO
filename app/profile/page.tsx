@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 import { computeRank, RANKS, type RankProgress } from "@/lib/ranks"
 import { KaykoActivateModal } from "@/components/trading/kayko-activate-modal"
-import { OLHO_DE_CRONOS } from "@/lib/robots"
+import { OLHO_DE_CRONOS, TRADER_PRO, type RobotConfig } from "@/lib/robots"
 
 interface UserProfile {
   id: string
@@ -135,44 +135,44 @@ export default function ProfilePage() {
   // Painel admin: editar manualmente o placar do robô flutuante.
   // Visível apenas para a conta admin (admin@admin.com).
   const isAdmin = profile?.email?.toLowerCase() === "admin@admin.com"
+  const [adminRobot, setAdminRobot] = useState<RobotConfig>(TRADER_PRO)
   const [adminScore, setAdminScore] = useState({ win: "", loss: "", profit: "" })
   const [adminSaved, setAdminSaved] = useState(false)
 
-  // Ao virar admin (perfil carregado), pré-carrega os campos com o placar salvo.
+  // Pré-carrega os campos com o placar salvo do robô selecionado.
   useEffect(() => {
     if (!isAdmin) return
     try {
-      const raw = localStorage.getItem("kayko_score_v1")
-      if (raw) {
-        const p = JSON.parse(raw)
-        setAdminScore({
-          win: String(p.win ?? 0),
-          loss: String(p.loss ?? 0),
-          profit: String(p.profit ?? 0),
-        })
-      }
+      const raw = localStorage.getItem(adminRobot.scoreKey)
+      const p = raw ? JSON.parse(raw) : {}
+      setAdminScore({
+        win: String(p.win ?? 0),
+        loss: String(p.loss ?? 0),
+        profit: String(p.profit ?? 0),
+      })
     } catch {
-      // ignora
+      setAdminScore({ win: "0", loss: "0", profit: "0" })
     }
-  }, [isAdmin])
+    setAdminSaved(false)
+  }, [isAdmin, adminRobot])
 
   const saveAdminScore = () => {
     try {
       // O placar do robô fica atrelado ao carimbo de ativação. Garante que existe um,
       // para que o valor definido pelo admin seja respeitado pelo flutuante.
-      let activatedAt = Number(localStorage.getItem("kayko_activated_at")) || 0
+      let activatedAt = Number(localStorage.getItem(adminRobot.activatedAtKey)) || 0
       if (activatedAt === 0) {
         activatedAt = Date.now()
-        localStorage.setItem("kayko_activated_at", String(activatedAt))
+        localStorage.setItem(adminRobot.activatedAtKey, String(activatedAt))
       }
       const next = {
         win: Math.max(0, Math.floor(Number(adminScore.win) || 0)),
         loss: Math.max(0, Math.floor(Number(adminScore.loss) || 0)),
         profit: Math.round((Number(adminScore.profit) || 0) * 100) / 100,
       }
-      localStorage.setItem("kayko_score_v1", JSON.stringify({ ...next, for: activatedAt }))
+      localStorage.setItem(adminRobot.scoreKey, JSON.stringify({ ...next, for: activatedAt }))
       // Atualiza o flutuante ao vivo caso esteja montado (mesma aba).
-      window.dispatchEvent(new CustomEvent("kayko:score-set", { detail: next }))
+      window.dispatchEvent(new CustomEvent(adminRobot.scoreSetEvent, { detail: next }))
       setAdminScore({ win: String(next.win), loss: String(next.loss), profit: String(next.profit) })
       setAdminSaved(true)
       setTimeout(() => setAdminSaved(false), 1500)
@@ -778,7 +778,31 @@ export default function ProfilePage() {
               <ShieldCheck className="w-4 h-4 text-[#f97316]" />
               <h3 className="text-base font-bold text-white">Editar placar do flutuante</h3>
             </div>
-            <p className="text-[#6B7280] text-xs mb-4">Somente admin. Define o resultado exibido no robô TRADER PRO.</p>
+            <p className="text-[#6B7280] text-xs mb-4">
+              Somente admin. Define o resultado exibido no robô {adminRobot.name}.
+            </p>
+            <div role="tablist" aria-label="Robô" className="grid grid-cols-2 gap-2 p-1 mb-4 rounded-xl bg-[#0b111c] border border-[#1F2933]">
+              {[TRADER_PRO, OLHO_DE_CRONOS].map((r) => {
+                const selected = adminRobot.id === r.id
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setAdminRobot(r)}
+                    className="min-h-11 px-2 rounded-lg text-xs font-bold tracking-wide transition-colors"
+                    style={
+                      selected
+                        ? { background: `linear-gradient(135deg, ${r.accent}, ${r.accentTo})`, color: "#0b111c" }
+                        : { color: "#9CA3AF" }
+                    }
+                  >
+                    {r.name}
+                  </button>
+                )
+              })}
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: "#22c55e" }}>

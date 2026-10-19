@@ -51,6 +51,7 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
   const [score, setScore] = useState<KaykoScore>({ win: 0, loss: 0, profit: 0 })
   const dragRef = useRef<{ startX: number; startY: number; initialX: number; initialY: number } | null>(null)
   const movedRef = useRef(false)
+  const popupResultRef = useRef<HTMLDivElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // Histórico curto de preços do ativo atual: usado para dar um viés "real" à direção da entrada.
   const priceHistoryRef = useRef<number[]>([])
@@ -61,6 +62,15 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
       audioRef.current.volume = 0.5
     }
   }, [])
+
+  useEffect(() => {
+    if (!showPopup || !signal || isAnalyzing) return
+    // Espera o cartão do resultado montar antes de rolar o pop-up até ele.
+    const frame = window.requestAnimationFrame(() => {
+      popupResultRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [showPopup, signal, isAnalyzing])
 
   // Carrega o placar do dispositivo, mas SOMENTE se ele pertence à ativação atual.
   // O placar fica atrelado ao carimbo de ativação (kayko_activated_at): qualquer placar
@@ -426,7 +436,10 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
               </button>
 
               {signal && !isAnalyzing && (
-                <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-500">
+                <div
+                  ref={popupResultRef}
+                  className="space-y-3 scroll-mb-4 animate-in slide-in-from-bottom-4 duration-500"
+                >
                   <RobotSignalTimer signal={signal} size="lg" />
                 </div>
               )}

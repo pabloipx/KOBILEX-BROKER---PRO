@@ -3,7 +3,11 @@
 import { useState, useCallback } from "react"
 import useSWR from "swr"
 import { X, Loader2, Lock, CheckCircle, Eye, EyeOff, Wallet } from "lucide-react"
+import Link from "next/link"
 import { TRADER_PRO, type RobotConfig } from "@/lib/robots"
+import { RobotDepositProgress } from "@/components/trading/robot-deposit-progress"
+
+const formatBRL = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
 interface Eligibility {
   eligible: boolean
@@ -41,6 +45,8 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated, robot = TRADE
     revalidateOnFocus: false,
     dedupingInterval: 5000,
   })
+
+  const minDeposit = eligibility?.minDeposit ?? robot.minDeposit
 
   const reset = useCallback(() => {
     setStep("password")
@@ -161,18 +167,43 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated, robot = TRADE
           )}
 
           {step === "password" && !checkingEligibility && eligibility && !eligibility.eligible && (
-            <div className="text-center py-4">
-              <div
-                className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: `${ACCENT}22` }}
-              >
-                <Wallet className="w-8 h-8" style={{ color: ACCENT }} />
-              </div>
-              <p className="text-white/80 text-sm text-pretty">
-                {eligibility.error && eligibility.totalDeposited === undefined
-                  ? eligibility.error
-                  : "Disponível para contas com depósito mínimo de R$ 100,00 na conta real."}
-              </p>
+            <div className="text-center">
+              {eligibility.totalDeposited === undefined ? (
+                <>
+                  <div
+                    className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: `${ACCENT}22` }}
+                  >
+                    <Wallet className="w-8 h-8" style={{ color: ACCENT }} />
+                  </div>
+                  <p className="text-white/80 text-sm text-pretty">{eligibility.error || "Erro ao verificar sua conta"}</p>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-2">
+                    <Lock className="w-4 h-4" style={{ color: ACCENT }} aria-hidden="true" />
+                    <p className="text-white font-semibold text-base">Robô bloqueado</p>
+                  </div>
+                  <p className="text-white/60 text-sm text-pretty">
+                    Para usar o {robot.name}, deposite pelo menos{" "}
+                    <span className="font-semibold text-white">{formatBRL(minDeposit)}</span> na conta real.
+                  </p>
+                  <RobotDepositProgress
+                    totalDeposited={eligibility.totalDeposited}
+                    minDeposit={minDeposit}
+                    accent={ACCENT}
+                    accentTo={ACCENT_TO}
+                  />
+                  <Link
+                    href="/deposit"
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-bold text-[#0a0e13] transition active:scale-[0.98]"
+                    style={{ background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_TO})`, boxShadow: `0 8px 24px ${ACCENT}44` }}
+                  >
+                    <Wallet className="w-5 h-5" aria-hidden="true" />
+                    Depositar agora
+                  </Link>
+                </div>
+              )}
             </div>
           )}
 
@@ -186,8 +217,16 @@ export function KaykoActivateModal({ isOpen, onClose, onActivated, robot = TRADE
                   <Lock className="w-8 h-8" style={{ color: ACCENT }} />
                 </div>
                 <p className="text-white/70 text-sm">Digite a senha do robô para ativá-lo na tela de trade.</p>
-                <p className="text-xs mt-2" style={{ color: ACCENT }}>Conta liberada para o {robot.name}.</p>
               </div>
+
+              {eligibility.totalDeposited !== undefined && (
+                <RobotDepositProgress
+                  totalDeposited={eligibility.totalDeposited}
+                  minDeposit={minDeposit}
+                  accent={ACCENT}
+                  accentTo={ACCENT_TO}
+                />
+              )}
 
               <div className="relative">
                 <input

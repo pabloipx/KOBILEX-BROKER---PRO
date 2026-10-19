@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 
-const MIN_DEPOSIT = 100
-
 async function getSessionUserId() {
   const supabase = await createClient()
   const {
@@ -23,7 +21,17 @@ async function getTotalDeposited(userId: string) {
   return (data ?? []).reduce((sum, d) => sum + Number(d.amount || 0), 0)
 }
 
-export function createRobotValidateHandlers({ robotName, password: validPassword }: { robotName: string; password: string }) {
+export function createRobotValidateHandlers({
+  robotName,
+  password: validPassword,
+  minDeposit: MIN_DEPOSIT,
+}: {
+  robotName: string
+  password: string
+  minDeposit: number
+}) {
+  const minDepositLabel = MIN_DEPOSIT.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+
   async function GET() {
     try {
       const userId = await getSessionUserId()
@@ -78,7 +86,7 @@ export function createRobotValidateHandlers({ robotName, password: validPassword
           {
             success: false,
             code: "MIN_DEPOSIT",
-            error: `Para usar o ${robotName} é preciso ter depositado pelo menos R$ 100,00 na conta real. Faltam ${missing}.`,
+            error: `Para usar o ${robotName} é preciso ter depositado pelo menos ${minDepositLabel} na conta real. Faltam ${missing}.`,
           },
           { status: 403 },
         )

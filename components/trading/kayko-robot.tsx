@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { X, Loader2, TrendingUp, TrendingDown, Radar, Clock, Cpu } from "lucide-react"
 import { subscribeLivePrice, getLivePrice } from "@/lib/price-engine/live-price-store"
 import { TRADER_PRO, TRADE_RESULT_EVENT, type RobotConfig } from "@/lib/robots"
+import { CronosEye, CronosEyeStyles, CronosStage } from "@/components/trading/cronos-eye"
 
 interface KaykoSignal {
   type: "CALL" | "PUT"
@@ -46,6 +47,10 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
   const [isDragging, setIsDragging] = useState(false)
   const [showPopup, setShowPopup] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisStartedAt, setAnalysisStartedAt] = useState<number | null>(null)
+  const analysisTimerRef = useRef<number | null>(null)
+  const isCronos = robot.id === "cronos"
+  const analysisDurationMs = isCronos ? 22000 : 2600
   const [signal, setSignal] = useState<KaykoSignal | null>(null)
   const [score, setScore] = useState<KaykoScore>({ win: 0, loss: 0, profit: 0 })
   const dragRef = useRef<{ startX: number; startY: number; initialX: number; initialY: number } | null>(null)
@@ -216,8 +221,10 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
   const analyze = useCallback(() => {
     setIsAnalyzing(true)
     setSignal(null)
+    setAnalysisStartedAt(Date.now())
 
-    window.setTimeout(() => {
+    if (analysisTimerRef.current) window.clearTimeout(analysisTimerRef.current)
+    analysisTimerRef.current = window.setTimeout(() => {
       // Direção com viés na tendência recente do preço do ativo em tela.
       const hist = priceHistoryRef.current
       let bias = 0
@@ -254,9 +261,16 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
       // A análise apenas gera o sinal. O placar NÃO muda aqui — ele só sobe pelo
       // resultado real da operação quando ela é encerrada na tela de trade.
       setIsAnalyzing(false)
+      setAnalysisStartedAt(null)
       playAlert()
-    }, 2600)
-  }, [assetName, symbol, expirySeconds, playAlert])
+    }, analysisDurationMs)
+  }, [assetName, symbol, expirySeconds, playAlert, analysisDurationMs])
+
+  useEffect(() => {
+    return () => {
+      if (analysisTimerRef.current) window.clearTimeout(analysisTimerRef.current)
+    }
+  }, [])
 
   if (!isActive) return null
 
@@ -280,13 +294,20 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
               className="absolute left-1/2 top-1/2 w-14 h-14 md:w-20 md:h-20 -translate-x-1/2 -translate-y-1/2 rounded-full animate-ping"
               style={{ backgroundColor: `${ACCENT}44` }}
             />
-            <img
-              src={robot.image || "/placeholder.svg"}
-              alt={`Robô ${robot.name}`}
-              className={`relative w-full h-full ${robot.id === "cronos" ? "object-cover rounded-full p-1.5" : "object-contain"}`}
-              style={{ filter: `drop-shadow(0 0 12px ${ACCENT}aa) drop-shadow(0 2px 6px rgba(0,0,0,0.7))` }}
-              draggable={false}
-            />
+            {isCronos ? (
+              <>
+                <CronosEyeStyles />
+                <CronosEye showRings={false} scanning={isAnalyzing} className="relative w-full h-full p-2" />
+              </>
+            ) : (
+              <img
+                src={robot.image || "/placeholder.svg"}
+                alt={`Robô ${robot.name}`}
+                className="relative w-full h-full object-contain"
+                style={{ filter: `drop-shadow(0 0 12px ${ACCENT}aa) drop-shadow(0 2px 6px rgba(0,0,0,0.7))` }}
+                draggable={false}
+              />
+            )}
             <div
               className="absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-[#0B0F14] flex items-center justify-center"
               style={{ backgroundColor: ACCENT }}
@@ -328,19 +349,27 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowPopup(false)} />
 
           <div
-            className="kayko-popup relative w-full max-w-sm rounded-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 shadow-2xl border border-white/5"
-            style={{ backgroundColor: "#0a0e13" }}
+            className="kayko-popup relative w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl animate-in fade-in zoom-in-95 duration-300 shadow-2xl border"
+            style={{
+              backgroundColor: isCronos ? "#080604" : "#0a0e13",
+              borderColor: isCronos ? "rgba(250,204,21,0.25)" : "rgba(255,255,255,0.05)",
+              boxShadow: isCronos ? "0 0 60px -10px rgba(250,204,21,0.35)" : undefined,
+            }}
           >
             {/* Header */}
             <div className="relative p-5 border-b border-white/5" style={{ background: `linear-gradient(135deg, ${ACCENT}1f 0%, #0a0e13 70%)` }}>
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 flex items-center justify-center shrink-0">
-                  <img
-                    src={robot.image || "/placeholder.svg"}
-                    alt={`Robô ${robot.name}`}
-                    className={`w-full h-full ${robot.id === "cronos" ? "object-cover rounded-xl" : "object-contain"}`}
-                    style={{ filter: `drop-shadow(0 0 8px ${ACCENT}88)` }}
-                  />
+                  {isCronos ? (
+                    <CronosEye showRings={false} scanning={isAnalyzing} className="w-full h-full" />
+                  ) : (
+                    <img
+                      src={robot.image || "/placeholder.svg"}
+                      alt={`Robô ${robot.name}`}
+                      className="w-full h-full object-contain"
+                      style={{ filter: `drop-shadow(0 0 8px ${ACCENT}88)` }}
+                    />
+                  )}
                 </div>
                 <div className="flex-1">
                   <h2 className="text-white font-black text-lg tracking-wide">
@@ -370,6 +399,15 @@ export function KaykoRobot({ isActive, assetName, symbol, expirySeconds = 60, ro
 
             {/* Corpo */}
             <div className="p-5 space-y-4">
+              {isCronos && (
+                <CronosStage
+                  analyzing={isAnalyzing}
+                  startedAt={analysisStartedAt}
+                  durationMs={analysisDurationMs}
+                  assetName={assetName || symbol}
+                />
+              )}
+
               {/* Ativo atual em análise */}
               <div className="flex items-center justify-between rounded-2xl px-4 py-3 bg-white/5">
                 <span className="text-white/50 text-xs uppercase tracking-wide">Ativo em análise</span>

@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
+  IMAGE_ONLY_MESSAGE,
   MAX_MESSAGE_LENGTH,
   SUPPORT_CATEGORIES,
   type SupportMessage,
@@ -439,7 +440,25 @@ function MessageBubble({
         {!mine && !isSystem && showAvatar && (
           <span className="mb-0.5 block text-[11px] font-semibold text-primary">{SUPPORT_AGENT.name}</span>
         )}
-        <p className="whitespace-pre-wrap break-words">{message.message}</p>
+        {!mine && message.image_url && (
+          <a
+            href={message.image_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="-mx-1.5 mb-1 mt-0.5 block"
+            aria-label="Abrir foto em tamanho maior"
+          >
+            <img
+              src={message.image_url || "/placeholder.svg"}
+              alt="Foto enviada pelo suporte"
+              loading="lazy"
+              className="max-h-80 w-full min-w-48 rounded-xl object-cover"
+            />
+          </a>
+        )}
+        {!(message.image_url && message.message === IMAGE_ONLY_MESSAGE) && (
+          <p className="whitespace-pre-wrap break-words">{message.message}</p>
+        )}
         <div
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[11px]",

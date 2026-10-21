@@ -39,7 +39,8 @@ export async function GET() {
 
     const [messages, agent] = await Promise.all([
       query<MessageRow>(
-        `select id, conversation_id, sender_id, sender_role, kind, message, created_at, read_at
+        `select id, conversation_id, sender_id, sender_role, kind, message,
+                case when sender_role = 'agent' then image_url end as image_url, created_at, read_at
          from support_messages where conversation_id = $1 order by created_at asc limit 500`,
         [conversation.id],
       ),

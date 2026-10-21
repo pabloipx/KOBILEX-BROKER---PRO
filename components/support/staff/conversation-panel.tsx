@@ -7,12 +7,14 @@ import {
   ArrowLeft,
   CheckCheck,
   Check,
+  ImagePlus,
   Loader2,
   Lock,
   NotebookPen,
   RotateCcw,
   Send,
   UserRound,
+  X,
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -26,7 +28,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { MAX_MESSAGE_LENGTH, SUPPORT_STATUSES, getCategory } from "@/lib/support/constants"
+import {
+  IMAGE_ONLY_MESSAGE,
+  MAX_MESSAGE_LENGTH,
+  SUPPORT_IMAGE_MAX_BYTES,
+  SUPPORT_IMAGE_TYPES,
+  SUPPORT_STATUSES,
+  getCategory,
+} from "@/lib/support/constants"
 import {
   formatDateTime,
   formatDayLabel,
@@ -269,7 +278,12 @@ export function ConversationPanel({ conversationId, staff, agents, onBack, onCha
 
       {tab === "chat" ? (
         !completed && (canManage || isAdmin) ? (
-          <AgentComposer key={conversationId} conversationId={conversationId} onSent={() => (mutate(), onChanged())} />
+          <AgentComposer
+            key={conversationId}
+            conversationId={conversationId}
+            canSendImages={isAdmin}
+            onSent={() => (mutate(), onChanged())}
+          />
         ) : null
       ) : (
         <NoteComposer key={`n-${conversationId}`} conversationId={conversationId} onSaved={() => mutate()} />
@@ -330,7 +344,17 @@ function MessageList({ messages }: { messages: DetailResponse["messages"] }) {
                       : "rounded-bl-md border border-white/[0.06] bg-[#1A1F2E] text-white/90",
                   )}
                 >
-                  {m.message}
+                  {m.image_url && (
+                    <a href={m.image_url} target="_blank" rel="noopener noreferrer" className="-mx-1.5 -mt-0.5 mb-1 block">
+                      <img
+                        src={m.image_url || "/placeholder.svg"}
+                        alt="Foto enviada pela equipe"
+                        loading="lazy"
+                        className="max-h-72 w-full rounded-xl object-cover"
+                      />
+                    </a>
+                  )}
+                  {!(m.image_url && m.message === IMAGE_ONLY_MESSAGE) && m.message}
                   <span
                     className={cn(
                       "mt-1 flex items-center justify-end gap-1 text-[10px]",
@@ -378,25 +402,66 @@ function NotesList({ notes }: { notes: DetailResponse["notes"] }) {
   )
 }
 
-function AgentComposer({ conversationId, onSent }: { conversationId: string; onSent: () => void }) {
+function AgentComposer({
+  conversationId,
+  canSendImages,
+  onSent,
+}: {
+  conversationId: string
+  canSendImages: boolean
+  onSent: () => void
+}) {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [error, setError] = useState("")
+  const [image, setImage] = useState<{ file: File; preview: string } | null>(null)
   const pendingId = useRef<string | null>(null)
+  const uploadedUrl = useRef<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!image) return
+    return () => URL.revokeObjectURL(image.preview)
+  }, [image])
+
+  const pickImage = (file: File | undefined) => {
+    if (!file) return
+    if (!SUPPORT_IMAGE_TYPES[file.type]) return setError("Use JPG, PNG, WEBP ou GIF.")
+    if (file.size > SUPPORT_IMAGE_MAX_BYTES) return setError("A imagem deve ter no máximo 5MB.")
+    setError("")
+    uploadedUrl.current = null
+    pendingId.current = null
+    setImage({ file, preview: URL.createObjectURL(file) })
+  }
+
+  const clearImage = () => {
+    setImage(null)
+    uploadedUrl.current = null
+    pendingId.current = null
+  }
 
   const send = async () => {
     const message = text.trim()
-    if (!message || sending) return
+    if ((!message && !image) || sending) return
     pendingId.current ??= newMessageId()
     setSending(true)
     setError("")
     try {
+      if (image && !uploadedUrl.current) {
+        const form = new FormData()
+        form.append("file", image.file)
+        const res = await fetch("/api/support/staff/upload", { method: "POST", body: form })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data?.error || "Não foi possível enviar a imagem.")
+        uploadedUrl.current = data.url as string
+      }
       await supportFetch(`/api/support/staff/conversations/${conversationId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ id: pendingId.current, message }),
+        body: JSON.stringify({ id: pendingId.current, message, imageUrl: uploadedUrl.current ?? undefined }),
       })
       pendingId.current = null
       setText("")
+      clearImage()
       onSent()
     } catch (e) {
       setError((e as Error).message)
@@ -419,7 +484,50 @@ function AgentComposer({ conversationId, onSent }: { conversationId: string; onS
           {error} A mensagem não foi enviada.
         </p>
       )}
+      {image && (
+        <div className="mb-2 flex items-center gap-3 rounded-xl border border-white/10 bg-[#11161f] p-2">
+          <img src={image.preview || "/placeholder.svg"} alt="Prévia da foto" className="size-14 rounded-lg object-cover" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm text-white/85">{image.file.name}</p>
+            <p className="text-xs text-white/45">Adicione uma legenda (opcional)</p>
+          </div>
+          <button
+            type="button"
+            onClick={clearImage}
+            disabled={sending}
+            aria-label="Remover foto"
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg text-white/60 transition hover:bg-white/5 hover:text-white"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+      )}
       <div className="flex items-end gap-2">
+        {canSendImages && (
+          <>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(e) => {
+                pickImage(e.target.files?.[0])
+                e.target.value = ""
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              disabled={sending}
+              aria-label="Enviar foto"
+              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#11161f] text-white/70 transition hover:text-white disabled:opacity-40"
+            >
+              <ImagePlus className="size-5" />
+            </button>
+          </>
+        )}
         <label htmlFor="agent-reply" className="sr-only">
           Responder ao cliente
         </label>
@@ -443,7 +551,7 @@ function AgentComposer({ conversationId, onSent }: { conversationId: string; onS
         />
         <button
           type="submit"
-          disabled={sending || !text.trim()}
+          disabled={sending || (!text.trim() && !image)}
           aria-label="Enviar resposta"
           className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#f97316] text-white transition hover:bg-[#ea580c] disabled:opacity-40"
         >

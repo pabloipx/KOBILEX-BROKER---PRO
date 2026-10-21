@@ -8,6 +8,7 @@ import { SidebarMenu } from "@/components/trading/sidebar-menu"
 import { TraderIAModal } from "@/components/trading/trader-ia-modal"
 import { TraderIAWatermark } from "@/components/trading/trader-ia-watermark"
 import { KaykoRobot } from "@/components/trading/kayko-robot"
+import { AnnouncementPopup } from "@/components/trading/announcement-popup"
 import { OLHO_DE_CRONOS } from "@/lib/robots"
 import { TradeHistorySidebar } from "@/components/trading/trade-history-sidebar"
 import { TradeResultOverlay } from "@/components/trading/trade-result-overlay"
@@ -1910,6 +1911,7 @@ export default function TradePage() {
           durationMs={resultDurationMs}
         />
       )}
+      <AnnouncementPopup />
     </div>
   )
 }

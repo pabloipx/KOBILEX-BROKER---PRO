@@ -45,7 +45,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
     const [messages, notes, profile, history] = await Promise.all([
       query<MessageRow>(
-        `select m.id, m.conversation_id, m.sender_id, m.sender_role, m.kind, m.message, m.created_at, m.read_at,
+        `select m.id, m.conversation_id, m.sender_id, m.sender_role, m.kind, m.message, m.image_url, m.created_at, m.read_at,
                 case when m.sender_role = 'agent' then coalesce(a.name, 'Atendente') end as sender_name
          from support_messages m
          left join support_agents a on a.id = m.sender_id and m.sender_role = 'agent'

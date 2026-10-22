@@ -55,6 +55,18 @@ export type SupportMessage = {
   sender_role: "customer" | "agent" | "system"
   kind: "text" | "welcome" | "category" | "confirmation" | "closed" | "reopened"
   message: string
+  image_url?: string | null
   created_at: string
   read_at: string | null
 }
+
+export const SUPPORT_IMAGE_BUCKET = "support-images"
+export const SUPPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+export const SUPPORT_IMAGE_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+}
+/** Texto salvo quando a equipe envia só a foto, sem legenda. Aparece na prévia da conversa. */
+export const IMAGE_ONLY_MESSAGE = "Foto enviada"

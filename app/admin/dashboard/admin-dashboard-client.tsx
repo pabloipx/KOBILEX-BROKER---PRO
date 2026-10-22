@@ -29,7 +29,9 @@ import {
   Bot,
   BarChart3,
   Headphones,
+  Megaphone,
 } from "lucide-react"
+import { AdminPopup } from "@/components/admin/sections/admin-popup"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
@@ -117,7 +119,7 @@ interface KycRequest {
 export default function AdminDashboardClient() {
   const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [activeTab, setActiveTab] = useState<"home" | "reports" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "promotions" | "cards" | "assets" | "manipulation" | "robo_ia" | "settings">("home")
+  const [activeTab, setActiveTab] = useState<"home" | "reports" | "users" | "deposits" | "withdrawals" | "kyc" | "trades" | "affiliates" | "promotions" | "cards" | "popup" | "assets" | "manipulation" | "robo_ia" | "settings">("home")
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Stats - initialize with default values to prevent null errors
@@ -291,6 +293,7 @@ export default function AdminDashboardClient() {
         { id: "affiliates", label: "Afiliados", icon: UserPlus },
         { id: "promotions", label: "Promoções", icon: Gift },
         { id: "cards", label: "Cartões", icon: CreditCard },
+        { id: "popup", label: "Pop-up", icon: Megaphone },
       ],
     },
     {
@@ -2227,6 +2230,8 @@ export default function AdminDashboardClient() {
           {activeTab === "promotions" && <AdminPromotions />}
 
           {activeTab === "cards" && <AdminCards />}
+
+          {activeTab === "popup" && <AdminPopup />}
 
             {/* Ativos Tab */}
             {activeTab === "assets" && <AdminAssets />}

@@ -8,9 +8,6 @@ const nextConfig = {
   },
   // Headers de seguranca (defesa em profundidade). Aplicam-se ao app publicado; o preview do v0
   // remove os de enquadramento para conseguir renderizar no iframe.
-  async redirects() {
-    return [{ source: "/Invest", destination: "/invest", permanent: false, caseSensitive: true }]
-  },
   async headers() {
     return [
       {

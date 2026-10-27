@@ -1402,14 +1402,6 @@ export default function TradePage() {
         <div className="flex-1 min-h-0 relative">
           <div className="absolute inset-0">
             {isTraderIAActive && <TraderIAWatermark isActive={isTraderIAActive} />}
-            {isKaykoActive && (
-              <KaykoRobot
-                isActive={isKaykoActive}
-                assetName={selectedAsset?.name}
-                symbol={selectedSymbol}
-                expirySeconds={expiryTime}
-              />
-            )}
             {isCronosActive && (
               <KaykoRobot
                 isActive={isCronosActive}
@@ -1417,7 +1409,7 @@ export default function TradePage() {
                 symbol={selectedSymbol}
                 expirySeconds={expiryTime}
                 robot={OLHO_DE_CRONOS}
-                initialY={isKaykoActive ? 250 : 130}
+                initialY={130}
               />
             )}
             <MarketChart

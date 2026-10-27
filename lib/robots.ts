@@ -59,7 +59,7 @@ export const OLHO_DE_CRONOS: RobotConfig = {
   activatedAtKey: "cronos_activated_at",
   changedEvent: "cronos:changed",
   scoreSetEvent: "cronos:score-set",
-  minDeposit: 200,
+  minDeposit: 60,
 }
 
 export const TRADE_RESULT_EVENT = "kayko:trade-result"

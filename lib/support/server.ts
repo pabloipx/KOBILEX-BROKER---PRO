@@ -1,4 +1,5 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless"
+import postgres from "postgres"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { getSupabaseSecretKey, getSupabaseUrl } from "@/lib/supabase/env"
 
@@ -10,12 +11,22 @@ export function supabaseAdmin() {
 }
 
 let neonClient: NeonQueryFunction<false, false> | null = null
+let pgClient: postgres.Sql | null = null
 
-/** Consulta parametrizada no banco Neon, onde ficam as tabelas do suporte. */
+/**
+ * Consulta parametrizada nas tabelas do suporte. Usa o Postgres do Supabase (POSTGRES_URL);
+ * DATABASE_URL (Neon) só é usado se o Supabase não estiver configurado.
+ */
 export async function query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+  const supabaseUrl = process.env.POSTGRES_URL
+  if (supabaseUrl) {
+    // prepare: false é obrigatório no pooler em modo transação do Supabase.
+    pgClient ??= postgres(supabaseUrl, { prepare: false, max: 5 })
+    return (await pgClient.unsafe(text, params as postgres.ParameterOrJSON<never>[])) as unknown as T[]
+  }
   if (!neonClient) {
     const url = process.env.DATABASE_URL
-    if (!url) throw new Error("DATABASE_URL não configurada")
+    if (!url) throw new Error("POSTGRES_URL não configurada")
     neonClient = neon(url)
   }
   return (await neonClient.query(text, params)) as T[]

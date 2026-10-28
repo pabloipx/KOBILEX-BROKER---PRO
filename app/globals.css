@@ -747,6 +747,154 @@ body {
   animation: result-coin 1.5s ease-out infinite;
 }
 
+/* ==========================================================================
+   Bullion Trader - landing page
+   ========================================================================== */
+
+@theme inline {
+  --color-bt-bg: oklch(11% 0.03 270);
+  --color-bt-fg: oklch(97% 0.01 260);
+  --color-bt-card: oklch(16% 0.045 268);
+  --color-bt-secondary: oklch(20% 0.05 268);
+  --color-bt-muted: oklch(70% 0.03 260);
+  --color-bt-primary: oklch(55% 0.25 265);
+  --color-bt-glow: oklch(75% 0.15 230);
+  --color-bt-success: oklch(75% 0.18 150);
+  --color-bt-danger: oklch(65% 0.22 25);
+  --color-bt-border: oklch(100% 0 0 / 0.1);
+  --font-bt-display: var(--font-sora), "Sora", sans-serif;
+  --font-bt-body: var(--font-manrope), "Manrope", sans-serif;
+}
+
+.bt-glass {
+  background: color-mix(in oklab, var(--color-bt-card) 70%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--color-bt-border);
+}
+
+.bt-gradient {
+  background-image: linear-gradient(135deg, var(--color-bt-primary), var(--color-bt-glow));
+}
+
+.bt-hero-bg {
+  background-image: radial-gradient(ellipse at 50% 0%, oklch(45% 0.25 265 / 0.55), transparent 60%);
+}
+
+.bt-text-gradient,
+.bt-hover-text-gradient:hover,
+.group:hover .bt-group-hover-text-gradient {
+  background-image: linear-gradient(135deg, var(--color-bt-primary), var(--color-bt-glow));
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.bt-shadow-glow,
+.bt-hover-shadow-glow:hover {
+  box-shadow: 0 0 60px -10px oklch(55% 0.25 265 / 0.7);
+}
+
+@keyframes bt-floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes bt-glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 40px -8px oklch(55% 0.25 265 / 0.55);
+  }
+  50% {
+    box-shadow: 0 0 90px -6px oklch(65% 0.3 265 / 0.85);
+  }
+}
+
+@keyframes bt-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bt-shine {
+  0% {
+    background-position: 200%;
+  }
+  100% {
+    background-position: -200%;
+  }
+}
+
+@keyframes bt-pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.bt-animate-floaty {
+  animation: bt-floaty 6s ease-in-out infinite;
+}
+.bt-animate-glow-pulse {
+  animation: bt-glow-pulse 4s ease-in-out infinite;
+}
+.bt-animate-spin-slow {
+  animation: bt-spin 24s linear infinite;
+}
+.bt-animate-spin-slow-reverse {
+  animation: bt-spin 32s linear infinite reverse;
+}
+.bt-animate-shine {
+  background-size: 200%;
+  animation: bt-shine 5s linear infinite;
+}
+.bt-animate-pulse-soft {
+  animation: bt-pulse-soft 2.4s ease-in-out infinite;
+}
+
+.bt-animate-logo {
+  animation:
+    bt-floaty 6s ease-in-out infinite,
+    bt-glow-pulse 4s ease-in-out infinite;
+}
+
+.bt-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.7s,
+    transform 0.7s;
+}
+.bt-reveal-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bt-animate-logo,
+  .bt-animate-floaty,
+  .bt-animate-glow-pulse,
+  .bt-animate-spin-slow,
+  .bt-animate-spin-slow-reverse,
+  .bt-animate-shine,
+  .bt-animate-pulse-soft {
+    animation: none;
+  }
+  .bt-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-result-pop-in,
   .animate-result-out,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { Check, Pencil, Radio, Spline, Trash2 } from "lucide-react"
+import { Check, Magnet, Pencil, Radio, Spline, Trash2, Undo2 } from "lucide-react"
 
 type Candle = { open: number; close: number }
 export type CandleStyle = "solid" | "hollow"
@@ -23,6 +23,10 @@ type Props = {
   onColorChange: (c: string) => void
   canClear: boolean
   onClear: () => void
+  canUndo: boolean
+  onUndo: () => void
+  magnet: boolean
+  onMagnetToggle: () => void
   indicators: Record<IndicatorKey, boolean>
   onIndicatorToggle: (k: IndicatorKey) => void
   zoomLabel: string
@@ -101,11 +105,14 @@ function ToolButton({
   )
 }
 
-function Popover({ title, children }: { title: string; children: ReactNode }) {
+function Popover({ title, children, up = false }: { title: string; children: ReactNode; up?: boolean }) {
+  // Os botoes de baixo abrem para cima, para o menu nunca ficar cortado pelo rodape do grafico.
   return (
-    <div className="absolute left-11 top-0 z-40 min-w-44 rounded-md border border-tr-line bg-tr-raised p-1.5 shadow-xl">
-      <p className="px-2 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-tr-muted">{title}</p>
-      {children}
+    <div className={`absolute left-11 z-40 max-h-[70vh] overflow-y-auto ${up ? "bottom-0" : "top-0"}`}>
+      <div className="min-w-44 rounded-md border border-tr-line bg-tr-raised p-1.5 shadow-xl">
+        <p className="px-2 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-tr-muted">{title}</p>
+        {children}
+      </div>
     </div>
   )
 }
@@ -148,6 +155,7 @@ export function ChartSideToolbar(props: Props) {
   const toggle = (m: Menu) => setMenu((cur) => (cur === m ? null : m))
   const close = () => setMenu(null)
   const drawingActive = props.tool !== "cursor"
+  const activeTool = drawingActive ? props.drawTools.find((t) => t.id === props.tool) : undefined
   const anyIndicator = props.indicators.ma || props.indicators.boll || props.indicators.macd
 
   return (
@@ -212,10 +220,14 @@ export function ChartSideToolbar(props: Props) {
 
           <div className="relative">
             <ToolButton label="Ferramentas de desenho" active={drawingActive} open={menu === "draw"} onClick={() => toggle("draw")}>
-              <Pencil className="w-4 h-4" aria-hidden="true" />
+              {activeTool ? (
+                <span className="flex h-4 w-4 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">{activeTool.icon}</span>
+              ) : (
+                <Pencil className="w-4 h-4" aria-hidden="true" />
+              )}
             </ToolButton>
             {menu === "draw" && (
-              <Popover title="Desenho">
+              <Popover title="Desenho" up>
                 {props.drawTools.map((dt) => (
                   <Option
                     key={dt.id}
@@ -245,6 +257,22 @@ export function ChartSideToolbar(props: Props) {
                     />
                   ))}
                 </div>
+                <Option selected={props.magnet} onClick={props.onMagnetToggle}>
+                  <Magnet className="w-4 h-4" aria-hidden="true" />
+                  Ímã nas velas
+                </Option>
+                <button
+                  type="button"
+                  disabled={!props.canUndo}
+                  onClick={props.onUndo}
+                  className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs text-tr-muted transition-colors hover:bg-tr-line hover:text-tr-fg disabled:pointer-events-none disabled:opacity-40"
+                >
+                  <span className="flex items-center gap-2">
+                    <Undo2 className="w-4 h-4" aria-hidden="true" />
+                    Desfazer
+                  </span>
+                  <kbd className="font-sans text-[10px] text-tr-muted">Ctrl+Z</kbd>
+                </button>
                 <button
                   type="button"
                   disabled={!props.canClear}
@@ -266,7 +294,7 @@ export function ChartSideToolbar(props: Props) {
               <Spline className="w-4 h-4" aria-hidden="true" />
             </ToolButton>
             {menu === "ind" && (
-              <Popover title="Indicadores">
+              <Popover title="Indicadores" up>
                 {INDICATORS.map((it) => (
                   <Option key={it.key} selected={props.indicators[it.key]} onClick={() => props.onIndicatorToggle(it.key)}>
                     <span className="flex flex-col">
@@ -284,7 +312,7 @@ export function ChartSideToolbar(props: Props) {
               {props.zoomLabel}
             </ToolButton>
             {menu === "zoom" && (
-              <Popover title="Período visível">
+              <Popover title="Período visível" up>
                 {props.zoomOptions.map((z) => (
                   <Option
                     key={z.seconds}

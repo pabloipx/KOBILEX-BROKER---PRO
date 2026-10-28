@@ -584,6 +584,11 @@ function ChartCore({
   drawingsRef.current = drawings
   toolRef.current = tool
   drawColorRef.current = drawColor
+  const [magnet, setMagnet] = useState(true)
+  const magnetRef = useRef(true)
+  magnetRef.current = magnet
+  const hoverAnchorRef = useRef<DrawAnchor | null>(null)
+  const invalidateDrawRef = useRef<() => void>(() => {})
 
   // Guarda as marcacoes por moeda+timeframe para que nao se percam ao trocar de ativo.
   const drawingsStoreRef = useRef<Map<string, Drawing[]>>(new Map())
@@ -646,46 +651,116 @@ function ChartCore({
     return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
   }
 
-  // ===== Render loop das marcacoes (canvas overlay) =====
-  useEffect(() => {
-    let raf = 0
-    let dead = false
-
-    const render = () => {
-      if (dead) return
-      const canvas = drawCanvasRef.current
-      const container = containerRef.current
-      if (canvas && container) {
-        const w = container.clientWidth
-        const h = container.clientHeight
-        const dpr = window.devicePixelRatio || 1
-        if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
-          canvas.width = Math.floor(w * dpr)
-          canvas.height = Math.floor(h * dpr)
-          canvas.style.width = `${w}px`
-          canvas.style.height = `${h}px`
-        }
-        const ctx = canvas.getContext("2d")
-        if (ctx) {
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-          ctx.clearRect(0, 0, w, h)
-          const all = [...drawingsRef.current]
-          if (draftRef.current) all.push(draftRef.current)
-          all.forEach((d) => drawOne(ctx, d, w, h))
+  // Ima: prende a ancora no OHLC da vela mais proxima (se estiver perto), para marcar topos/fundos com precisao.
+  function snapAnchor(anchor: DrawAnchor, y: number): DrawAnchor {
+    if (!magnetRef.current) return anchor
+    const series = seriesRef.current
+    if (!series) return anchor
+    try {
+      const idx = Math.round(anchor.logical)
+      const bar = series.dataByIndex(idx) as { open?: number; high?: number; low?: number; close?: number } | null
+      if (!bar || bar.high == null || bar.low == null) return anchor
+      let best: number | null = null
+      let bestDist = 14
+      for (const p of [bar.high, bar.low, bar.open, bar.close]) {
+        if (p == null) continue
+        const py = series.priceToCoordinate(p)
+        if (py == null) continue
+        const dist = Math.abs(py - y)
+        if (dist < bestDist) {
+          bestDist = dist
+          best = p
         }
       }
-      raf = requestAnimationFrame(render)
+      return best == null ? anchor : { logical: idx, price: best }
+    } catch {
+      return anchor
+    }
+  }
+
+  // ===== Render das marcacoes (canvas overlay) =====
+  // So repinta quando algo muda (marcacoes, rascunho, cursor, pan/zoom ou escala de preco).
+  // Sem marcacoes o loop para por completo; com marcacoes ele so compara uma assinatura barata da viewport.
+  useEffect(() => {
+    const canvas = drawCanvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    let raf = 0
+    let dead = false
+    let forced = true
+    let painted = false
+    let lastSig = ""
+    let w = 0
+    let h = 0
+
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1
+      w = container.clientWidth
+      h = container.clientHeight
+      canvas.width = Math.floor(w * dpr)
+      canvas.height = Math.floor(h * dpr)
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      forced = true
     }
 
-    const drawOne = (ctx: CanvasRenderingContext2D, d: Drawing, w: number, h: number) => {
-      const pa = anchorToXY(d.a)
-      if (!pa) return
-      ctx.save()
-      ctx.strokeStyle = d.color
-      ctx.fillStyle = d.color
+    const viewportSig = (refPrice: number) => {
+      const chart = chartRef.current
+      const series = seriesRef.current
+      if (!chart || !series) return ""
+      const r = chart.timeScale().getVisibleLogicalRange()
+      const y1 = series.priceToCoordinate(refPrice)
+      const y2 = series.priceToCoordinate(refPrice * 1.001)
+      return `${r?.from.toFixed(3)}|${r?.to.toFixed(3)}|${y1?.toFixed(1)}|${y2?.toFixed(1)}`
+    }
+
+    const paint = () => {
+      ctx.clearRect(0, 0, w, h)
       ctx.lineWidth = 1.5
       ctx.font = "10px 'SF Mono',Consolas,monospace"
       const sym = latest.current.symbol
+      const list = drawingsRef.current
+      for (let i = 0; i < list.length; i++) drawOne(list[i], sym)
+      if (draftRef.current) drawOne(draftRef.current, sym)
+      const hover = hoverAnchorRef.current
+      const t = toolRef.current
+      if (hover && !draftRef.current && t !== "cursor" && t !== "eraser") drawGhost(hover, t)
+    }
+
+    const drawGhost = (a: DrawAnchor, t: DrawTool) => {
+      const p = anchorToXY(a)
+      if (!p) return
+      ctx.save()
+      ctx.strokeStyle = drawColorRef.current
+      ctx.fillStyle = drawColorRef.current
+      ctx.globalAlpha = 0.55
+      ctx.setLineDash([4, 4])
+      ctx.beginPath()
+      if (t === "horizontal") {
+        ctx.moveTo(0, p.y)
+        ctx.lineTo(w, p.y)
+      } else if (t === "vertical") {
+        ctx.moveTo(p.x, 0)
+        ctx.lineTo(p.x, h)
+      }
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+
+    const drawOne = (d: Drawing, sym: string) => {
+      const pa = anchorToXY(d.a)
+      if (!pa) return
+      ctx.strokeStyle = d.color
+      ctx.fillStyle = d.color
 
       if (d.type === "horizontal") {
         ctx.beginPath()
@@ -694,28 +769,29 @@ function ChartCore({
         ctx.stroke()
         const label = fmtPrice(d.a.price, sym)
         const tw = ctx.measureText(label).width + 8
-        ctx.fillStyle = d.color
         ctx.fillRect(w - tw - 2, pa.y - 8, tw, 16)
         ctx.fillStyle = "#0d0d0f"
         ctx.fillText(label, w - tw + 2, pa.y + 3)
-      } else if (d.type === "vertical") {
+        return
+      }
+      if (d.type === "vertical") {
         ctx.beginPath()
         ctx.moveTo(pa.x, 0)
         ctx.lineTo(pa.x, h)
         ctx.stroke()
-      } else if (d.type === "trend" || d.type === "ray") {
-        const pb = d.b ? anchorToXY(d.b) : null
-        if (!pb) {
-          ctx.restore()
-          return
-        }
+        return
+      }
+
+      const pb = d.b ? anchorToXY(d.b) : null
+      if (!pb) return
+
+      if (d.type === "trend" || d.type === "ray") {
         let ex = pb.x
         let ey = pb.y
         if (d.type === "ray") {
           const dx = pb.x - pa.x
           const dy = pb.y - pa.y
           if (Math.abs(dx) < 1e-6) {
-            // Raio praticamente vertical: estende ate a borda superior/inferior
             ex = pa.x
             ey = dy >= 0 ? h : 0
           } else {
@@ -729,18 +805,12 @@ function ChartCore({
         ctx.stroke()
         ctx.beginPath()
         ctx.arc(pa.x, pa.y, 3, 0, Math.PI * 2)
-        ctx.fill()
         if (d.type === "trend") {
-          ctx.beginPath()
+          ctx.moveTo(pb.x + 3, pb.y)
           ctx.arc(pb.x, pb.y, 3, 0, Math.PI * 2)
-          ctx.fill()
         }
+        ctx.fill()
       } else if (d.type === "rect") {
-        const pb = d.b ? anchorToXY(d.b) : null
-        if (!pb) {
-          ctx.restore()
-          return
-        }
         const x = Math.min(pa.x, pb.x)
         const y = Math.min(pa.y, pb.y)
         const rw = Math.abs(pb.x - pa.x)
@@ -750,41 +820,101 @@ function ChartCore({
         ctx.globalAlpha = 1
         ctx.strokeRect(x, y, rw, rh)
       } else if (d.type === "fib") {
-        const pb = d.b ? anchorToXY(d.b) : null
-        if (!pb) {
-          ctx.restore()
-          return
-        }
         const x1 = Math.min(pa.x, pb.x)
         const x2 = Math.max(pa.x, pb.x)
-        FIB_LEVELS.forEach((lvl) => {
+        const series = seriesRef.current
+        for (const lvl of FIB_LEVELS) {
           const price = d.a.price + (d.b!.price - d.a.price) * lvl
-          const yc = seriesRef.current?.priceToCoordinate(price)
-          if (yc == null) return
-          ctx.globalAlpha = 0.9
+          const yc = series?.priceToCoordinate(price)
+          if (yc == null) continue
           ctx.beginPath()
           ctx.moveTo(x1, yc)
           ctx.lineTo(x2, yc)
           ctx.stroke()
-          ctx.globalAlpha = 1
-          ctx.fillStyle = d.color
           ctx.fillText(`${(lvl * 100).toFixed(1)}%  ${fmtPrice(price, sym)}`, x1 + 4, yc - 3)
-        })
+        }
       }
-      ctx.restore()
     }
 
-    raf = requestAnimationFrame(render)
+    const frame = () => {
+      raf = 0
+      if (dead) return
+      const list = drawingsRef.current
+      const hover = hoverAnchorRef.current
+      const hasContent = list.length > 0 || draftRef.current != null || hover != null
+      if (!hasContent) {
+        if (painted) ctx.clearRect(0, 0, w, h)
+        painted = false
+        forced = false
+        return
+      }
+      const ref = list[0]?.a.price ?? draftRef.current?.a.price ?? hover?.price ?? 1
+      const sig = viewportSig(ref)
+      if (forced || sig !== lastSig) {
+        paint()
+        painted = true
+        lastSig = sig
+        forced = false
+      }
+      // Continua observando pan/zoom/escala enquanto houver marcacoes na tela.
+      if (list.length > 0) raf = requestAnimationFrame(frame)
+    }
+
+    const invalidate = () => {
+      forced = true
+      if (!raf && !dead) raf = requestAnimationFrame(frame)
+    }
+    invalidateDrawRef.current = invalidate
+
+    const ro = new ResizeObserver(() => {
+      resize()
+      invalidate()
+    })
+    ro.observe(container)
+    resize()
+    invalidate()
+
     return () => {
       dead = true
+      ro.disconnect()
       cancelAnimationFrame(raf)
+      invalidateDrawRef.current = () => {}
     }
+  }, [])
+
+  useEffect(() => {
+    if (tool === "cursor") hoverAnchorRef.current = null
+    invalidateDrawRef.current()
+  }, [drawings, tool, drawColor])
+
+  // Atalhos: Esc cancela/sai da ferramenta, Ctrl/Cmd+Z desfaz a ultima marcacao.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return
+      if (e.key === "Escape" && toolRef.current !== "cursor") {
+        if (draftRef.current) draftRef.current = null
+        else setTool("cursor")
+        invalidateDrawRef.current()
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && drawingsRef.current.length > 0) {
+        e.preventDefault()
+        setDrawings((prev) => prev.slice(0, -1))
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
   }, [])
 
   // ===== Pointer handlers para desenhar =====
   function getPos(e: React.PointerEvent): { x: number; y: number } {
     const rect = drawCanvasRef.current!.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+
+  function pointerAnchor(e: React.PointerEvent): DrawAnchor | null {
+    const pos = getPos(e)
+    const anchor = xyToAnchor(pos.x, pos.y)
+    return anchor ? snapAnchor(anchor, pos.y) : null
   }
 
   function handleDrawPointerDown(e: React.PointerEvent) {
@@ -805,7 +935,16 @@ function ChartCore({
         else if (d.type === "vertical") dist = Math.abs(pos.x - pa.x)
         else {
           const pb = d.b ? anchorToXY(d.b) : pa
-          if (pb) dist = distToSegment(pos.x, pos.y, pa.x, pa.y, pb.x, pb.y)
+          if (pb) {
+            if (d.type === "rect" || d.type === "fib") {
+              const inside =
+                pos.x >= Math.min(pa.x, pb.x) - 4 &&
+                pos.x <= Math.max(pa.x, pb.x) + 4 &&
+                pos.y >= Math.min(pa.y, pb.y) - 4 &&
+                pos.y <= Math.max(pa.y, pb.y) + 4
+              dist = inside ? 0 : Infinity
+            } else dist = distToSegment(pos.x, pos.y, pa.x, pa.y, pb.x, pb.y)
+          }
         }
         if (dist < best) {
           best = dist
@@ -816,7 +955,7 @@ function ChartCore({
       return
     }
 
-    const anchor = xyToAnchor(pos.x, pos.y)
+    const anchor = pointerAnchor(e)
     if (!anchor) return
     const id = `d${Date.now()}${Math.random().toString(36).slice(2, 6)}`
     const color = drawColorRef.current
@@ -833,13 +972,23 @@ function ChartCore({
     try {
       drawCanvasRef.current?.setPointerCapture(e.pointerId)
     } catch {}
+    invalidateDrawRef.current()
   }
 
   function handleDrawPointerMove(e: React.PointerEvent) {
-    if (!draftRef.current) return
-    const pos = getPos(e)
-    const anchor = xyToAnchor(pos.x, pos.y)
-    if (anchor) draftRef.current = { ...draftRef.current, b: anchor }
+    const t = toolRef.current
+    if (t === "cursor" || t === "eraser") return
+    const anchor = pointerAnchor(e)
+    if (!anchor) return
+    if (draftRef.current) draftRef.current.b = anchor
+    else hoverAnchorRef.current = anchor
+    invalidateDrawRef.current()
+  }
+
+  function handleDrawPointerLeave() {
+    if (!hoverAnchorRef.current) return
+    hoverAnchorRef.current = null
+    invalidateDrawRef.current()
   }
 
   function handleDrawPointerUp(e: React.PointerEvent) {
@@ -848,6 +997,7 @@ function ChartCore({
     try {
       drawCanvasRef.current?.releasePointerCapture(e.pointerId)
     } catch {}
+    invalidateDrawRef.current()
     if (!draft || !draft.b) return
     const pa = anchorToXY(draft.a)
     const pb = anchorToXY(draft.b)
@@ -1883,7 +2033,15 @@ function ChartCore({
         onPointerDown={handleDrawPointerDown}
         onPointerMove={handleDrawPointerMove}
         onPointerUp={handleDrawPointerUp}
+        onPointerLeave={handleDrawPointerLeave}
       />
+
+      {tool !== "cursor" && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full border border-white/10 bg-black/70 px-3 py-1 text-[11px] text-white/80">
+          {DRAW_TOOLS.find((t) => t.id === tool)?.label}
+          <span className="text-white/40">{" · Esc para sair"}</span>
+        </div>
+      )}
 
       {/* Preview da direcao no hover: tinge a metade do grafico onde a operacao daria lucro */}
       {hoverDirection && hoverGeom && (
@@ -1972,6 +2130,10 @@ function ChartCore({
           setDrawings([])
           draftRef.current = null
         }}
+        canUndo={drawings.length > 0}
+        onUndo={() => setDrawings((prev) => prev.slice(0, -1))}
+        magnet={magnet}
+        onMagnetToggle={() => setMagnet((m) => !m)}
         indicators={indicators}
         onIndicatorToggle={(k) => setIndicators((prev) => ({ ...prev, [k]: !prev[k] }))}
         zoomLabel={zoomLabel}

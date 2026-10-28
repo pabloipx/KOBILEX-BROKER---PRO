@@ -10,10 +10,13 @@ import {
   GraduationCap,
   Newspaper,
   MoreHorizontal,
+  CircleHelp,
+  Bell,
   type LucideIcon,
 } from "lucide-react"
+import type { NavConfigEntry } from "./use-nav-config"
 
-export type TraderoomPanel =
+export type NavItemId =
   | "portfolio"
   | "history"
   | "chat"
@@ -22,59 +25,92 @@ export type TraderoomPanel =
   | "promo"
   | "tutorials"
   | "analysis"
+  | "help"
+  | "alerts"
 
-type NavItem = { id: TraderoomPanel | "more"; label: string; icon: LucideIcon; badge?: number }
+export type TraderoomPanel = NavItemId | "more"
 
-const ITEMS: NavItem[] = [
-  { id: "portfolio", label: "Portfólio total", icon: Briefcase },
-  { id: "history", label: "Histórico de trading", icon: History },
-  { id: "chat", label: "Chats e suporte", icon: MessagesSquare },
-  { id: "tournaments", label: "Torneios", icon: Trophy },
-  { id: "leaders", label: "Tabela de líderes", icon: Award },
-  { id: "promo", label: "Promoção", icon: Megaphone, badge: 1 },
-  { id: "tutorials", label: "Tutoriais", icon: GraduationCap },
-  { id: "analysis", label: "Análise de mercado", icon: Newspaper },
-  { id: "more", label: "Mais", icon: MoreHorizontal },
-]
+export type NavItem = { id: NavItemId; label: string; menuLabel: string; icon: LucideIcon; badge?: number }
+
+export const NAV_ITEMS: Record<NavItemId, NavItem> = {
+  portfolio: { id: "portfolio", label: "Portfólio total", menuLabel: "Portfólio", icon: Briefcase },
+  history: { id: "history", label: "Histórico de trading", menuLabel: "Histórico de trading", icon: History },
+  chat: { id: "chat", label: "Chats e suporte", menuLabel: "Chats e Suporte", icon: MessagesSquare },
+  tournaments: { id: "tournaments", label: "Torneios", menuLabel: "Torneios", icon: Trophy },
+  leaders: { id: "leaders", label: "Tabela de líderes", menuLabel: "Tabela de líderes", icon: Award },
+  promo: { id: "promo", label: "Promoção", menuLabel: "Promoção", icon: Megaphone, badge: 1 },
+  tutorials: { id: "tutorials", label: "Tutoriais", menuLabel: "Tutoriais", icon: GraduationCap },
+  analysis: { id: "analysis", label: "Análise de mercado", menuLabel: "Análise de Mercado", icon: Newspaper },
+  help: { id: "help", label: "Ajuda", menuLabel: "Ajuda", icon: CircleHelp },
+  alerts: { id: "alerts", label: "Alertas", menuLabel: "Alertas", icon: Bell },
+}
 
 type Props = {
   active: TraderoomPanel | null
   portfolioOpen: boolean
-  onSelect: (id: TraderoomPanel) => void
+  config: NavConfigEntry[]
+  alertCount?: number
+  onSelect: (id: NavItemId) => void
   onMore: () => void
 }
 
-export function TraderoomNav({ active, portfolioOpen, onSelect, onMore }: Props) {
+function NavButton({
+  label,
+  icon: Icon,
+  badge,
+  active,
+  onClick,
+}: {
+  label: string
+  icon: LucideIcon
+  badge?: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`relative flex flex-col items-center justify-center gap-1.5 px-1 py-2 min-h-[72px] shrink-0 text-center transition-colors ${
+        active ? "bg-tr-raised text-tr-fg" : "text-tr-muted hover:text-tr-fg hover:bg-tr-raised/50"
+      }`}
+    >
+      <span className="relative">
+        <Icon className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" />
+        {badge ? (
+          <span className="absolute -top-1.5 -right-2.5 flex h-4 w-4 items-center justify-center rounded-full bg-tr-brand text-[9px] font-bold text-tr-fg">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-[10px] uppercase leading-tight tracking-tight text-balance">{label}</span>
+    </button>
+  )
+}
+
+export function TraderoomNav({ active, portfolioOpen, config, alertCount = 0, onSelect, onMore }: Props) {
   return (
     <nav
       aria-label="Menu da sala de trading"
       className="hidden lg:flex w-[75px] shrink-0 flex-col border-r border-tr-line bg-tr-rail overflow-y-auto scrollbar-hide"
     >
-      {ITEMS.map((item) => {
-        const Icon = item.icon
-        const isActive = item.id === "portfolio" ? portfolioOpen && !active : active === item.id
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => (item.id === "more" ? onMore() : onSelect(item.id))}
-            aria-pressed={item.id === "more" ? undefined : isActive}
-            className={`relative flex flex-col items-center justify-center gap-1.5 px-1 py-2 min-h-[72px] shrink-0 text-center transition-colors ${
-              isActive ? "bg-tr-raised text-tr-fg" : "text-tr-muted hover:text-tr-fg hover:bg-tr-raised/50"
-            }`}
-          >
-            <span className="relative">
-              <Icon className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" />
-              {item.badge ? (
-                <span className="absolute -top-1.5 -right-2.5 flex h-4 w-4 items-center justify-center rounded-full bg-tr-brand text-[9px] font-bold text-tr-fg">
-                  {item.badge}
-                </span>
-              ) : null}
-            </span>
-            <span className="text-[10px] uppercase leading-tight tracking-tight text-balance">{item.label}</span>
-          </button>
-        )
-      })}
+      {config
+        .filter((entry) => entry.visible)
+        .map(({ id }) => {
+          const item = NAV_ITEMS[id]
+          return (
+            <NavButton
+              key={id}
+              label={item.label}
+              icon={item.icon}
+              badge={id === "alerts" ? alertCount || undefined : item.badge}
+              active={id === "portfolio" ? portfolioOpen && !active : active === id}
+              onClick={() => onSelect(id)}
+            />
+          )
+        })}
+      <NavButton label="Mais" icon={MoreHorizontal} active={active === "more"} onClick={onMore} />
     </nav>
   )
 }

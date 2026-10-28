@@ -15,13 +15,24 @@ type Props = {
   timeframe: number
   candles: Candle[]
   onOpenAssets: () => void
+  hasAlerts?: boolean
+  onOpenAlerts?: () => void
 }
 
-export function TraderoomChartOverlay({ symbol, assetName, assetLogo, isOtc, candles, onOpenAssets }: Props) {
+export function TraderoomChartOverlay({
+  symbol,
+  assetName,
+  assetLogo,
+  isOtc,
+  candles,
+  onOpenAssets,
+  hasAlerts = false,
+  onOpenAlerts,
+}: Props) {
   const watchlist = useWatchlist()
   const favorite = watchlist.has(symbol)
   const setFavorite = () => watchlist.toggle(symbol)
-  const [alerts, setAlerts] = useState(false)
+  const alerts = hasAlerts
 
   return (
     <>
@@ -49,7 +60,7 @@ export function TraderoomChartOverlay({ symbol, assetName, assetLogo, isOtc, can
           </button>
           <button
             type="button"
-            onClick={() => setAlerts((v) => !v)}
+            onClick={onOpenAlerts}
             aria-pressed={alerts}
             aria-label="Alertas de preço"
             className={`flex h-8 w-8 items-center justify-center rounded-full bg-tr-raised transition-colors hover:bg-tr-line ${

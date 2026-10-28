@@ -37,8 +37,25 @@ import {
   Lock,
   CircleDollarSign,
 } from "lucide-react"
-import { TraderoomNav, type TraderoomPanel } from "@/components/trading/traderoom/traderoom-nav"
-import { TraderoomSidePanel } from "@/components/trading/traderoom/traderoom-side-panel"
+import { TraderoomNav, type NavItemId } from "@/components/trading/traderoom/traderoom-nav"
+import { TraderoomSidePanel, type SidePanelId } from "@/components/trading/traderoom/traderoom-side-panel"
+import { useNavConfig } from "@/components/trading/traderoom/use-nav-config"
+import { usePriceAlerts } from "@/lib/hooks/use-price-alerts"
+
+function playAlertTone() {
+  try {
+    const ctx = new AudioContext()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.15, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+    osc.connect(gain).connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.4)
+    osc.onended = () => ctx.close()
+  } catch {}
+}
 import { TraderoomBalanceMenu } from "@/components/trading/traderoom/traderoom-balance-menu"
 import { TraderoomTradePanel } from "@/components/trading/traderoom/traderoom-trade-panel"
 import { TraderoomChartOverlay } from "@/components/trading/traderoom/traderoom-chart-overlay"
@@ -1267,7 +1284,17 @@ export default function TradePage() {
   )
 
   const [isDesktop, setIsDesktop] = useState(false)
-  const [sidePanel, setSidePanel] = useState<Exclude<TraderoomPanel, "portfolio"> | null>(null)
+  const [sidePanel, setSidePanel] = useState<SidePanelId | null>(null)
+  const navConfig = useNavConfig()
+  const priceAlerts = usePriceAlerts(playAlertTone)
+  const openNavItem = useCallback((id: NavItemId) => {
+    if (id === "portfolio") {
+      setSidePanel(null)
+      setPortfolioOpen(true)
+      return
+    }
+    setSidePanel((cur) => (cur === id ? null : id))
+  }, [])
   const [portfolioOpen, setPortfolioOpen] = useState(false)
   const openPositions = useMemo(
     () => activeTrades.filter((t) => t.isDemo === (accountType === "demo")),
@@ -1445,24 +1472,30 @@ export default function TradePage() {
         <TraderoomNav
           active={sidePanel}
           portfolioOpen={portfolioOpen}
-          onSelect={(id) => {
-            if (id === "portfolio") {
-              setSidePanel(null)
-              setPortfolioOpen(true)
-              return
-            }
-            setSidePanel((cur) => (cur === id ? null : id))
-          }}
-          onMore={() => setSidebarOpen(true)}
+          config={navConfig.config}
+          alertCount={priceAlerts.triggered.length}
+          onSelect={openNavItem}
+          onMore={() => setSidePanel((cur) => (cur === "more" ? null : "more"))}
         />
 
         {sidePanel && (
           <TraderoomSidePanel
             panel={sidePanel}
             onClose={() => setSidePanel(null)}
+            onOpen={openNavItem}
             userId={user?.id || ""}
             historyRefresh={historyRefresh}
             isDemo={accountType === "demo"}
+            navConfig={navConfig.config}
+            onToggleNavItem={navConfig.toggle}
+            onMoveNavItem={navConfig.move}
+            symbol={selectedAsset?.symbol || selectedSymbol}
+            symbolName={selectedAsset?.name || selectedSymbol}
+            alerts={priceAlerts.alerts}
+            triggeredAlerts={priceAlerts.triggered}
+            onAddAlert={priceAlerts.addAlert}
+            onRemoveAlert={priceAlerts.removeAlert}
+            onClearTriggered={priceAlerts.clearTriggered}
           />
         )}
 
@@ -1509,6 +1542,8 @@ export default function TradePage() {
                   timeframe={timeframe}
                   candles={candles || []}
                   onOpenAssets={() => setShowAssetPanel(true)}
+                  hasAlerts={priceAlerts.alerts.some((a) => a.symbol === selectedSymbol)}
+                  onOpenAlerts={() => setSidePanel((cur) => (cur === "alerts" ? null : "alerts"))}
                 />
               </div>
             </div>

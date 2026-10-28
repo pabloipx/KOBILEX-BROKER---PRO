@@ -17,35 +17,6 @@ type Props = {
   onOpenAssets: () => void
 }
 
-function SentimentBar({ candles }: { candles: Candle[] }) {
-  const recent = candles.slice(-30)
-  const ups = recent.filter((c) => c.close >= c.open).length
-  const upPct = recent.length ? Math.round((ups / recent.length) * 100) : 50
-  const downPct = 100 - upPct
-  const steps = 16
-  const upSteps = Math.round((upPct / 100) * steps)
-
-  return (
-    <div
-      className="pointer-events-none absolute left-1 top-[110px] z-30 hidden lg:flex flex-col items-center text-tr-fg"
-      aria-label={`Sentimento: ${upPct}% acima, ${downPct}% abaixo`}
-    >
-      <span className="text-xs uppercase">Acima</span>
-      <span className="text-sm tabular-nums">{upPct}%</span>
-      <div className="my-1 flex flex-col items-center" aria-hidden="true">
-        {Array.from({ length: steps }).map((_, i) => (
-          <span
-            key={i}
-            className={`-my-[3px] h-4 w-4 rotate-45 ${i < upSteps ? "bg-tr-up/70" : "bg-tr-down/50"}`}
-          />
-        ))}
-      </div>
-      <span className="text-xs uppercase">Abaixo</span>
-      <span className="text-sm tabular-nums">{downPct}%</span>
-    </div>
-  )
-}
-
 export function TraderoomChartOverlay({ symbol, assetName, assetLogo, isOtc, candles, onOpenAssets }: Props) {
   const watchlist = useWatchlist()
   const favorite = watchlist.has(symbol)
@@ -100,8 +71,6 @@ export function TraderoomChartOverlay({ symbol, assetName, assetLogo, isOtc, can
           </button>
         </div>
       </div>
-
-      <SentimentBar candles={candles} />
     </>
   )
 }

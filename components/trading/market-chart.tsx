@@ -1,10 +1,14 @@
 "use client"
 
-import React, { memo, useEffect, useMemo, useRef, useState } from "react"
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 import { getBars, subscribeBars, unsubscribeBars } from "@/lib/price-engine/datafeed"
 import { ChartExpiryLines } from "./chart-expiry-lines"
+import { ChartSideToolbar, spanLabel, type CandleStyle } from "./chart-side-toolbar"
+
+const DEFAULT_TIMEFRAMES = [60, 300, 600, 900]
+const ZOOM_SPANS = [300, 900, 1800, 3600, 7200, 14400]
 
 // Mapa central de casas decimais por simbolo (fonte unica: engine de precos)
 const SYMBOL_DECIMALS: Record<string, number> = Object.fromEntries(
@@ -80,6 +84,8 @@ interface Props {
   hoverDirection?: "call" | "put" | null
   // Duracao nominal escolhida no painel; desenha as linhas de compra/expiracao.
   expirySeconds?: number
+  timeframeOptions?: number[]
+  onTimeframeChange?: (tf: number) => void
 }
 interface PnlOverlay {
   id: string
@@ -425,6 +431,8 @@ function ChartCore({
   reloadKey = 0,
   hoverDirection = null,
   expirySeconds = 60,
+  timeframeOptions = DEFAULT_TIMEFRAMES,
+  onTimeframeChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
@@ -466,9 +474,47 @@ function ChartCore({
 
   // ===== INDICADORES: estado (UI) + refs (loop) =====
   const [indicators, setIndicators] = useState({ ma: false, boll: false, fractal: false, macd: false })
-  const [showIndicators, setShowIndicators] = useState(false)
+  const [candleStyle, setCandleStyle] = useState<CandleStyle>("solid")
+  const [zoomLabel, setZoomLabel] = useState(() => spanLabel(timeframe * 30))
   const indicatorsRef = useRef(indicators)
   indicatorsRef.current = indicators
+
+  useEffect(() => {
+    const hollow = candleStyle === "hollow"
+    seriesRef.current?.applyOptions?.({
+      upColor: hollow ? "rgba(0,0,0,0)" : "#46a83b",
+      downColor: hollow ? "rgba(0,0,0,0)" : "#c43c31",
+    })
+  }, [candleStyle, seriesReady])
+
+  // Mantem o rotulo "15m" sincronizado com o zoom/arraste feito pelo usuario.
+  useEffect(() => {
+    const ts = chartRef.current?.timeScale?.()
+    if (!ts) return
+    const onRange = (r: { from: number; to: number } | null) => {
+      if (!r) return
+      const span = (r.to - r.from) * timeframe
+      const nearest = ZOOM_SPANS.reduce((best, s) =>
+        Math.abs(Math.log(s / span)) < Math.abs(Math.log(best / span)) ? s : best,
+      )
+      setZoomLabel(spanLabel(nearest))
+    }
+    ts.subscribeVisibleLogicalRangeChange(onRange)
+    onRange(ts.getVisibleLogicalRange())
+    return () => ts.unsubscribeVisibleLogicalRangeChange(onRange)
+  }, [seriesReady, timeframe])
+
+  const zoomTo = useCallback(
+    (seconds: number) => {
+      const ts = chartRef.current?.timeScale?.()
+      const count = seriesRef.current?.data?.().length ?? 0
+      if (!ts || count === 0) return
+      const bars = seconds / timeframe
+      const last = count - 1
+      ts.setVisibleLogicalRange({ from: last - bars * 0.75, to: last + bars * 0.25 })
+    },
+    [timeframe],
+  )
   // Espelho do array completo de velas (historico + vela em formacao) para calcular indicadores.
   const candleArrayRef = useRef<Candle[]>([])
   // Series do lightweight-charts criadas sob demanda para cada indicador.
@@ -530,7 +576,6 @@ function ChartCore({
   const [tool, setTool] = useState<DrawTool>("cursor")
   const [drawColor, setDrawColor] = useState<string>(DRAW_COLORS[0])
   const [drawings, setDrawings] = useState<Drawing[]>([])
-  const [showColors, setShowColors] = useState(false)
   const drawCanvasRef = useRef<HTMLCanvasElement>(null)
   const draftRef = useRef<Drawing | null>(null)
   const drawingsRef = useRef<Drawing[]>([])
@@ -1909,137 +1954,30 @@ function ChartCore({
         </div>
       )}
 
-      {/* Barra de ferramentas de desenho (estilo IQ Option) */}
-      <div className="absolute bottom-9 left-2 z-30 flex flex-col items-center gap-1 rounded-sm border border-[#2A2E39] bg-tr-chart/90 p-1">
-        {DRAW_TOOLS.map((dt) => {
-          const active = tool === dt.id
-          return (
-            <button
-              key={dt.id}
-              type="button"
-              title={dt.label}
-              aria-label={dt.label}
-              onClick={() => setTool(active && dt.id !== "cursor" ? "cursor" : dt.id)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
-              style={{
-                backgroundColor: active ? "#f97316" : "transparent",
-                color: active ? "#fff" : "#94A3B8",
-              }}
-            >
-              {dt.icon}
-            </button>
-          )
-        })}
-
-        <div className="my-0.5 h-px w-6 bg-[#2A2E39]" />
-
-        {/* Seletor de cor */}
-        <div className="relative">
-          <button
-            type="button"
-            title="Cor"
-            aria-label="Selecionar cor"
-            onClick={() => setShowColors((s) => !s)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg"
-          >
-            <span className="h-4 w-4 rounded-full border border-white/30" style={{ backgroundColor: drawColor }} />
-          </button>
-          {showColors && (
-            <div className="absolute left-10 top-0 flex gap-1 rounded-lg border border-[#2A2E39] bg-[#0d0d0f] p-1.5">
-              {DRAW_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={`Cor ${c}`}
-                  onClick={() => {
-                    setDrawColor(c)
-                    setShowColors(false)
-                  }}
-                  className="h-5 w-5 rounded-full border transition-transform hover:scale-110"
-                  style={{ backgroundColor: c, borderColor: c === drawColor ? "#fff" : "transparent" }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Limpar tudo */}
-        <button
-          type="button"
-          title="Limpar tudo"
-          aria-label="Limpar todas as marcacoes"
-          onClick={() => {
-            setDrawings([])
-            draftRef.current = null
-          }}
-          disabled={drawings.length === 0}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[#94A3B8] transition-colors hover:text-[#FF5252] disabled:opacity-30"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 6h18" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-        </button>
-
-        <div className="my-0.5 h-px w-6 bg-[#2A2E39]" />
-
-        {/* Indicadores tecnicos */}
-        <div className="relative">
-          <button
-            type="button"
-            title="Indicadores"
-            aria-label="Indicadores tecnicos"
-            onClick={() => setShowIndicators((s) => !s)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
-            style={{
-              backgroundColor: indicators.ma || indicators.boll || indicators.fractal || indicators.macd ? "#f97316" : "transparent",
-              color: indicators.ma || indicators.boll || indicators.fractal || indicators.macd ? "#fff" : "#94A3B8",
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18" />
-              <path d="m7 14 3-4 3 3 4-6" />
-            </svg>
-          </button>
-          {showIndicators && (
-            <div className="absolute left-10 top-0 w-52 rounded-xl border border-[#2A2E39] bg-[#0d0d0f] p-1.5 shadow-xl">
-              {(
-                [
-                  { key: "ma", label: "Médias Móveis", desc: "SMA 9 / 21", color: "#FFC400" },
-                  { key: "boll", label: "Bandas de Bollinger", desc: "20, 2", color: "#fb923c" },
-                  { key: "fractal", label: "Fractais", desc: "Bill Williams", color: "#38bdf8" },
-                  { key: "macd", label: "MACD", desc: "12, 26, 9", color: "#00E676" },
-                ] as const
-              ).map((it) => {
-                const on = indicators[it.key]
-                return (
-                  <button
-                    key={it.key}
-                    type="button"
-                    onClick={() => setIndicators((prev) => ({ ...prev, [it.key]: !prev[it.key] }))}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/5"
-                  >
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: it.color }} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-medium text-white">{it.label}</span>
-                      <span className="block text-[10px] text-[#787B86]">{it.desc}</span>
-                    </span>
-                    <span
-                      className="flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors"
-                      style={{ backgroundColor: on ? "#f97316" : "#2A2E39" }}
-                    >
-                      <span
-                        className="h-3 w-3 rounded-full bg-white transition-transform"
-                        style={{ transform: on ? "translateX(12px)" : "translateX(0)" }}
-                      />
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      <ChartSideToolbar
+        candles={candles}
+        timeframe={timeframe}
+        timeframeOptions={timeframeOptions}
+        onTimeframeChange={onTimeframeChange}
+        candleStyle={candleStyle}
+        onCandleStyleChange={setCandleStyle}
+        drawTools={DRAW_TOOLS}
+        tool={tool}
+        onToolChange={(id) => setTool(id as DrawTool)}
+        drawColor={drawColor}
+        drawColors={DRAW_COLORS}
+        onColorChange={setDrawColor}
+        canClear={drawings.length > 0}
+        onClear={() => {
+          setDrawings([])
+          draftRef.current = null
+        }}
+        indicators={indicators}
+        onIndicatorToggle={(k) => setIndicators((prev) => ({ ...prev, [k]: !prev[k] }))}
+        zoomLabel={zoomLabel}
+        zoomOptions={ZOOM_SPANS.filter((sec) => sec / timeframe >= 8).map((sec) => ({ label: spanLabel(sec), seconds: sec }))}
+        onZoom={zoomTo}
+      />
 
       {/* Relogio minimizado (UTC-3) no canto inferior esquerdo */}
       {clock && (
@@ -2161,7 +2099,8 @@ function marketChartPropsEqual(prev: Props, next: Props) {
     prev.reloadKey !== next.reloadKey ||
     prev.payout !== next.payout ||
     prev.hoverDirection !== next.hoverDirection ||
-    prev.expirySeconds !== next.expirySeconds
+    prev.expirySeconds !== next.expirySeconds ||
+    prev.onTimeframeChange !== next.onTimeframeChange
   ) {
     return false
   }

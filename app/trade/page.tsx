@@ -1492,6 +1492,8 @@ export default function TradePage() {
                   reloadKey={(realReady ? 1 : 0) + (realHistoryReady ? 2 : 0)}
                   hoverDirection={hoverDirection}
                   expirySeconds={expiryTime}
+                  timeframeOptions={timeframeOptions}
+                  onTimeframeChange={setTimeframe}
                 />
                 <TraderoomActiveTradeBar
                   symbol={selectedSymbol}
@@ -1508,24 +1510,6 @@ export default function TradePage() {
                   candles={candles || []}
                   onOpenAssets={() => setShowAssetPanel(true)}
                 />
-                {/* Tempo do gráfico */}
-                <div className="absolute bottom-9 left-14 z-30 hidden lg:flex items-center gap-1">
-                  {timeframeOptions.map((tf) => (
-                    <button
-                      key={tf}
-                      onClick={() => setTimeframe(tf)}
-                      aria-pressed={timeframe === tf}
-                      aria-label={`Tempo do gráfico ${TIMEFRAME_LABELS[tf]}`}
-                      className={`h-8 min-w-8 px-1.5 rounded-sm border text-xs font-bold transition-colors ${
-                        timeframe === tf
-                          ? "border-tr-fg/60 bg-tr-chart text-tr-fg"
-                          : "border-tr-line bg-tr-chart text-tr-muted hover:text-tr-fg"
-                      }`}
-                    >
-                      {TIMEFRAME_LABELS[tf]}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
 

@@ -4,6 +4,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from "react"
 import { OTC_ASSETS, multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
 import { isRealSymbol } from "@/lib/price-engine/real-price-store"
 import { getBars, subscribeBars, unsubscribeBars } from "@/lib/price-engine/datafeed"
+import { ChartExpiryLines } from "./chart-expiry-lines"
 
 // Mapa central de casas decimais por simbolo (fonte unica: engine de precos)
 const SYMBOL_DECIMALS: Record<string, number> = Object.fromEntries(
@@ -77,6 +78,8 @@ interface Props {
   // Direcao pre-visualizada enquanto o mouse esta sobre Comprar/Vender. Pinta a metade do
   // grafico correspondente ao lucro daquela direcao. `null` = sem preview.
   hoverDirection?: "call" | "put" | null
+  // Duracao nominal escolhida no painel; desenha as linhas de compra/expiracao.
+  expirySeconds?: number
 }
 interface PnlOverlay {
   id: string
@@ -421,6 +424,7 @@ function ChartCore({
   payout = 0.96,
   reloadKey = 0,
   hoverDirection = null,
+  expirySeconds = 60,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
@@ -938,8 +942,8 @@ function ChartCore({
           attributionLogo: false,
         },
         grid: {
-          vertLines: { color: "rgba(255, 255, 255, 0.12)" },
-          horzLines: { color: "rgba(255, 255, 255, 0.12)" },
+          vertLines: { color: "rgba(255, 255, 255, 0.04)" },
+          horzLines: { color: "rgba(255, 255, 255, 0.04)" },
         },
         crosshair: {
           mode: CM.Normal,
@@ -1814,6 +1818,14 @@ function ChartCore({
       {/* Chart container - touchAction none lets the chart capture drag instead of the page scrolling */}
       <div ref={containerRef} className="absolute inset-0 z-10" style={{ touchAction: "none" }} />
 
+      <ChartExpiryLines
+        chartRef={chartRef}
+        seriesRef={seriesRef}
+        timeframe={timeframe}
+        expirySeconds={expirySeconds}
+        showPurchaseLabel={!activeTrades.some((t) => (t.symbol ?? symbol) === symbol)}
+      />
+
       {/* Camada de desenho (marcacoes) - so captura eventos quando uma ferramenta esta ativa */}
       <canvas
         ref={drawCanvasRef}
@@ -2148,7 +2160,8 @@ function marketChartPropsEqual(prev: Props, next: Props) {
     prev.timeframe !== next.timeframe ||
     prev.reloadKey !== next.reloadKey ||
     prev.payout !== next.payout ||
-    prev.hoverDirection !== next.hoverDirection
+    prev.hoverDirection !== next.hoverDirection ||
+    prev.expirySeconds !== next.expirySeconds
   ) {
     return false
   }

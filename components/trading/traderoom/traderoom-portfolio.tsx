@@ -1,40 +1,60 @@
 "use client"
 
-import { ChevronDown, ChevronUp, Plus, ArrowUp, ArrowDown } from "lucide-react"
+import { useState } from "react"
+import { ChevronDown, ChevronUp, Plus, ArrowUp, ArrowDown, X, HelpCircle, Settings } from "lucide-react"
+import { multiAssetEngine } from "@/lib/price-engine/multi-asset-engine"
+import { fmtBRL, fmtSigned, liveTradeState } from "@/lib/trading/live-pnl"
 import { formatMMSS, useNow } from "./use-now"
-
-type Position = {
-  id: string
-  symbol: string
-  direction: "CALL" | "PUT"
-  amount: number
-  expiryTime: number
-  timestamp: number
-}
+import type { OpenPosition } from "./traderoom-active-trade-bar"
 
 type Props = {
   open: boolean
   onToggle: () => void
-  positions: Position[]
+  positions: OpenPosition[]
+  payout: number
   nameFor: (symbol: string) => string
   onSelectAsset: () => void
+  onSell: (ids: string[]) => Promise<void> | void
 }
 
-const fmt = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-function Remaining({ expiresAt }: { expiresAt: number }) {
+export function TraderoomPortfolio({ open, onToggle, positions, payout, nameFor, onSelectAsset, onSell }: Props) {
   const now = useNow(500)
-  return <span className="tabular-nums">{formatMMSS((expiresAt - now) / 1000)}</span>
-}
+  const [selling, setSelling] = useState<string | null>(null)
 
-export function TraderoomPortfolio({ open, onToggle, positions, nameFor, onSelectAsset }: Props) {
+  const rows = positions.map((p) => ({
+    p,
+    s: liveTradeState(p, multiAssetEngine.getCurrentPrice(p.symbol), payout, now),
+  }))
+  const totalAfterSale = rows.reduce((sum, r) => sum + r.s.sellPnl, 0)
+
+  const sell = async (id: string) => {
+    if (selling) return
+    setSelling(id)
+    try {
+      await onSell([id])
+    } finally {
+      setSelling(null)
+    }
+  }
+
   return (
     <section
       aria-label="Portfólio total"
-      className={`hidden lg:flex shrink-0 flex-col border-t-4 border-tr-line bg-tr-panel ${open ? "h-[26vh] min-h-[170px] max-h-[232px]" : ""}`}
+      className={`hidden lg:flex shrink-0 flex-col border-t-4 border-tr-line bg-tr-panel ${open && positions.length === 0 ? "h-[26vh] min-h-[170px] max-h-[232px]" : ""}`}
     >
       <div className="flex items-center justify-between bg-tr-raised/60 px-6 py-2">
-        <h2 className="text-sm font-semibold text-tr-fg">Portfólio total</h2>
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-tr-fg">
+          {positions.length > 0 ? (
+            <>
+              Opções ({positions.length})
+              <span className={`font-normal tabular-nums ${totalAfterSale >= 0 ? "text-tr-up" : "text-tr-down"}`}>
+                {fmtSigned(totalAfterSale)}
+              </span>
+            </>
+          ) : (
+            "Portfólio total"
+          )}
+        </h2>
         <button
           type="button"
           onClick={onToggle}
@@ -60,39 +80,55 @@ export function TraderoomPortfolio({ open, onToggle, positions, nameFor, onSelec
             </button>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-tr-muted">
-                <tr>
-                  <th className="px-6 py-2 font-normal">Ativo</th>
-                  <th className="px-6 py-2 font-normal">Direção</th>
-                  <th className="px-6 py-2 font-normal">Investimento</th>
-                  <th className="px-6 py-2 font-normal">Expira em</th>
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map((p) => (
-                  <tr key={p.id} className="border-t border-tr-line text-tr-fg">
-                    <td className="px-6 py-2">{nameFor(p.symbol)}</td>
-                    <td className="px-6 py-2">
-                      <span
-                        className={`inline-flex items-center gap-1 font-semibold ${
-                          p.direction === "CALL" ? "text-tr-up" : "text-tr-down"
-                        }`}
-                      >
-                        {p.direction === "CALL" ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
-                        {p.direction === "CALL" ? "Acima" : "Abaixo"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-2 tabular-nums">R$ {fmt(p.amount)}</td>
-                    <td className="px-6 py-2">
-                      <Remaining expiresAt={p.timestamp + p.expiryTime * 1000} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="max-h-[180px] overflow-y-auto">
+            {rows.map(({ p, s }) => {
+              const isCall = p.direction === "CALL"
+              const pnlClass = s.sellPnl >= 0 ? "text-tr-up" : "text-tr-down"
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center gap-5 border-t border-tr-line px-3 py-1.5 text-xs text-tr-muted"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <Settings className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span className="flex min-w-32 items-center gap-1.5 font-semibold text-tr-fg">
+                    <span className={isCall ? "text-tr-up" : "text-tr-down"}>
+                      {isCall ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+                    </span>
+                    {nameFor(p.symbol)}
+                  </span>
+                  <span>
+                    Investimento <span className="text-tr-fg tabular-nums">R$ {fmtBRL(p.amount)}</span>
+                  </span>
+                  <span>
+                    L/P esperados{" "}
+                    <span className="text-tr-up tabular-nums">{fmtSigned(p.amount * (payout / 100))}</span>
+                  </span>
+                  <span>
+                    Expira em <span className="text-tr-fg tabular-nums">{formatMMSS(s.remainingMs / 1000)}</span>
+                  </span>
+                  <span className="ml-auto">
+                    L/P pós-venda{" "}
+                    <span className={`tabular-nums ${pnlClass}`}>
+                      {s.sellPct >= 0 ? "+" : "−"}
+                      {Math.abs(s.sellPct).toFixed(2)}%
+                    </span>{" "}
+                    | <span className={`tabular-nums ${pnlClass}`}>{fmtSigned(s.sellPnl)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => sell(p.id)}
+                    disabled={selling !== null}
+                    aria-label={`Vender ${nameFor(p.symbol)}`}
+                    title="Vender agora"
+                    className="flex h-6 w-6 items-center justify-center text-tr-fg hover:text-tr-down disabled:opacity-40"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         ))}
     </section>
   )

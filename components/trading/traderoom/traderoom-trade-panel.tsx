@@ -2,6 +2,7 @@
 
 import { Plus, Minus, HelpCircle, Clock, Lock } from "lucide-react"
 import { formatClock, useNow } from "./use-now"
+import { expiryAtFor } from "@/lib/trading/expiry"
 
 type Props = {
   amount: number
@@ -26,8 +27,8 @@ const fmt = (v: number) =>
   (Number.isFinite(v) ? v : 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 function ExpiryClock({ seconds }: { seconds: number }) {
-  const now = useNow(1000)
-  return <span className="tabular-nums">{formatClock(now + seconds * 1000)}</span>
+  const now = useNow(500)
+  return <span className="tabular-nums">{formatClock(expiryAtFor(now, seconds))}</span>
 }
 
 export function TraderoomTradePanel(props: Props) {

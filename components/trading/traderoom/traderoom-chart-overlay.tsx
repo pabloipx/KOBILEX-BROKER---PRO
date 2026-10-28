@@ -3,32 +3,18 @@
 import { useState } from "react"
 import Image from "next/image"
 import { ChevronDown, Info, Bell, Star } from "lucide-react"
-import { formatMMSS, useNow } from "./use-now"
+import { useWatchlist } from "@/lib/hooks/use-watchlist"
 
 type Candle = { open: number; close: number }
 
 type Props = {
+  symbol: string
   assetName: string
   assetLogo: string
   isOtc: boolean
   timeframe: number
   candles: Candle[]
   onOpenAssets: () => void
-}
-
-function PurchaseCountdown({ timeframe }: { timeframe: number }) {
-  const now = useNow(500)
-  const remaining = timeframe - (Math.floor(now / 1000) % timeframe)
-  return (
-    <div className="pointer-events-none absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-1.5 text-tr-fg">
-      <span className="text-[9px] font-medium uppercase leading-[1.1]">
-        Hora de
-        <br />
-        compra
-      </span>
-      <span className="text-2xl tabular-nums">{formatMMSS(remaining)}</span>
-    </div>
-  )
 }
 
 function SentimentBar({ candles }: { candles: Candle[] }) {
@@ -60,8 +46,10 @@ function SentimentBar({ candles }: { candles: Candle[] }) {
   )
 }
 
-export function TraderoomChartOverlay({ assetName, assetLogo, isOtc, timeframe, candles, onOpenAssets }: Props) {
-  const [favorite, setFavorite] = useState(false)
+export function TraderoomChartOverlay({ symbol, assetName, assetLogo, isOtc, candles, onOpenAssets }: Props) {
+  const watchlist = useWatchlist()
+  const favorite = watchlist.has(symbol)
+  const setFavorite = () => watchlist.toggle(symbol)
   const [alerts, setAlerts] = useState(false)
 
   return (
@@ -101,7 +89,7 @@ export function TraderoomChartOverlay({ assetName, assetLogo, isOtc, timeframe, 
           </button>
           <button
             type="button"
-            onClick={() => setFavorite((v) => !v)}
+            onClick={setFavorite}
             aria-pressed={favorite}
             aria-label="Favoritar ativo"
             className={`flex h-8 w-8 items-center justify-center rounded-full bg-tr-raised transition-colors hover:bg-tr-line ${
@@ -113,7 +101,6 @@ export function TraderoomChartOverlay({ assetName, assetLogo, isOtc, timeframe, 
         </div>
       </div>
 
-      <PurchaseCountdown timeframe={timeframe} />
       <SentimentBar candles={candles} />
     </>
   )

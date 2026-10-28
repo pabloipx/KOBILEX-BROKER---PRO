@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { MessageSquareText, HelpCircle, Volume2, VolumeX, Settings, Maximize, Minimize } from "lucide-react"
 import { useNow } from "./use-now"
+import { isSoundMuted, setSoundMuted } from "@/lib/sounds"
 
 function CurrentTime() {
   const now = useNow(1000)
@@ -21,7 +22,7 @@ function CurrentTime() {
 }
 
 export function TraderoomFooter() {
-  const [muted, setMuted] = useState(false)
+  const [muted, setMuted] = useState(isSoundMuted)
   const [fullscreen, setFullscreen] = useState(false)
 
   const toggleFullscreen = () => {
@@ -55,7 +56,12 @@ export function TraderoomFooter() {
         </span>
         <button
           type="button"
-          onClick={() => setMuted((v) => !v)}
+          onClick={() => {
+            const next = !muted
+            setSoundMuted(next)
+            setMuted(next)
+          }}
+          aria-pressed={muted}
           aria-label={muted ? "Ativar som" : "Silenciar"}
           className="text-tr-muted hover:text-tr-fg"
         >

@@ -44,6 +44,11 @@ import { TraderoomTradePanel } from "@/components/trading/traderoom/traderoom-tr
 import { TraderoomChartOverlay } from "@/components/trading/traderoom/traderoom-chart-overlay"
 import { TraderoomPortfolio } from "@/components/trading/traderoom/traderoom-portfolio"
 import { TraderoomFooter } from "@/components/trading/traderoom/traderoom-footer"
+import { TraderoomProfileMenu } from "@/components/trading/traderoom/traderoom-profile-menu"
+import { TraderoomTabStatus } from "@/components/trading/traderoom/traderoom-tab-status"
+import { TraderoomActiveTradeBar } from "@/components/trading/traderoom/traderoom-active-trade-bar"
+import { expiryAtFor } from "@/lib/trading/expiry"
+import { liveTradeState } from "@/lib/trading/live-pnl"
 import { getMarketStatus, canOpenTrade } from "@/lib/market-hours"
 import {
   TIMEFRAME_LABELS,
@@ -568,8 +573,9 @@ export default function TradePage() {
         // Operacao acompanhada na tela: deixa para o caminho que mostra a animacao.
         if (trackedDbIdsRef.current.has(t.id)) return false
         const entryMs = new Date(t.entry_time).getTime()
-        const expiryMs = (t.timeframe || 60) * 1000
-        return now >= entryMs + expiryMs
+        const fixedExpiry = t.expiry_time ? new Date(t.expiry_time).getTime() : Number.NaN
+        const expiresAt = Number.isFinite(fixedExpiry) ? fixedExpiry : entryMs + (t.timeframe || 60) * 1000
+        return now >= expiresAt
       })
 
       if (expiredTrades.length === 0) return
@@ -695,7 +701,7 @@ export default function TradePage() {
       try {
         const { data, error } = await supabaseRef.current
           .from("trades")
-          .select("id, symbol, entry_price, direction, timeframe, entry_time, amount, is_demo")
+          .select("id, symbol, entry_price, direction, timeframe, entry_time, expiry_time, amount, is_demo")
           .eq("user_id", userId)
           .in("result", ["pending", "PENDING"])
           .not("entry_time", "is", null)
@@ -713,8 +719,11 @@ export default function TradePage() {
             if (processedTradesRef.current.has(`db-${row.id}`)) continue // ja liquidada nesta sessao
 
             const timestamp = new Date(row.entry_time).getTime()
-            const expiryTime = Number(row.timeframe) || 60
             if (!Number.isFinite(timestamp)) continue
+            const fixedExpiry = row.expiry_time ? new Date(row.expiry_time).getTime() : Number.NaN
+            const expiryTime = Number.isFinite(fixedExpiry)
+              ? Math.max(1, Math.round((fixedExpiry - timestamp) / 1000))
+              : Number(row.timeframe) || 60
             // Ja venceu: quem encerra e o finalizeExpiredTrades, nao entra como linha ativa.
             if (now >= timestamp + expiryTime * 1000) continue
 
@@ -1089,8 +1098,11 @@ export default function TradePage() {
 
       try {
         const tradeId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-        const entryTime = new Date()
-        const expiryTimeDate = new Date(Date.now() + expiryTime * 1000)
+        // Vence sempre num minuto cheio (estilo IQ Option), igual ao horario mostrado no painel.
+        const openedAt = Date.now()
+        const effectiveSeconds = Math.max(1, Math.round((expiryAtFor(openedAt, expiryTime) - openedAt) / 1000))
+        const entryTime = new Date(openedAt)
+        const expiryTimeDate = new Date(openedAt + effectiveSeconds * 1000)
         const isDemo = accountType === "demo"
 
         // Deduct balance first
@@ -1158,8 +1170,8 @@ export default function TradePage() {
           direction: direction, // UPPERCASE
           amount,
           entryPrice: entryPrice,
-          expiryTime: expiryTime,
-          timestamp: Date.now(),
+          expiryTime: effectiveSeconds,
+          timestamp: openedAt,
           isDemo,
         }
 
@@ -1173,6 +1185,69 @@ export default function TradePage() {
       }
     },
     [user, amount, currentBalance, selectedSymbol, expiryTime, accountType, payout, isTrading, marketStatus],
+  )
+
+  // Venda antecipada: encerra a operacao agora pelo valor de venda calculado em tempo real.
+  const sellTrades = useCallback(
+    async (ids: string[]) => {
+      if (!user) return
+      for (const id of ids) {
+        const trade = activeTradesRef.current.find((t) => t.id === id)
+        if (!trade?.dbId || processedTradesRef.current.has(trade.id)) continue
+        const enginePrice = multiAssetEngine.getCurrentPrice(trade.symbol)
+        const price = enginePrice > 0 ? enginePrice : getLivePrice()
+        if (!price || price <= 0) continue
+        const state = liveTradeState(trade, price, payoutRef.current)
+        if (state.remainingMs <= 0) continue
+
+        processedTradesRef.current.add(trade.id)
+        processedTradesRef.current.add(`db-${trade.dbId}`)
+        const release = () => {
+          processedTradesRef.current.delete(trade.id)
+          processedTradesRef.current.delete(`db-${trade.dbId}`)
+        }
+
+        try {
+          const { data: closedRows, error } = await supabaseRef.current
+            .from("trades")
+            .update({
+              exit_price: price,
+              closed_at: new Date().toISOString(),
+              status: "closed",
+              result: state.sellPnl >= 0 ? "win" : "loss",
+              profit: state.sellPnl,
+            })
+            .eq("id", trade.dbId)
+            .in("result", ["pending", "PENDING"])
+            .select("id")
+          if (error || !closedRows?.length) {
+            release()
+            continue
+          }
+
+          const balanceField = trade.isDemo ? "balance_demo" : "balance_real"
+          const { data: fresh } = await supabaseRef.current
+            .from("user_balances")
+            .select(balanceField)
+            .eq("user_id", user.id)
+            .single()
+          if (fresh) {
+            const newBalance = Math.round(((fresh as any)[balanceField] + state.sellValue) * 100) / 100
+            await supabaseRef.current.from("user_balances").update({ [balanceField]: newBalance }).eq("user_id", user.id)
+            if (trade.isDemo) setBalanceDemo(newBalance)
+            else setBalanceReal(newBalance)
+          }
+
+          setActiveTrades((prev) => prev.filter((t) => t.id !== trade.id))
+          setHistoryRefresh((prev) => prev + 1)
+          if (state.sellPnl >= 0) playWinSound()
+          else playLossSound()
+        } catch {
+          release()
+        }
+      }
+    },
+    [user],
   )
 
   const handleExpiryChange = useCallback(
@@ -1194,6 +1269,10 @@ export default function TradePage() {
   const [isDesktop, setIsDesktop] = useState(false)
   const [sidePanel, setSidePanel] = useState<Exclude<TraderoomPanel, "portfolio"> | null>(null)
   const [portfolioOpen, setPortfolioOpen] = useState(true)
+  const openPositions = useMemo(
+    () => activeTrades.filter((t) => t.isDemo === (accountType === "demo")),
+    [activeTrades, accountType],
+  )
   const investedAmount = useMemo(
     () =>
       activeTrades
@@ -1310,19 +1389,13 @@ export default function TradePage() {
                     <X className="w-3 h-3" />
                   </button>
                 )}
-                <div className="w-6 h-6 rounded-full overflow-hidden bg-tr-line shrink-0">
-                  <Image
-                    src={asset.logo || "/placeholder.svg"}
-                    alt=""
-                    width={24}
-                    height={24}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="text-left min-w-0">
-                  <p className="text-tr-fg font-semibold text-xs leading-tight truncate max-w-[84px]">{asset.name}</p>
-                  <TabTimer expiresAt={expiresAtBySymbol[sym]} isOtc={(asset.market || "otc") === "otc"} />
-                </div>
+                <TraderoomTabStatus
+                  name={asset.name}
+                  logo={asset.logo}
+                  isOtc={(asset.market || "otc") === "otc"}
+                  positions={openPositions.filter((p) => p.symbol === sym)}
+                  payout={asset.payout ?? payout}
+                />
                 {isActive && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-tr-brand" />}
               </div>
             )
@@ -1339,27 +1412,16 @@ export default function TradePage() {
 
         {/* Direita: payout, saldo, depósito */}
         <div className="flex items-center gap-2 lg:gap-6 shrink-0 ml-auto">
-          <div
-            className="hidden lg:flex items-center gap-2 text-tr-muted"
-            title={`Retorno do ativo: ${payout}%`}
-          >
-            <span className="relative flex h-12 w-12 items-center justify-center">
-              <svg viewBox="0 0 48 48" className="absolute inset-0 -rotate-90" aria-hidden="true">
-                <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-                <circle
-                  cx="24"
-                  cy="24"
-                  r="21"
-                  fill="none"
-                  className="stroke-tr-fg"
-                  strokeWidth="3"
-                  strokeDasharray={`${(payout / 100) * 131.9} 131.9`}
-                />
-              </svg>
-              <span className="text-xs text-tr-fg">{payout}%</span>
-            </span>
-            <ChevronDown className="w-4 h-4" aria-hidden="true" />
-          </div>
+          <TraderoomProfileMenu
+            email={user?.email || ""}
+            createdAt={user?.created_at}
+            userId={user?.id || ""}
+            progress={historyRefresh > 0 || activeTrades.length > 0 ? 100 : 80}
+            onSignOut={async () => {
+              await supabaseRef.current.auth.signOut()
+              router.push("/auth/login")
+            }}
+          />
 
           <TraderoomBalanceMenu
             accountType={accountType}
@@ -1429,8 +1491,16 @@ export default function TradePage() {
                   payout={payout / 100}
                   reloadKey={(realReady ? 1 : 0) + (realHistoryReady ? 2 : 0)}
                   hoverDirection={hoverDirection}
+                  expirySeconds={expiryTime}
+                />
+                <TraderoomActiveTradeBar
+                  symbol={selectedSymbol}
+                  positions={openPositions.filter((p) => p.symbol === selectedSymbol)}
+                  payout={payout}
+                  onSell={sellTrades}
                 />
                 <TraderoomChartOverlay
+                  symbol={selectedSymbol}
                   assetName={selectedAsset?.name || ""}
                   assetLogo={selectedAsset?.logo || ""}
                   isOtc={(selectedAsset?.market || "otc") === "otc"}
@@ -1490,9 +1560,11 @@ export default function TradePage() {
           <TraderoomPortfolio
             open={portfolioOpen}
             onToggle={() => setPortfolioOpen((v) => !v)}
-            positions={activeTrades.filter((t) => t.isDemo === (accountType === "demo"))}
+            positions={openPositions}
+            payout={payout}
             nameFor={(sym) => assetBySymbol(sym)?.name || sym}
             onSelectAsset={() => setShowAssetPanel(true)}
+            onSell={sellTrades}
           />
         </div>
       </div>

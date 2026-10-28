@@ -100,6 +100,19 @@
   --color-atlas-loss: #ef4444;
   --color-atlas-warning: #f59e0b;
   --color-atlas-success: #22c55e;
+
+  /* Traderoom (sala de trading) */
+  --color-tr-chart: #000000;
+  --color-tr-rail: #1c1d22;
+  --color-tr-panel: #26272d;
+  --color-tr-raised: #33343b;
+  --color-tr-line: #3a3b42;
+  --color-tr-fg: #ffffff;
+  --color-tr-muted: #9a9ba3;
+  --color-tr-up: #46a83b;
+  --color-tr-down: #c43c31;
+  --color-tr-brand: #3d6bff;
+  --color-tr-warn: #f5b301;
 }
 
 /* Adicionando animações suaves para melhor UX */

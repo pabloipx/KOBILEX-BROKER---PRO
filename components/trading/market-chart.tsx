@@ -933,14 +933,13 @@ function ChartCore({
         height: containerRef.current.clientHeight,
         layout: {
           background: { type: CT.Solid, color: "rgba(0,0,0,0)" },
-          textColor: "#787B86",
-          fontSize: 11,
-          fontFamily: "'SF Mono',Consolas,monospace",
+          textColor: "#9a9ba3",
+          fontSize: 12,
           attributionLogo: false,
         },
         grid: {
-          vertLines: { color: "rgba(42, 46, 57, 0.4)" },
-          horzLines: { color: "rgba(42, 46, 57, 0.4)" },
+          vertLines: { color: "rgba(255, 255, 255, 0.12)" },
+          horzLines: { color: "rgba(255, 255, 255, 0.12)" },
         },
         crosshair: {
           mode: CM.Normal,
@@ -981,12 +980,12 @@ function ChartCore({
       // Precisao por ativo: garante que cada simbolo (inclusive memecoins com 8 casas) renderize corretamente
       const dec = getDecimals(latest.current.symbol, latest.current.currentPrice)
       const cOpts = {
-        upColor: "#00E676",
-        downColor: "#FF5252",
-        borderUpColor: "#00E676",
-        borderDownColor: "#FF5252",
-        wickUpColor: "#00E676",
-        wickDownColor: "#FF5252",
+        upColor: "#46a83b",
+        downColor: "#c43c31",
+        borderUpColor: "#46a83b",
+        borderDownColor: "#c43c31",
+        wickUpColor: "#46a83b",
+        wickDownColor: "#c43c31",
         priceLineVisible: true,
         priceLineColor: "#787B86",
         priceLineWidth: 1 as const,
@@ -1784,29 +1783,19 @@ function ChartCore({
   }, [hoverDirection, seriesReady])
 
   return (
-    <div className="relative w-full h-full overflow-hidden" style={{ backgroundColor: "#0d0d0f" }}>
-      {/* Marca d'agua URYN BROKER no fundo do grafico */}
+    <div className="relative w-full h-full overflow-hidden bg-tr-chart">
+      {/* Marca d'agua Bullion Trader no fundo do grafico */}
       <div
-        className="absolute inset-0 z-0 pointer-events-none"
-        style={{
-          backgroundImage: "url(/images/urynbroker-watermark.png)",
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center 45%",
-          backgroundSize: "55% auto",
-          opacity: 0.1,
-        }}
-      />
-      {/* Vinheta sutil para dar profundidade */}
-      <div
-        className="absolute inset-0 z-0 pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse at center, rgba(13,13,15,0) 55%, rgba(13,13,15,0.85) 100%)",
-        }}
-      />
-      {/* OHLC header */}
+        className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center gap-6 opacity-[0.12] select-none"
+        aria-hidden="true"
+      >
+        <img src="/images/bullion-trader-logo.png" alt="" className="h-[22vh] w-auto grayscale" />
+        <span className="text-[12vh] font-bold leading-none tracking-tight text-tr-fg">Bullion Trader</span>
+      </div>
+      {/* OHLC header (oculto: o cabecalho do ativo fica na sobreposicao da sala de trading) */}
       <div
         ref={headerRef}
-        className="absolute top-2 left-3 z-20 flex items-center pointer-events-none"
+        className="absolute top-2 left-3 z-20 hidden items-center pointer-events-none"
         style={{ fontFamily: "'SF Mono',Consolas,monospace" }}
       />
 
@@ -1909,7 +1898,7 @@ function ChartCore({
       )}
 
       {/* Barra de ferramentas de desenho (estilo IQ Option) */}
-      <div className="absolute top-1/2 left-2 z-30 -translate-y-1/2 flex flex-col items-center gap-1 rounded-xl border border-[#2A2E39] bg-[#0d0d0f]/90 p-1 backdrop-blur-sm">
+      <div className="absolute bottom-9 left-2 z-30 flex flex-col items-center gap-1 rounded-sm border border-[#2A2E39] bg-tr-chart/90 p-1">
         {DRAW_TOOLS.map((dt) => {
           const active = tool === dt.id
           return (

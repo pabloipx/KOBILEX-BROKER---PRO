@@ -35,7 +35,15 @@ import {
   Clock,
   LayoutGrid,
   Lock,
+  CircleDollarSign,
 } from "lucide-react"
+import { TraderoomNav, type TraderoomPanel } from "@/components/trading/traderoom/traderoom-nav"
+import { TraderoomSidePanel } from "@/components/trading/traderoom/traderoom-side-panel"
+import { TraderoomBalanceMenu } from "@/components/trading/traderoom/traderoom-balance-menu"
+import { TraderoomTradePanel } from "@/components/trading/traderoom/traderoom-trade-panel"
+import { TraderoomChartOverlay } from "@/components/trading/traderoom/traderoom-chart-overlay"
+import { TraderoomPortfolio } from "@/components/trading/traderoom/traderoom-portfolio"
+import { TraderoomFooter } from "@/components/trading/traderoom/traderoom-footer"
 import { getMarketStatus, canOpenTrade } from "@/lib/market-hours"
 import {
   TIMEFRAME_LABELS,
@@ -1184,6 +1192,15 @@ export default function TradePage() {
   )
 
   const [isDesktop, setIsDesktop] = useState(false)
+  const [sidePanel, setSidePanel] = useState<Exclude<TraderoomPanel, "portfolio"> | null>(null)
+  const [portfolioOpen, setPortfolioOpen] = useState(true)
+  const investedAmount = useMemo(
+    () =>
+      activeTrades
+        .filter((t) => t.isDemo === (accountType === "demo"))
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0),
+    [activeTrades, accountType],
+  )
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -1198,9 +1215,9 @@ export default function TradePage() {
   // Loading screen
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0e0e0e" }}>
+      <div className="min-h-screen flex items-center justify-center bg-tr-chart">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-12 h-12 border-2 border-tr-brand border-t-transparent rounded-full animate-spin" />
           <p className="text-gray-400 text-sm">Carregando...</p>
         </div>
       </div>
@@ -1208,386 +1225,274 @@ export default function TradePage() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col lg:grid lg:grid-cols-[1fr_340px] overflow-hidden" style={{ backgroundColor: "#0e0e0e" }}>
-      {/* LEFT COLUMN: Header + Chart */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        {/* Header */}
-        <header className="flex items-center gap-2 px-2 lg:px-5 py-1.5 lg:py-2.5 border-b border-white/[0.06] shrink-0" style={{ backgroundColor: "#111114" }}>
-          {/* Left - Menu Button */}
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] transition-all duration-200 active:scale-95 shrink-0"
-          >
-            <MoreVertical className="w-4 h-4 lg:w-5 lg:h-5 text-gray-400" />
-          </button>
+    <div className="h-[100dvh] flex flex-col overflow-hidden bg-tr-chart font-sans">
+      {/* Header */}
+      <header className="flex h-14 lg:h-[71px] shrink-0 items-center gap-2 lg:gap-4 border-b border-tr-chart bg-tr-rail px-2 lg:px-4">
+        {/* Menu (mobile) */}
+        <button
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Abrir menu"
+          className="lg:hidden w-9 h-9 flex items-center justify-center rounded-sm bg-tr-raised text-tr-muted active:scale-95 shrink-0"
+        >
+          <MoreVertical className="w-4 h-4" />
+        </button>
 
-          {/* Center (MOBILE) - Seletor simples de ativo, abre o modal */}
-          <button
-            onClick={() => setShowAssetModal(true)}
-            className="flex lg:hidden items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] transition-all duration-200 border border-white/[0.06] min-w-0 flex-1"
-          >
-            <div className="w-7 h-7 rounded-full overflow-hidden bg-gray-700 shrink-0 ring-2 ring-white/10">
-              <Image
-                src={selectedAsset?.logo || "/placeholder.svg"}
-                alt={selectedAsset?.name || "Asset"}
-                width={28}
-                height={28}
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="text-left min-w-0">
-              <p className="text-white font-bold text-xs leading-tight truncate">
-                {selectedAsset?.name || "Selecionar"}
-              </p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <LivePriceText
-                  decimals={selectedAsset?.symbol?.includes("JPY") ? 3 : 5}
-                  className="text-[#26a69a] text-[10px] font-mono font-semibold"
-                />
-                <span className="text-[9px] px-1 py-[1px] bg-[#26a69a]/15 text-[#26a69a] rounded font-bold">
-                  {payout}%
-                </span>
-              </div>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-          </button>
+        {/* Logo */}
+        <a href="/" className="hidden lg:flex items-center gap-2 shrink-0 pr-2" aria-label="Bullion Trader - início">
+          <img src="/images/bullion-trader-logo.png" alt="" className="h-10 w-10 rounded-full object-cover" />
+          <span className="text-lg font-bold tracking-tight text-tr-brand">Bullion Trader</span>
+        </a>
 
-          {/* Center (DESKTOP) - Barra de abas de ativos (estilo IQ Option) */}
-          <div className="hidden lg:flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto scrollbar-hide">
-            {/* Botao de grade - abre a lista de todos os ativos */}
-            <button
-              onClick={() => setShowAssetPanel(true)}
-              aria-label="Todos os ativos"
-              className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] transition-all duration-200 active:scale-95 shrink-0"
-            >
-              <LayoutGrid className="w-4 h-4 lg:w-5 lg:h-5 text-gray-400" />
-            </button>
-
-            {/* Abas abertas */}
-            {openTabs.map((sym) => {
-              const asset = assetBySymbol(sym)
-              if (!asset) return null
-              const isActive = sym === selectedSymbol
-              return (
-                <div
-                  key={sym}
-                  onClick={() => setSelectedSymbol(sym)}
-                  role="button"
-                  tabIndex={0}
-                  className={`group relative flex items-center gap-2 pl-6 pr-3 py-1.5 rounded-lg cursor-pointer shrink-0 border transition-all duration-200 ${
-                    isActive
-                      ? "bg-white/[0.06] border-white/[0.1]"
-                      : "bg-transparent border-transparent hover:bg-white/[0.03]"
-                  }`}
-                >
-                  {/* Botao fechar (X) no canto superior esquerdo */}
-                  {openTabs.length > 1 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        closeTab(sym)
-                      }}
-                      aria-label={`Fechar ${asset.name}`}
-                      className="absolute top-1 left-1 w-4 h-4 rounded-sm flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-
-                  <div className="w-6 h-6 lg:w-7 lg:h-7 rounded-full overflow-hidden bg-gray-700 shrink-0 ring-1 ring-white/10">
-                    <Image
-                      src={asset.logo || "/placeholder.svg"}
-                      alt={asset.name}
-                      width={28}
-                      height={28}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="text-left min-w-0">
-                    <p className="text-white font-bold text-xs lg:text-sm leading-tight truncate max-w-[90px] lg:max-w-[110px]">
-                      {asset.name}
-                    </p>
-                    <TabTimer
-                      expiresAt={expiresAtBySymbol[sym]}
-                      isOtc={(asset.market || "otc") === "otc"}
-                    />
-                  </div>
-
-                  {/* Sublinhado laranja na aba ativa */}
-                  {isActive && (
-                    <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-[#ff8a00] rounded-full" />
-                  )}
-                </div>
-              )
-            })}
-
-            {/* Botao adicionar nova aba */}
-            <button
-              onClick={() => setShowAssetPanel(true)}
-              aria-label="Adicionar ativo"
-              className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] transition-all duration-200 active:scale-95 shrink-0 border border-white/[0.06]"
-            >
-              <Plus className="w-4 h-4 lg:w-5 lg:h-5 text-gray-400" />
-            </button>
+        {/* Seletor de ativo (mobile) */}
+        <button
+          onClick={() => setShowAssetModal(true)}
+          className="flex lg:hidden items-center gap-2 px-2.5 py-1.5 rounded-sm bg-tr-raised min-w-0 flex-1"
+        >
+          <div className="w-7 h-7 rounded-full overflow-hidden bg-tr-line shrink-0">
+            <Image
+              src={selectedAsset?.logo || "/placeholder.svg"}
+              alt={selectedAsset?.name || "Ativo"}
+              width={28}
+              height={28}
+              className="w-full h-full object-cover"
+            />
           </div>
+          <div className="text-left min-w-0">
+            <p className="text-tr-fg font-bold text-xs leading-tight truncate">{selectedAsset?.name || "Selecionar"}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <LivePriceText
+                decimals={selectedAsset?.symbol?.includes("JPY") ? 3 : 5}
+                className="text-tr-up text-[10px] font-mono font-semibold"
+              />
+              <span className="text-[9px] px-1 bg-tr-up/15 text-tr-up rounded font-bold">{payout}%</span>
+            </div>
+          </div>
+          <ChevronDown className="w-3.5 h-3.5 text-tr-muted shrink-0" />
+        </button>
 
-          {/* Right - Balance & Wallet */}
-          <div className="flex items-center gap-1.5 lg:gap-2 shrink-0 ml-auto">
-            <div className="flex flex-col items-end relative">
-              <span className="text-white text-xs lg:text-lg font-bold leading-tight tracking-tight whitespace-nowrap">
-                R$ {formatCurrency(currentBalance)}
-              </span>
-              <button
-                onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-                className="flex items-center gap-0.5 text-[10px] lg:text-xs hover:text-white transition-colors mt-0.5"
+        {/* Abas de ativos (desktop) */}
+        <div className="hidden lg:flex items-center gap-3 min-w-0 flex-1 overflow-x-auto scrollbar-hide">
+          <button
+            onClick={() => setShowAssetPanel(true)}
+            aria-label="Todos os ativos"
+            className="w-12 h-12 flex items-center justify-center rounded-sm border border-tr-line bg-tr-raised/40 text-tr-muted hover:text-tr-fg transition-colors shrink-0"
+          >
+            <LayoutGrid className="w-6 h-6" fill="currentColor" />
+          </button>
+
+          {openTabs.map((sym) => {
+            const asset = assetBySymbol(sym)
+            if (!asset) return null
+            const isActive = sym === selectedSymbol
+            return (
+              <div
+                key={sym}
+                onClick={() => setSelectedSymbol(sym)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") setSelectedSymbol(sym)
+                }}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isActive}
+                className={`group relative flex h-12 items-center gap-2 pl-3 pr-4 cursor-pointer shrink-0 rounded-sm transition-colors ${
+                  isActive ? "bg-tr-raised" : "hover:bg-tr-raised/50"
+                }`}
               >
-                <span className={accountType === "demo" ? "text-amber-400" : "text-[#26a69a]"}>
-                  {accountType === "demo" ? "Demo" : "Real"}
-                </span>
-                <ChevronDown className="w-3 h-3 text-gray-500" />
-              </button>
-
-              {showAccountDropdown && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowAccountDropdown(false)} />
-                  <div
-                    className="absolute top-full right-0 mt-2 w-40 rounded-xl shadow-2xl z-50 overflow-hidden border border-white/[0.08]"
-                    style={{ backgroundColor: "#18181c" }}
+                {openTabs.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      closeTab(sym)
+                    }}
+                    aria-label={`Fechar ${asset.name}`}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center text-tr-muted opacity-0 group-hover:opacity-100 hover:text-tr-fg transition-opacity"
                   >
-                    <button
-                      onClick={() => {
-                        setAccountType("real")
-                        setShowAccountDropdown(false)
-                      }}
-                      className={`w-full px-4 py-3 text-left text-sm hover:bg-white/5 transition flex items-center gap-2.5 ${
-                        accountType === "real" ? "text-[#26a69a]" : "text-gray-300"
-                      }`}
-                    >
-                      <div
-                        className={`w-2 h-2 rounded-full ${accountType === "real" ? "bg-[#26a69a]" : "bg-gray-600"}`}
-                      />
-                      Conta Real
-                    </button>
-                    <div className="border-t border-white/[0.06]" />
-                    <button
-                      onClick={() => {
-                        setAccountType("demo")
-                        setShowAccountDropdown(false)
-                      }}
-                      className={`w-full px-4 py-3 text-left text-sm hover:bg-white/5 transition flex items-center gap-2.5 ${
-                        accountType === "demo" ? "text-amber-400" : "text-gray-300"
-                      }`}
-                    >
-                      <div
-                        className={`w-2 h-2 rounded-full ${accountType === "demo" ? "bg-amber-400" : "bg-gray-600"}`}
-                      />
-                      Conta Demo
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+                <div className="w-6 h-6 rounded-full overflow-hidden bg-tr-line shrink-0">
+                  <Image
+                    src={asset.logo || "/placeholder.svg"}
+                    alt=""
+                    width={24}
+                    height={24}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="text-left min-w-0">
+                  <p className="text-tr-fg font-semibold text-xs leading-tight truncate max-w-[84px]">{asset.name}</p>
+                  <TabTimer expiresAt={expiresAtBySymbol[sym]} isOtc={(asset.market || "otc") === "otc"} />
+                </div>
+                {isActive && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-tr-brand" />}
+              </div>
+            )
+          })}
 
-            {/* Wallet Button */}
-            <button
-              onClick={() => (window.location.href = "/deposit")}
-              className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl flex items-center justify-center bg-[#f97316] hover:bg-[#fb923c] transition-all duration-200 shadow-lg shadow-[#f97316]/20 active:scale-95 shrink-0"
-            >
-              <Wallet className="w-4 h-4 lg:w-5 lg:h-5 text-white" />
-            </button>
+          <button
+            onClick={() => setShowAssetPanel(true)}
+            aria-label="Adicionar ativo"
+            className="w-12 h-12 flex items-center justify-center rounded-sm border border-tr-line text-tr-muted hover:text-tr-fg transition-colors shrink-0"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        </div>
+
+        {/* Direita: payout, saldo, depósito */}
+        <div className="flex items-center gap-2 lg:gap-6 shrink-0 ml-auto">
+          <div
+            className="hidden lg:flex items-center gap-2 text-tr-muted"
+            title={`Retorno do ativo: ${payout}%`}
+          >
+            <span className="relative flex h-12 w-12 items-center justify-center">
+              <svg viewBox="0 0 48 48" className="absolute inset-0 -rotate-90" aria-hidden="true">
+                <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                <circle
+                  cx="24"
+                  cy="24"
+                  r="21"
+                  fill="none"
+                  className="stroke-tr-fg"
+                  strokeWidth="3"
+                  strokeDasharray={`${(payout / 100) * 131.9} 131.9`}
+                />
+              </svg>
+              <span className="text-xs text-tr-fg">{payout}%</span>
+            </span>
+            <ChevronDown className="w-4 h-4" aria-hidden="true" />
           </div>
-        </header>
 
-        {/* Chart Area - Candlestick chart with native trade lines + 24h history */}
-        <div className="flex-1 min-h-0 relative">
-          <div className="absolute inset-0">
-            {isTraderIAActive && <TraderIAWatermark isActive={isTraderIAActive} />}
-            {isCronosActive && (
-              <KaykoRobot
-                isActive={isCronosActive}
-                assetName={selectedAsset?.name}
-                symbol={selectedSymbol}
-                expirySeconds={expiryTime}
-                robot={OLHO_DE_CRONOS}
-                initialY={130}
-              />
-            )}
-            <MarketChart
-              candles={candles || []}
-              currentPrice={getLivePrice() || 0}
-              activeTrades={activeTradesForChart}
-              timeframe={timeframe as 60 | 300 | 600 | 900}
-              symbol={selectedSymbol}
-              payout={payout / 100}
-              reloadKey={(realReady ? 1 : 0) + (realHistoryReady ? 2 : 0)}
+          <TraderoomBalanceMenu
+            accountType={accountType}
+            balanceReal={balanceReal}
+            balanceDemo={balanceDemo}
+            invested={investedAmount}
+            onChangeAccount={setAccountType}
+          />
+
+          <a
+            href="/deposit"
+            className="flex h-9 lg:h-12 items-center gap-2 rounded-sm border border-tr-up px-2.5 lg:px-5 text-tr-up hover:bg-tr-up/10 transition-colors"
+          >
+            <CircleDollarSign className="w-5 h-5 lg:w-6 lg:h-6" aria-hidden="true" />
+            <span className="hidden sm:inline text-sm lg:text-xl">Depositar</span>
+          </a>
+        </div>
+      </header>
+
+      <div className="flex-1 flex min-h-0">
+        <TraderoomNav
+          active={sidePanel}
+          portfolioOpen={portfolioOpen}
+          onSelect={(id) => {
+            if (id === "portfolio") {
+              setSidePanel(null)
+              setPortfolioOpen(true)
+              return
+            }
+            setSidePanel((cur) => (cur === id ? null : id))
+          }}
+          onMore={() => setSidebarOpen(true)}
+        />
+
+        {sidePanel && (
+          <TraderoomSidePanel
+            panel={sidePanel}
+            onClose={() => setSidePanel(null)}
+            userId={user?.id || ""}
+            historyRefresh={historyRefresh}
+            isDemo={accountType === "demo"}
+          />
+        )}
+
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <div className="flex-1 flex min-h-0">
+            {/* Gráfico */}
+            <div className="flex-1 min-w-0 relative">
+              <div className="absolute inset-0">
+                {isTraderIAActive && <TraderIAWatermark isActive={isTraderIAActive} />}
+                {isCronosActive && (
+                  <KaykoRobot
+                    isActive={isCronosActive}
+                    assetName={selectedAsset?.name}
+                    symbol={selectedSymbol}
+                    expirySeconds={expiryTime}
+                    robot={OLHO_DE_CRONOS}
+                    initialY={130}
+                  />
+                )}
+                <MarketChart
+                  candles={candles || []}
+                  currentPrice={getLivePrice() || 0}
+                  activeTrades={activeTradesForChart}
+                  timeframe={timeframe as 60 | 300 | 600 | 900}
+                  symbol={selectedSymbol}
+                  payout={payout / 100}
+                  reloadKey={(realReady ? 1 : 0) + (realHistoryReady ? 2 : 0)}
                   hoverDirection={hoverDirection}
                 />
+                <TraderoomChartOverlay
+                  assetName={selectedAsset?.name || ""}
+                  assetLogo={selectedAsset?.logo || ""}
+                  isOtc={(selectedAsset?.market || "otc") === "otc"}
+                  timeframe={timeframe}
+                  candles={candles || []}
+                  onOpenAssets={() => setShowAssetPanel(true)}
+                />
+                {/* Tempo do gráfico */}
+                <div className="absolute bottom-9 left-14 z-30 hidden lg:flex items-center gap-1">
+                  {timeframeOptions.map((tf) => (
+                    <button
+                      key={tf}
+                      onClick={() => setTimeframe(tf)}
+                      aria-pressed={timeframe === tf}
+                      aria-label={`Tempo do gráfico ${TIMEFRAME_LABELS[tf]}`}
+                      className={`h-8 min-w-8 px-1.5 rounded-sm border text-xs font-bold transition-colors ${
+                        timeframe === tf
+                          ? "border-tr-fg/60 bg-tr-chart text-tr-fg"
+                          : "border-tr-line bg-tr-chart text-tr-muted hover:text-tr-fg"
+                      }`}
+                    >
+                      {TIMEFRAME_LABELS[tf]}
+                    </button>
+                  ))}
                 </div>
-        </div>
-
-      </div>
-
-      {/* RIGHT COLUMN: Trading Controls (Desktop only) */}
-      <div
-        className="hidden lg:flex flex-col border-l border-[#1a1a1e] min-h-0"
-        style={{ backgroundColor: "#111111" }}
-      >
-        <div className="p-4 xl:p-5 space-y-4 shrink-0">
-          {/* Expiry Time */}
-          <div>
-            <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">Horario</label>
-            <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
-              <button
-                onClick={() => handleExpiryChange(-1)}
-                disabled={timeframeOptions.indexOf(expiryTime as Timeframe) === 0}
-                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5 text-white/60" />
-              </button>
-              <span className="text-white text-lg font-bold">{TIMEFRAME_LABELS[expiryTime]}</span>
-              <button
-                onClick={() => handleExpiryChange(1)}
-                disabled={
-                  timeframeOptions.indexOf(expiryTime as Timeframe) === timeframeOptions.length - 1
-                }
-                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronRight className="w-5 h-5 text-white/60" />
-              </button>
-            </div>
-          </div>
-
-          {/* Tempo de expiração do gráfico - abas estilo corretora (independente do Horario) */}
-          <div>
-            <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">
-              Tempo do grafico
-            </label>
-            <div className="flex items-center gap-1.5 p-1 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
-              {timeframeOptions.map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  aria-pressed={timeframe === tf}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
-                    timeframe === tf
-                      ? "bg-primary text-primary-foreground"
-                      : "text-white/60 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {TIMEFRAME_LABELS[tf]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Amount */}
-          <div>
-            <label className="text-white/50 text-[11px] mb-2 block font-medium uppercase tracking-wider">Valor (R$)</label>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleAmountChange(-10)}
-                disabled={amount <= 1}
-                className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
-                style={{ backgroundColor: "#1a1a1e" }}
-              >
-                <Minus className="w-4 h-4 text-white/60" />
-              </button>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => {
-                  const val = Number.parseFloat(e.target.value) || 1
-                  setAmount(Math.max(1, Math.min(currentBalance || 10000, val)))
-                }}
-                className="w-full h-10 px-3 rounded-xl text-center text-white text-base font-bold bg-transparent border-0 outline-none"
-                style={{ backgroundColor: "#1a1a1e" }}
-                min="1"
-                max={currentBalance || 10000}
-              />
-              <button
-                onClick={() => handleAmountChange(10)}
-                disabled={amount >= currentBalance}
-                className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
-                style={{ backgroundColor: "#1a1a1e" }}
-              >
-                <Plus className="w-4 h-4 text-white/60" />
-              </button>
-            </div>
-          </div>
-
-          {/* Expected Return */}
-          <div className="text-center p-3 rounded-xl" style={{ backgroundColor: "#1a1a1e" }}>
-            <p className="text-white/50 text-[11px] mb-0.5">Retorno</p>
-            <p className="text-[#26a69a] text-lg font-bold">+R$ {formatCurrency(expectedReturn)}</p>
-            <p className="text-white/40 text-xs">+{payout}%</p>
-          </div>
-
-          {/* Aviso de mercado fechado ou fechando antes do vencimento */}
-          {entryBlocked && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5">
-              <Lock className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
-              <div className="text-left">
-                <p className="text-yellow-500 text-xs font-semibold">{tradeWindow.reason}</p>
-                {marketClosed && nextOpenLabel && (
-                  <p className="text-yellow-500/70 text-[11px] mt-0.5">Abre {nextOpenLabel}</p>
-                )}
-                {!marketClosed && (
-                  <p className="text-yellow-500/70 text-[11px] mt-0.5">
-                    Escolha uma duração menor para operar agora
-                  </p>
-                )}
               </div>
             </div>
-          )}
 
-          {/* Trading Buttons */}
-          <div className="space-y-3">
-            <button
-              onClick={() => executeTrade("CALL")}
+            <TraderoomTradePanel
+              amount={amount}
+              maxAmount={currentBalance || 10000}
+              onAmountChange={(val) => setAmount(Math.max(1, Math.min(currentBalance || 10000, val)))}
+              onAmountStep={handleAmountChange}
+              expirySeconds={expiryTime}
+              canDecreaseExpiry={timeframeOptions.indexOf(expiryTime as Timeframe) > 0}
+              canIncreaseExpiry={timeframeOptions.indexOf(expiryTime as Timeframe) < timeframeOptions.length - 1}
+              onExpiryStep={handleExpiryChange}
+              payout={payout}
+              expectedReturn={expectedReturn}
               disabled={amount > currentBalance || entryBlocked}
-              onMouseEnter={() => {
-                if (!(amount > currentBalance || entryBlocked)) setHoverDirection("call")
-              }}
-              onMouseLeave={() => setHoverDirection(null)}
-              className="w-full py-4 rounded-xl font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: "linear-gradient(135deg, #00B35A 0%, #00E676 100%)",
-              }}
-            >
-              {entryBlocked ? <Lock className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
-              <span>Comprar</span>
-            </button>
-
-            <button
-              onClick={() => executeTrade("PUT")}
-              disabled={amount > currentBalance || entryBlocked}
-              onMouseEnter={() => {
-                if (!(amount > currentBalance || entryBlocked)) setHoverDirection("put")
-              }}
-              onMouseLeave={() => setHoverDirection(null)}
-              className="w-full py-4 rounded-xl font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)",
-              }}
-            >
-              {entryBlocked ? <Lock className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-              <span>Vender</span>
-            </button>
+              blockedReason={entryBlocked ? tradeWindow.reason : null}
+              blockedHint={
+                entryBlocked
+                  ? marketClosed
+                    ? nextOpenLabel
+                      ? `Abre ${nextOpenLabel}`
+                      : null
+                    : "Escolha uma duração menor para operar agora"
+                  : null
+              }
+              error={tradeError}
+              onTrade={executeTrade}
+              onHover={setHoverDirection}
+            />
           </div>
 
-          {tradeError && (
-            <div className="bg-red-500/20 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-xs text-center">
-              {tradeError}
-            </div>
-          )}
-        </div>
-
-        {/* History below buttons */}
-        <div className="flex-1 min-h-0 overflow-hidden border-t border-[#1a1a1e]">
-          <TradeHistorySidebar
-            userId={user?.id || ""}
-            refreshTrigger={historyRefresh}
-            isDemo={accountType === "demo"}
+          <TraderoomPortfolio
+            open={portfolioOpen}
+            onToggle={() => setPortfolioOpen((v) => !v)}
+            positions={activeTrades.filter((t) => t.isDemo === (accountType === "demo"))}
+            nameFor={(sym) => assetBySymbol(sym)?.name || sym}
+            onSelectAsset={() => setShowAssetPanel(true)}
           />
         </div>
       </div>
@@ -1726,6 +1631,8 @@ export default function TradePage() {
           )}
         </div>
       </div>
+
+      <TraderoomFooter />
 
       {/* Modals and Sidebars */}
       <SidebarMenu

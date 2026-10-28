@@ -18,7 +18,7 @@ type Props = {
 }
 
 export function TraderoomPortfolio({ open, onToggle, positions, payout, nameFor, onSelectAsset, onSell }: Props) {
-  const now = useNow(500)
+  const now = useNow(open ? 500 : 1000, positions.length > 0)
   const [selling, setSelling] = useState<string | null>(null)
 
   const rows = positions.map((p) => ({

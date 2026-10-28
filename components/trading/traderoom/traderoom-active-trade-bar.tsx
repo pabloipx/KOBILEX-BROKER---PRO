@@ -16,7 +16,7 @@ type Props = {
 }
 
 export function TraderoomActiveTradeBar({ symbol, positions, payout, onSell }: Props) {
-  const now = useNow(250)
+  const now = useNow(250, positions.length > 0)
   const [selling, setSelling] = useState(false)
   if (positions.length === 0) return null
 

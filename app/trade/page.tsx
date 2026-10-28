@@ -1268,7 +1268,7 @@ export default function TradePage() {
 
   const [isDesktop, setIsDesktop] = useState(false)
   const [sidePanel, setSidePanel] = useState<Exclude<TraderoomPanel, "portfolio"> | null>(null)
-  const [portfolioOpen, setPortfolioOpen] = useState(true)
+  const [portfolioOpen, setPortfolioOpen] = useState(false)
   const openPositions = useMemo(
     () => activeTrades.filter((t) => t.isDemo === (accountType === "demo")),
     [activeTrades, accountType],

@@ -41,6 +41,7 @@ export function ChartExpiryLines({ chartRef, seriesRef, timeframe, expirySeconds
     }
 
     const tick = () => {
+      if (document.hidden) return
       const chart = chartRef.current
       const series = seriesRef.current
       if (!chart || !series) return
@@ -69,7 +70,7 @@ export function ChartExpiryLines({ chartRef, seriesRef, timeframe, expirySeconds
     }
 
     tick()
-    const id = setInterval(tick, 200)
+    const id = setInterval(tick, 250)
     return () => clearInterval(id)
   }, [chartRef, seriesRef, timeframe, expirySeconds])
 

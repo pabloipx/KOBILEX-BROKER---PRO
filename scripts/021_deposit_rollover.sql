@@ -158,7 +158,7 @@ $$;
 -- deposit_rollover_multiplier = 0 libera o deposito na hora (equivale a
 -- desligar), 1 exige negociar o valor do deposito uma vez, e assim por diante.
 insert into public.platform_settings (setting_key, setting_value)
-select v.k, to_jsonb(v.v)
+select v.k, v.v
 from (values
   ('deposit_rollover_enabled', 'false'),
   ('deposit_rollover_multiplier', '1'),

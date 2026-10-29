@@ -65,12 +65,12 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Image
-            src="/images/bullion-trader-logo.png"
-            alt="Bullion Trader"
-            width={80}
-            height={80}
+            src="/images/uryn-fox-logo.png"
+            alt="URYNBROKER"
+            width={240}
+            height={64}
             priority
-            className="mx-auto mb-4 h-20 w-20 rounded-full object-cover"
+            className="mx-auto mb-4 h-auto w-[240px]"
           />
           <h1 className="text-2xl font-bold text-white">Painel Administrativo</h1>
           <p className="text-gray-400 mt-2">Digite suas credenciais para acessar</p>

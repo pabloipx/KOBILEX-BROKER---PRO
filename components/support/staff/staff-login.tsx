@@ -48,12 +48,12 @@ export function StaffLogin() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <Image
-            src="/images/bullion-trader-logo.png"
-            alt="Bullion Trader"
-            width={72}
-            height={72}
+            src="/images/uryn-fox-logo.png"
+            alt="URYNBROKER"
+            width={200}
+            height={54}
             priority
-            className="mx-auto mb-4 h-18 w-18 rounded-full object-cover"
+            className="mx-auto mb-4 h-auto w-[200px]"
           />
           <h1 className="text-2xl font-bold text-white">Central de Atendimento</h1>
           <p className="mt-2 text-sm text-gray-400">Acesso restrito à equipe de suporte e administradores</p>

@@ -228,7 +228,7 @@ function TradeHistorySidebarBase({ userId, refreshTrigger, isDemo }: TradeHistor
 
   if (isLoading && trades.length === 0) {
     return (
-      <div className="p-4 border-t border-white/10 h-full flex flex-col" style={{ backgroundColor: "#1c1d22" }}>
+      <div className="p-4 border-t border-white/10 h-full flex flex-col" style={{ backgroundColor: "#121826" }}>
         <div className="flex items-center gap-2 mb-3">
           <Clock className="w-5 h-5 text-white/60" />
           <h3 className="text-white font-bold">Histórico</h3>
@@ -242,7 +242,7 @@ function TradeHistorySidebarBase({ userId, refreshTrigger, isDemo }: TradeHistor
 
   if (trades.length === 0) {
     return (
-      <div className="p-4 border-t border-white/10 h-full flex flex-col" style={{ backgroundColor: "#1c1d22" }}>
+      <div className="p-4 border-t border-white/10 h-full flex flex-col" style={{ backgroundColor: "#121826" }}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-white/60" />
@@ -262,7 +262,7 @@ function TradeHistorySidebarBase({ userId, refreshTrigger, isDemo }: TradeHistor
   }
 
   return (
-    <div className="border-t border-white/10 h-full flex flex-col" style={{ backgroundColor: "#1c1d22" }}>
+    <div className="border-t border-white/10 h-full flex flex-col" style={{ backgroundColor: "#121826" }}>
       <div className="p-2 lg:p-3 border-b border-white/10 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 lg:gap-2">
@@ -313,7 +313,7 @@ function TradeHistorySidebarBase({ userId, refreshTrigger, isDemo }: TradeHistor
                     <span className="text-white font-medium text-[10px] lg:text-sm truncate">{getAssetName(trade.symbol)}</span>
                     <span
                       className={`text-[8px] lg:text-[10px] font-bold px-1 lg:px-1.5 py-0.5 rounded ${
-                        isCall ? "bg-tr-up/20 text-tr-up" : "bg-[#EF4444]/20 text-[#EF4444]"
+                        isCall ? "bg-[#f97316]/20 text-[#f97316]" : "bg-[#EF4444]/20 text-[#EF4444]"
                       }`}
                     >
                       {isCall ? "C" : "V"}

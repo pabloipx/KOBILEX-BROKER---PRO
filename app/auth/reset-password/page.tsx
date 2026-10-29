@@ -91,16 +91,15 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen w-full" style={{ backgroundColor: "#0B0F14" }}>
       {/* Header */}
       <header className="flex items-center justify-between px-5 py-4">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center">
           <Image
-            src="/images/bullion-trader-logo.png"
-            alt=""
-            width={40}
+            src="/images/kodilex-logo.png"
+            alt="URYN BROKER"
+            width={160}
             height={40}
-            className="h-10 w-10 rounded-full object-cover"
+            className="h-10 w-auto"
             unoptimized
           />
-          <span className="font-bold tracking-tight">Bullion Trader</span>
         </Link>
       </header>
 

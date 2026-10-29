@@ -24,18 +24,7 @@ export function unlockAudio() {
   if (ctx.state === "suspended") ctx.resume()
 }
 
-let muted = false
-
-export function setSoundMuted(value: boolean) {
-  muted = value
-}
-
-export function isSoundMuted() {
-  return muted
-}
-
 function playTone(freq: number, duration: number, type: OscillatorType = "sine", volume = 0.3) {
-  if (muted) return
   const ctx = getCtx()
   if (!ctx) return
 

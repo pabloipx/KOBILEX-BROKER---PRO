@@ -58,16 +58,15 @@ export default function ForgotPasswordPage() {
     <div className="flex min-h-screen w-full flex-col bg-white">
       {/* Header fino com a logo e acesso ao cadastro */}
       <header className="flex items-center justify-between border-b border-gray-100 px-5 py-3 sm:px-8">
-        <Link href="/" className="flex items-center gap-2 text-gray-900">
+        <Link href="/" className="flex items-center">
           <Image
-            src="/images/bullion-trader-logo.png"
-            alt=""
-            width={36}
-            height={36}
-            className="h-9 w-9 rounded-full object-cover"
+            src="/images/uryn-fox-logo.png"
+            alt="URYNBROKER"
+            width={180}
+            height={44}
+            className="h-8 w-auto sm:h-9"
             unoptimized
           />
-          <span className="font-bold tracking-tight">Bullion Trader</span>
         </Link>
         <Link href="/auth/sign-up">
           <Button className="h-10 rounded-md bg-orange-500 px-6 font-medium text-white hover:bg-orange-600">

@@ -30,6 +30,7 @@ import {
   BarChart3,
   Headphones,
   Megaphone,
+  Gauge,
 } from "lucide-react"
 import { AdminPopup } from "@/components/admin/sections/admin-popup"
 import { Button } from "@/components/ui/button"
@@ -179,6 +180,13 @@ export default function AdminDashboardClient() {
   const [rolloverForm, setRolloverForm] = useState({ baseAmount: 0, multiplier: 1 })
   const [rolloverSaving, setRolloverSaving] = useState(false)
   const [rolloverSuccess, setRolloverSuccess] = useState<string | null>(null)
+
+  // Limite de saque por conta
+  const [limitUser, setLimitUser] = useState<any>(null)
+  const [limitEnabled, setLimitEnabled] = useState(false)
+  const [limitAmount, setLimitAmount] = useState("")
+  const [limitSaving, setLimitSaving] = useState(false)
+  const [limitError, setLimitError] = useState("")
 
   // Edit modal
   const [editingUser, setEditingUser] = useState<any>(null)
@@ -786,6 +794,42 @@ export default function AdminDashboardClient() {
     }
   }
 
+  const openLimitModal = (user: any) => {
+    setLimitUser(user)
+    setLimitEnabled(user.withdraw_limit != null)
+    setLimitAmount(user.withdraw_limit != null ? String(user.withdraw_limit) : "")
+    setLimitError("")
+  }
+
+  const handleSaveLimit = async () => {
+    if (!limitUser) return
+    const amount = Number(limitAmount.replace(",", "."))
+    if (limitEnabled && (!Number.isFinite(amount) || amount <= 0)) {
+      setLimitError("Digite um valor de limite maior que zero.")
+      return
+    }
+    setLimitSaving(true)
+    setLimitError("")
+    try {
+      const res = await fetch("/api/admin/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": ADMIN_TOKEN },
+        body: JSON.stringify({
+          action: "set_withdraw_limit",
+          data: { userId: limitUser.id, enabled: limitEnabled, amount },
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Erro ao salvar limite")
+      setLimitUser(null)
+      fetchUsers()
+    } catch (err: any) {
+      setLimitError(err.message)
+    } finally {
+      setLimitSaving(false)
+    }
+  }
+
   const openRolloverModal = (user: any) => {
     setRolloverUser(user)
     setRolloverForm({ baseAmount: Number(user.balance_real) || 0, multiplier: 1 })
@@ -1296,6 +1340,11 @@ export default function AdminDashboardClient() {
   Afiliado
   </span>
   )}
+                            {user.withdraw_limit != null && (
+                              <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded whitespace-nowrap">
+                                Limitado {formatCurrency(user.withdraw_limit)}
+                              </span>
+                            )}
   </div>
                           <p className="text-gray-400 text-sm">{user.full_name || "Sem nome"}</p>
                           <p className="text-gray-500 text-xs">{formatDate(user.created_at)}</p>
@@ -1322,6 +1371,18 @@ export default function AdminDashboardClient() {
                           >
                             <Repeat className="w-4 h-4" />
                             <span className="ml-1 hidden sm:inline">Rollover</span>
+                          </Button>
+                          <Button
+                            onClick={() => openLimitModal(user)}
+                            size="sm"
+                            variant="outline"
+                            aria-label="Limitar conta"
+                            className={`border-[#2A3142] ${
+                              user.withdraw_limit != null ? "text-yellow-400" : "text-gray-300"
+                            } hover:text-yellow-300`}
+                          >
+                            <Gauge className="w-4 h-4" />
+                            <span className="ml-1 hidden sm:inline">Limitar</span>
                           </Button>
                           <Button
                             onClick={() => openEditModal(user)}
@@ -2510,6 +2571,83 @@ export default function AdminDashboardClient() {
                   {rolloverSaving ? "Aplicando..." : "Aplicar Rollover"}
                 </Button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {limitUser && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-[#1A1F2E] rounded-xl p-6 w-full max-w-md border border-[#2A3142]">
+            <div className="flex items-center gap-2 mb-1">
+              <Gauge className="w-5 h-5 text-yellow-400" />
+              <h2 className="text-xl font-bold text-white">Limitar conta</h2>
+            </div>
+            <p className="text-gray-400 text-sm mb-4 break-all">{limitUser.email}</p>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={limitEnabled}
+              onClick={() => setLimitEnabled(!limitEnabled)}
+              className="w-full min-h-11 flex items-center justify-between gap-3 rounded-lg bg-[#0B0F14] border border-[#2A3142] px-3 py-2"
+            >
+              <span className="text-white text-sm font-medium">Limite de saque ativo</span>
+              <span
+                className={`w-12 h-6 rounded-full transition-colors flex items-center ${
+                  limitEnabled ? "bg-yellow-500" : "bg-gray-600"
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
+                    limitEnabled ? "translate-x-6" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+            </button>
+
+            {limitEnabled && (
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label htmlFor="withdraw-limit" className="text-gray-400 text-sm">
+                    Valor máximo por saque (R$)
+                  </label>
+                  <Input
+                    id="withdraw-limit"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ex.: 200"
+                    value={limitAmount}
+                    onChange={(e) => setLimitAmount(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className="bg-[#0B0F14] border-[#2A3142] text-white text-base h-11"
+                  />
+                </div>
+                <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-3">
+                  <p className="text-yellow-300 text-xs leading-relaxed">
+                    Enquanto ativo, cada saque fica limitado a esse valor e o usuário só pode pedir um novo saque
+                    48 horas depois do anterior.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {limitError && <p className="text-red-400 text-sm mt-3">{limitError}</p>}
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                onClick={() => setLimitUser(null)}
+                variant="outline"
+                className="flex-1 h-11 border-[#2A3142] text-gray-300"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSaveLimit}
+                disabled={limitSaving}
+                className="flex-1 h-11 bg-yellow-500 hover:bg-yellow-600 text-black"
+              >
+                {limitSaving ? "Salvando..." : "Salvar"}
+              </Button>
             </div>
           </div>
         </div>

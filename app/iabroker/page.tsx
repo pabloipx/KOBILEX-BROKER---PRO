@@ -370,14 +370,17 @@ export default function IaBrokerPage() {
           <ArrowLeft className="w-4 h-4" />
           <span className="text-sm font-medium">Voltar</span>
         </Link>
-        <Image
-          src="/images/uryn-fox-logo.png"
-          alt="URYNBROKER"
-          width={140}
-          height={34}
-          className="h-8 w-auto"
-          unoptimized
-        />
+        <span className="flex items-center gap-2">
+          <Image
+            src="/images/bullion-trader-logo.png"
+            alt=""
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-full object-cover"
+            unoptimized
+          />
+          <span className="font-bold tracking-tight">Bullion Trader</span>
+        </span>
         <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
           <Sparkles className="w-3.5 h-3.5" />
           IA

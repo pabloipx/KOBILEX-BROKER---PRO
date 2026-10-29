@@ -90,11 +90,10 @@ function SidebarMenuBase({
         {/* Header with user info */}
         <div className="p-5 pb-0 flex-shrink-0">
           <div className="flex items-center justify-between mb-5">
-            <img
-              src="/images/uryn-fox-logo.png"
-              alt="URYNBROKER"
-              className="h-8 w-auto"
-            />
+            <span className="flex items-center gap-2 text-white">
+              <img src="/images/bullion-trader-logo.png" alt="" className="h-8 w-8 rounded-full object-cover" />
+              <span className="font-bold tracking-tight">Bullion Trader</span>
+            </span>
             <button
               onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition"

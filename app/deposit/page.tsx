@@ -8,7 +8,7 @@ import { ChevronLeft, Copy, Check, Loader2, Clock, RefreshCw, CreditCard, CheckC
 import Image from "next/image"
 import { QRCodeSVG } from "qrcode.react"
 
-const QUICK_AMOUNTS = [60, 250, 1000, 2000, 100, 500, 1500, 4000]
+const QUICK_AMOUNTS = [50, 100, 500, 1000, 5000, 10000, 50000, 100000]
 
   interface PixPaymentData {
   deposit_id: string
@@ -33,8 +33,7 @@ const USD_TO_BRL = 6.0 // Taxa de conversão USD para BRL
 export default function DepositPage() {
   const router = useRouter()
   const [method, setMethod] = useState<DepositMethod>("pix")
-  const [step, setStep] = useState<"select" | "form">("select")
-  const [amount, setAmount] = useState("60,00")
+  const [amount, setAmount] = useState("50,00")
   const [acceptTerms, setAcceptTerms] = useState(false)
   // Codigo promocional ja validado pelo servidor; enviado junto ao gerar o PIX.
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null)
@@ -705,120 +704,125 @@ export default function DepositPage() {
           ? "USDT (Tether)"
           : "Bitcoin (BTC)"
 
-  const selectMethod = (next: DepositMethod) => {
-    setMethod(next)
-    setError(null)
-    if (next === "card") setCardAmountSelected(false)
-    setStep("form")
-  }
-
-  if (step === "select") {
-    const methodCards: { id: DepositMethod; title: string; subtitle?: string; icon: React.ReactNode }[] = [
-      {
-        id: "pix",
-        title: "PIX (Apenas seu CPF)",
-        icon: (
-          <Image
-            src="/images/a57db68e-f6a1-44c5-bde8.jpeg"
-            alt=""
-            width={56}
-            height={56}
-            className="h-14 w-14 rounded-xl object-cover"
-          />
-        ),
-      },
-      ...(cardEnabled
-        ? [{
-            id: "card" as const,
-            title: "Cartão de Crédito/Débito",
-            subtitle: "Visa, Mastercard • aprovação manual",
-            icon: <CreditCard className="h-12 w-12 text-[#f97316]" strokeWidth={1.75} />,
-          }]
-        : []),
-      ...(cryptoEnabled
-        ? [{
-            id: "crypto" as const,
-            title: "Criptomoeda",
-            subtitle: `USDT ou Bitcoin • mín. US$ ${CRYPTO_MIN_USD}`,
-            icon: (
-              <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#50AF95] text-3xl font-bold text-white">
-                ₮
-              </span>
-            ),
-          }]
-        : []),
-    ]
-
-    return (
-      <div className="min-h-screen bg-[#1b2234]">
-        <header className="sticky top-0 z-10 flex items-center gap-5 bg-[#1b2234] px-5 py-5">
-          <button
-            onClick={() => router.back()}
-            aria-label="Fechar"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#323a4f] transition-colors hover:bg-[#3b4459]"
-          >
-            <X className="h-6 w-6 text-[#9aa3b5]" />
-          </button>
-          <h1 className="text-2xl font-medium text-white">Método de pagamento</h1>
-        </header>
-
-        <main className="mx-auto max-w-md px-5 pt-8 pb-10">
-          <p className="mb-6 text-sm font-bold uppercase tracking-wide text-white">Métodos disponíveis</p>
-          {methodsLoading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="h-6 w-6 animate-spin text-[#f97316]" />
-            </div>
-          ) : (
-            <ul className="flex flex-col gap-4">
-              {methodCards.map((item) => (
-                <li key={item.id}>
-                  <button
-                    onClick={() => selectMethod(item.id)}
-                    className="flex min-h-36 w-full items-center gap-6 rounded-2xl bg-[#2c3447] px-8 py-8 text-left transition-colors hover:bg-[#343d52] active:ring-2 active:ring-[#f97316]"
-                  >
-                    <span className="flex w-16 shrink-0 items-center justify-center">{item.icon}</span>
-                    <span className="flex flex-col gap-1">
-                      <span className="text-xl font-medium text-white">{item.title}</span>
-                      {item.subtitle && <span className="text-base text-[#8d96aa]">{item.subtitle}</span>}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </main>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-[#1b2234]">
-      <div className="sticky top-0 z-10 px-5 py-4 flex items-center gap-6 bg-[#1b2234]">
+    <div className="min-h-screen bg-[#0d0d0f]">
+      <div className="sticky top-0 z-10 px-4 sm:px-8 py-4 flex items-center gap-4 bg-[#0d0d0f]">
         <button
-          onClick={() => { setStep("select"); setError(null) }}
-          aria-label="Voltar para métodos de pagamento"
-          className="flex h-11 w-11 items-center justify-center text-[#9aa3b5] hover:text-white transition-colors"
+          onClick={() => router.back()}
+          aria-label="Fechar"
+          className="w-10 h-10 rounded-full bg-[#1c1c1f] hover:bg-[#26262a] flex items-center justify-center transition-colors"
         >
-          <ChevronLeft className="h-7 w-7" />
+          <X className="w-5 h-5 text-white/80" />
         </button>
-        <span className="text-2xl text-[#9aa3b5]">Método de pagamento</span>
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-1 text-[#9CA3AF] hover:text-white transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+          <span className="text-base">Moeda</span>
+        </button>
       </div>
 
-      <div className="px-5 sm:px-8 py-6 max-w-5xl mx-auto">
+      <div className="px-4 sm:px-8 py-6 max-w-5xl mx-auto">
         <div className="flex flex-col lg:flex-row lg:gap-16">
           <div className="w-full lg:max-w-md space-y-6">
-        <div className="flex items-center gap-6 pt-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center">
-            {method === "pix" ? (
-              <Image src="/images/a57db68e-f6a1-44c5-bde8.jpeg" alt="PIX" width={64} height={64} className="h-16 w-16 rounded-xl object-cover" />
-            ) : method === "card" ? (
-              <CreditCard className="h-14 w-14 text-[#f97316]" strokeWidth={1.75} />
-            ) : (
-              <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#50AF95] text-3xl font-bold text-white">{cryptoType === "usdt" ? "₮" : "₿"}</span>
+        {/* Method selector */}
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-[#6B7280] mb-2.5">Metodo de pagamento</p>
+          <div className={`grid gap-2.5 ${cardEnabled && cryptoEnabled ? "grid-cols-3" : cardEnabled || cryptoEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
+            <button
+              onClick={() => { setMethod("pix"); setError(null) }}
+              aria-pressed={method === "pix"}
+              className={`group relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border transition-all duration-200 overflow-hidden ${
+                method === "pix"
+                  ? "border-[#f97316] bg-gradient-to-b from-[#f97316]/15 to-transparent shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_8px_24px_-8px_rgba(249,115,22,0.5)]"
+                  : "border-[#1F2933] bg-[#121826] hover:border-[#374151] hover:bg-[#161d2b]"
+              }`}
+            >
+              {method === "pix" && (
+                <span className="absolute top-2 right-2 flex items-center justify-center w-4 h-4 rounded-full bg-[#f97316]">
+                  <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                </span>
+              )}
+              <span className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${method === "pix" ? "bg-white" : "bg-[#0d0d0f] group-hover:bg-white/95"}`}>
+                <Image
+                  src="/images/a57db68e-f6a1-44c5-bde8.jpeg"
+                  alt="PIX"
+                  width={24}
+                  height={24}
+                  className="w-6 h-6 rounded-md"
+                />
+              </span>
+              <span className="flex flex-col items-center leading-tight">
+                <span className={`text-sm font-bold ${method === "pix" ? "text-white" : "text-white/80"}`}>PIX</span>
+                <span className="text-[10px] text-[#6B7280]">Aprovacao na hora</span>
+              </span>
+            </button>
+            {cardEnabled && (
+              <button
+                onClick={() => { setMethod("card"); setError(null); setCardAmountSelected(false) }}
+                aria-pressed={method === "card"}
+                className={`group relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border transition-all duration-200 overflow-hidden ${
+                  method === "card"
+                    ? "border-[#f97316] bg-gradient-to-b from-[#f97316]/15 to-transparent shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_8px_24px_-8px_rgba(249,115,22,0.5)]"
+                    : "border-[#1F2933] bg-[#121826] hover:border-[#374151] hover:bg-[#161d2b]"
+                }`}
+              >
+                {method === "card" && (
+                  <span className="absolute top-2 right-2 flex items-center justify-center w-4 h-4 rounded-full bg-[#f97316]">
+                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                  </span>
+                )}
+                <span className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${method === "card" ? "bg-[#f97316]" : "bg-[#0d0d0f] group-hover:bg-[#161d2b]"}`}>
+                  <CreditCard className={`w-5 h-5 ${method === "card" ? "text-white" : "text-white/70"}`} />
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className={`text-sm font-bold ${method === "card" ? "text-white" : "text-white/80"}`}>Cartao</span>
+                  <span className="text-[10px] text-[#6B7280]">Credito / Debito</span>
+                </span>
+              </button>
+            )}
+            {cryptoEnabled && (
+              <button
+                onClick={() => { setMethod("crypto"); setError(null) }}
+                aria-pressed={method === "crypto"}
+                className={`group relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border transition-all duration-200 overflow-hidden ${
+                  method === "crypto"
+                    ? "border-[#f97316] bg-gradient-to-b from-[#f97316]/15 to-transparent shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_8px_24px_-8px_rgba(249,115,22,0.5)]"
+                    : "border-[#1F2933] bg-[#121826] hover:border-[#374151] hover:bg-[#161d2b]"
+                }`}
+              >
+                {method === "crypto" && (
+                  <span className="absolute top-2 right-2 flex items-center justify-center w-4 h-4 rounded-full bg-[#f97316]">
+                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                  </span>
+                )}
+                <span className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${method === "crypto" ? "bg-[#26A17B]" : "bg-[#0d0d0f] group-hover:bg-[#161d2b]"}`}>
+                  <span className={`text-lg font-bold ${method === "crypto" ? "text-white" : "text-white/70"}`}>₮</span>
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className={`text-sm font-bold ${method === "crypto" ? "text-white" : "text-white/80"}`}>Cripto</span>
+                  <span className="text-[10px] text-[#6B7280]">USDT / BTC</span>
+                </span>
+              </button>
             )}
           </div>
-          <h1 className="text-4xl font-medium leading-tight text-white text-balance">{methodTitle}</h1>
         </div>
+
+        {/* Title with icon */}
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center bg-white shrink-0">
+            {method === "pix" ? (
+              <Image src="/images/a57db68e-f6a1-44c5-bde8.jpeg" alt="PIX" width={36} height={36} className="w-full h-full object-cover" />
+            ) : method === "card" ? (
+              <CreditCard className="w-5 h-5 text-[#0d0d0f]" />
+            ) : (
+              <span className="text-[#0d0d0f] font-bold text-lg">{cryptoType === "usdt" ? "₮" : "₿"}</span>
+            )}
+          </div>
+          <h1 className="text-2xl font-semibold text-white text-balance">{methodTitle}</h1>
+        </div>
+
         {/* Error */}
         {error && (
           <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
@@ -829,16 +833,15 @@ export default function DepositPage() {
         {/* Amount - hide for crypto since it has its own USD input */}
         {method !== "crypto" && (
           <div>
-            <label htmlFor="deposit-amount" className="block text-xl text-[#9aa3b5] mb-4">Valor</label>
+            <label className="block text-sm text-[#9CA3AF] mb-2">Valor</label>
             <div className="relative">
-              <span className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 text-xl text-[#8d96aa]">R$</span>
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[#6B7280] text-lg">R$</span>
               <input
-                id="deposit-amount"
                 type="text"
                 value={amount}
                 onChange={handleAmountChange}
-                placeholder="60,00"
-                className="w-full h-16 pl-16 pr-4 rounded-2xl text-white text-lg bg-transparent border border-[#3a4256] focus:border-[#f97316] outline-none transition-colors"
+                placeholder="50,00"
+                className="w-full py-2 pl-8 pr-4 text-white text-lg bg-transparent border-0 border-b border-[#2a2a2e] focus:border-[#f97316] outline-none"
                 inputMode="numeric"
               />
             </div>
@@ -847,25 +850,16 @@ export default function DepositPage() {
 
         {/* Quick amounts - hide for crypto */}
         {method !== "crypto" && (
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            {QUICK_AMOUNTS.map((value) => {
-              const selected =
-                amount === value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-              return (
-                <button
-                  key={value}
-                  onClick={() => handleQuickAmount(value)}
-                  aria-pressed={selected}
-                  className={`h-16 rounded-2xl border text-xl transition-colors ${
-                    selected
-                      ? "border-[#f97316] text-[#f97316]"
-                      : "border-[#3a4256] text-white hover:border-[#f97316]/60"
-                  }`}
-                >
-                  R$ {value.toLocaleString("pt-BR")}
-                </button>
-              )
-            })}
+          <div className="grid grid-cols-4 gap-3">
+            {QUICK_AMOUNTS.map((value) => (
+              <button
+                key={value}
+                onClick={() => handleQuickAmount(value)}
+                className="py-3 px-2 rounded-lg text-sm font-medium text-white bg-[#151517] border border-[#26262a] hover:border-[#f97316] transition-colors"
+              >
+                R$ {value.toLocaleString("pt-BR")}
+              </button>
+            ))}
           </div>
         )}
 
@@ -923,18 +917,17 @@ export default function DepositPage() {
         {/* PIX: CPF do lead (usado para gerar a cobranca) */}
         {method === "pix" && (
           <div>
-            <label htmlFor="pix-cpf" className="block text-xl text-[#9aa3b5] mb-4">CPF do titular</label>
+            <label className="block text-sm text-white mb-2 font-medium">CPF do titular</label>
             <input
-              id="pix-cpf"
               type="text"
               value={pixCpf}
               onChange={(e) => setPixCpf(formatCpf(e.target.value))}
               placeholder="000.000.000-00"
-              className="w-full h-16 px-6 rounded-2xl text-lg text-white font-mono bg-transparent border border-[#3a4256] placeholder:text-[#8d96aa] focus:border-[#f97316] outline-none transition-colors"
+              className="w-full py-4 px-4 rounded-xl text-white bg-[#121826] border border-[#1F2933] focus:border-[#f97316] outline-none"
               inputMode="numeric"
               autoComplete="off"
             />
-            <p className="mt-3 text-sm text-[#7d869a]">O CPF deve pertencer ao titular da conta que fará o pagamento.</p>
+            <p className="mt-2 text-xs text-[#6b7280]">Use apenas o seu proprio CPF. O PIX sera gerado com este documento.</p>
           </div>
         )}
 
@@ -1277,17 +1270,17 @@ export default function DepositPage() {
 
         {/* Terms - only for PIX and Card */}
         {method !== "crypto" && (
-          <div className="p-6 rounded-3xl border-2 border-[#f97316] bg-[#131a2a]">
-            <label className="flex items-start gap-4 cursor-pointer">
+          <div className="p-4 rounded-xl border-2 border-[#f97316] bg-[#121826]">
+            <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={acceptTerms}
                 onChange={(e) => setAcceptTerms(e.target.checked)}
-                className="mt-0.5 h-7 w-7 shrink-0 rounded-md border-[#9aa3b5] bg-white accent-[#f97316]"
+                className="mt-0.5 w-5 h-5 rounded border-[#f97316] bg-[#0B0F14] text-[#f97316] focus:ring-[#f97316] focus:ring-offset-0"
               />
               <div>
-                <p className="text-[#f97316] text-lg font-medium">Termos e condicoes</p>
-                <p className="text-[#9aa3b5] text-lg mt-1 leading-snug">Ao continuar, concordo com os Termos e condicoes.</p>
+                <p className="text-[#f97316] text-sm font-medium">Termos e condicoes</p>
+                <p className="text-[#9CA3AF] text-sm mt-1">Ao continuar, concordo com os Termos e condicoes.</p>
               </div>
             </label>
           </div>
@@ -1298,7 +1291,7 @@ export default function DepositPage() {
           <button
             onClick={method === "pix" ? handlePixDeposit : handleCardDeposit}
             disabled={!acceptTerms || parseAmount() < 50 || isLoading}
-            className="w-full h-16 rounded-full text-xl font-semibold text-white bg-[#f97316] hover:bg-[#ea580c] disabled:bg-[#9a4a17] disabled:text-white/60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-xl font-semibold text-white bg-[#f97316] hover:bg-[#c2410c] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <>

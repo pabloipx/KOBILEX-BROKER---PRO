@@ -175,8 +175,9 @@ function SignUpForm() {
 
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-gray-50/60">
-        <Link href="/" className="flex items-center">
-          <Image src="/images/uryn-fox-logo.png" alt="URYNBROKER" width={150} height={38} className="h-9 w-auto" unoptimized />
+        <Link href="/" className="flex items-center gap-2 text-gray-900">
+          <Image src="/images/bullion-trader-logo.png" alt="" width={36} height={36} className="h-9 w-9 rounded-full object-cover" unoptimized />
+          <span className="font-bold tracking-tight">Bullion Trader</span>
         </Link>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-gray-600 text-sm font-medium">

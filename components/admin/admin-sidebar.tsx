@@ -68,13 +68,14 @@ export function AdminSidebar({ activeSection, onSectionChange }: AdminSidebarPro
       {/* Logo */}
       <div className="p-4 border-b border-[#1E2430]">
         <Image
-          src="/images/uryn-fox-logo.png"
-          alt="URYNBROKER"
-          width={150}
-          height={40}
+          src="/images/bullion-trader-logo.png"
+          alt="Bullion Trader"
+          width={48}
+          height={48}
           priority
-          className="mx-auto h-auto w-[150px]"
+          className="mx-auto h-12 w-12 rounded-full object-cover"
         />
+        <p className="mt-2 text-center font-bold text-white">Bullion Trader</p>
       </div>
 
       {/* Navigation */}

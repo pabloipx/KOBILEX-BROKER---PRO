@@ -1070,14 +1070,15 @@ export default function AdminDashboardClient() {
         <button onClick={() => setSidebarOpen(true)}>
           <Menu className="w-6 h-6 text-white" />
         </button>
-        <Image
-          src="/images/uryn-fox-logo.png"
-          alt="URYNBROKER"
-          width={130}
-          height={35}
+        <span className="flex items-center gap-2 text-white"><Image
+          src="/images/bullion-trader-logo.png"
+          alt="Bullion Trader"
+          width={36}
+          height={36}
           priority
-          className="h-auto w-[130px]"
+          className="h-9 w-9 rounded-full object-cover"
         />
+        <span className="font-bold tracking-tight">Bullion Trader</span></span>
         <button onClick={handleLogout}>
           <LogOut className="w-6 h-6 text-red-500" />
         </button>
@@ -1091,14 +1092,15 @@ export default function AdminDashboardClient() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-6 flex items-center justify-between">
-              <Image
-          src="/images/uryn-fox-logo.png"
-          alt="URYNBROKER"
-          width={130}
-          height={35}
+              <span className="flex items-center gap-2 text-white"><Image
+          src="/images/bullion-trader-logo.png"
+          alt="Bullion Trader"
+          width={36}
+          height={36}
           priority
-          className="h-auto w-[130px]"
+          className="h-9 w-9 rounded-full object-cover"
         />
+        <span className="font-bold tracking-tight">Bullion Trader</span></span>
               <button onClick={() => setSidebarOpen(false)}>
                 <X className="w-6 h-6 text-white" />
               </button>
@@ -1112,14 +1114,15 @@ export default function AdminDashboardClient() {
         {/* Desktop Sidebar */}
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0e14] p-4 lg:flex">
           <div className="mb-6 px-2">
-            <Image
-              src="/images/uryn-fox-logo.png"
-              alt="URYNBROKER"
-              width={160}
-              height={42}
-              priority
-              className="h-auto w-[160px]"
-            />
+            <span className="flex items-center gap-2 text-white"><Image
+              src="/images/bullion-trader-logo.png"
+              alt="Bullion Trader"
+              width={36}
+          height={36}
+          priority
+          className="h-9 w-9 rounded-full object-cover"
+        />
+        <span className="font-bold tracking-tight">Bullion Trader</span></span>
             <span className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-orange-400">
               <ShieldCheck className="h-3 w-3" />
               Painel Admin

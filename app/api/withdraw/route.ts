@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient, createClient as createServerClient } from "@/lib/supabase/server"
 import { cancelActiveBonus, getActiveBonus, shouldCancelBonusOnWithdrawal } from "@/lib/promo-codes"
 import { getDepositRolloverSummary } from "@/lib/deposit-rollover"
+import { getUserWithdrawLimit, LIMITED_WITHDRAW_COOLDOWN_HOURS } from "@/lib/withdraw-limits"
 
 // Mesmo minimo exibido na tela de saque.
 const MIN_WITHDRAWAL = 100
@@ -62,6 +63,46 @@ export async function POST(request: NextRequest) {
 
     // Chave de servico: o saldo e o saque sao gravados sem depender das policies do cliente.
     const supabase = createAdminClient()
+
+    // CONTA LIMITADA pelo admin: teto por saque e intervalo minimo entre saques.
+    const withdrawLimit = await getUserWithdrawLimit(supabase, user.id)
+    if (withdrawLimit !== null) {
+      if (amount > withdrawLimit) {
+        return NextResponse.json(
+          { error: `Sua conta esta limitada. O valor maximo por saque e R$ ${withdrawLimit.toFixed(2)}.` },
+          { status: 409 },
+        )
+      }
+
+      const { data: lastWithdrawal } = await supabase
+        .from("withdrawals")
+        .select("created_at")
+        .eq("user_id", user.id)
+        .not("status", "in", "(rejected,cancelled)")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (lastWithdrawal?.created_at) {
+        const nextAllowed =
+          new Date(lastWithdrawal.created_at).getTime() + LIMITED_WITHDRAW_COOLDOWN_HOURS * 60 * 60 * 1000
+        if (Date.now() < nextAllowed) {
+          const when = new Date(nextAllowed).toLocaleString("pt-BR", {
+            timeZone: "America/Sao_Paulo",
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+          return NextResponse.json(
+            {
+              error: `Sua conta esta limitada: e preciso aguardar ${LIMITED_WITHDRAW_COOLDOWN_HOURS} horas entre saques. Proximo saque liberado em ${when}.`,
+            },
+            { status: 409 },
+          )
+        }
+      }
+    }
 
     const { data: balanceRow, error: balanceError } = await supabase
       .from("user_balances")

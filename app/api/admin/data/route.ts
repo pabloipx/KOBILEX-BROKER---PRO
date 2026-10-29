@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import { approveDeposit } from "@/lib/deposits"
 import { isAdminRequest } from "@/lib/admin/session"
 import { round2 } from "@/lib/promo-codes"
+import { getWithdrawLimits, setUserWithdrawLimit } from "@/lib/withdraw-limits"
 import { buildAiTradeRow, iaEntryForResult, IA_MIN_ENTRY } from "@/lib/ia-trades"
 
 // Dia atual no fuso America/Sao_Paulo (UTC-3), igual ao usado no acerto da IA.
@@ -103,6 +104,7 @@ export async function GET(req: NextRequest) {
 
       const userIds = profiles.map((p: any) => p.id)
       const { data: balances } = await supabase.from("user_balances").select("*").in("user_id", userIds)
+      const withdrawLimits = await getWithdrawLimits(supabase)
 
       // Travas de rollover ativas de todos os usuarios, para mostrar quanto falta em cada card.
       const { data: rollovers } = await supabase
@@ -129,6 +131,7 @@ export async function GET(req: NextRequest) {
           balance_real: balance?.balance_real || 0,
           balance_demo: balance?.balance_demo || 100,
           rollover: rolloverByUser.get(profile.id) || null,
+          withdraw_limit: withdrawLimits[profile.id] ?? null,
         }
       })
 
@@ -925,6 +928,23 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ success: true })
+    }
+
+    if (action === "set_withdraw_limit") {
+      const userId = typeof payload.userId === "string" ? payload.userId : ""
+      if (!userId) return NextResponse.json({ error: "Usuario invalido" }, { status: 400 })
+
+      if (payload.enabled === false) {
+        await setUserWithdrawLimit(supabase, userId, null)
+        return NextResponse.json({ success: true, withdraw_limit: null })
+      }
+
+      const amount = Number(payload.amount)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return NextResponse.json({ error: "Informe um valor de limite maior que zero" }, { status: 400 })
+      }
+      await setUserWithdrawLimit(supabase, userId, amount)
+      return NextResponse.json({ success: true, withdraw_limit: Math.round(amount * 100) / 100 })
     }
 
     if (action === "apply_rollover") {

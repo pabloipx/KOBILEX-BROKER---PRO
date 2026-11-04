@@ -53,10 +53,32 @@ export function MaintenanceModal({ open, onClose }: MaintenanceModalProps) {
         <h2 id="maintenance-title" className="text-xl font-bold text-gray-800 mb-2">
           Corretora em manutenção
         </h2>
-        <p id="maintenance-description" className="text-gray-500 text-sm leading-relaxed mb-6">
-          Estamos realizando uma manutenção programada para melhorar nossos serviços. O acesso à plataforma e a
-          criação de novas contas estão temporariamente indisponíveis. Seus dados e saldos estão seguros. Por favor,
-          tente novamente mais tarde.
+        <p id="maintenance-description" className="text-gray-500 text-sm leading-relaxed mb-4">
+          Estamos realizando uma manutenção programada para deixar a plataforma ainda melhor para você. Durante este
+          período, o acesso e a criação de novas contas estão temporariamente indisponíveis.
+        </p>
+
+        <ul className="text-left text-sm text-gray-600 space-y-2 mb-4 rounded-lg bg-gray-50 p-4">
+          <li className="flex gap-2">
+            <span className="text-green-600 font-bold" aria-hidden="true">•</span>
+            Pagamentos mais rápidos e seguros em depósitos e saques
+          </li>
+          <li className="flex gap-2">
+            <span className="text-green-600 font-bold" aria-hidden="true">•</span>
+            Mais velocidade na execução das operações
+          </li>
+          <li className="flex gap-2">
+            <span className="text-green-600 font-bold" aria-hidden="true">•</span>
+            Correção de lentidão e instabilidades do sistema
+          </li>
+          <li className="flex gap-2">
+            <span className="text-green-600 font-bold" aria-hidden="true">•</span>
+            Reforço de segurança e correção de vulnerabilidades
+          </li>
+        </ul>
+
+        <p className="text-gray-500 text-sm leading-relaxed mb-6">
+          Seus dados e saldos estão seguros. Por favor, tente novamente mais tarde.
         </p>
 
         <button

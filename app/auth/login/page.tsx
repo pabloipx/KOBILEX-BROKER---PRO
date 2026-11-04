@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { recordDeviceSession } from "@/lib/device-session"
+import { MAINTENANCE_MODE, MaintenanceModal } from "@/components/maintenance-modal"
 
 function Flag({ code, className }: { code: string; className?: string }) {
   return (
@@ -28,6 +29,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isCheckingSession, setIsCheckingSession] = useState(true)
+  const [showMaintenance, setShowMaintenance] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -56,6 +58,12 @@ export default function LoginPage() {
 
     if (!trimmedEmail || !trimmedPassword) {
       setError("Preencha todos os campos")
+      return
+    }
+
+    if (MAINTENANCE_MODE) {
+      setError(null)
+      setShowMaintenance(true)
       return
     }
 
@@ -107,6 +115,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full bg-white flex flex-col">
+      <MaintenanceModal open={showMaintenance} onClose={() => setShowMaintenance(false)} />
+
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-gray-50/60">
         <Link href="/" className="flex items-center">

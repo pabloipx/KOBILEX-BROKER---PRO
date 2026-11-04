@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useEffect, Suspense } from "react"
 import { CheckCircle2, ChevronDown, Loader2, X } from "lucide-react"
 import { recordDeviceSession } from "@/lib/device-session"
+import { MAINTENANCE_MODE, MaintenanceModal } from "@/components/maintenance-modal"
 
 const COUNTRIES = [
   { name: "Brasil", code: "BR", dial: "+55" },
@@ -44,6 +45,7 @@ function SignUpForm() {
   const [success, setSuccess] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
   const [showCountries, setShowCountries] = useState(false)
+  const [showMaintenance, setShowMaintenance] = useState(false)
   const [referralCode, setReferralCode] = useState("")
   const [referralSubId, setReferralSubId] = useState("")
   const router = useRouter()
@@ -64,6 +66,13 @@ function SignUpForm() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (MAINTENANCE_MODE) {
+      setError(null)
+      setShowMaintenance(true)
+      return
+    }
+
     const supabase = createClient()
     setIsLoading(true)
     setError(null)
@@ -138,6 +147,8 @@ function SignUpForm() {
 
   return (
     <div className="min-h-screen w-full bg-white flex flex-col">
+      <MaintenanceModal open={showMaintenance} onClose={() => setShowMaintenance(false)} />
+
       {/* Modal de Termos */}
       {showTerms && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
